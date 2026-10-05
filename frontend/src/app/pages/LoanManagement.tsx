@@ -791,16 +791,12 @@ export function LoanManagement() {
 
                       {/* UTR */}
                       <td className="whitespace-nowrap px-5 py-4">
-                        {loan.utrNumber ? (
-                          <span
-                            className="inline-block max-w-[220px] truncate font-mono text-xs font-semibold text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded select-all"
-                            title={loan.utrNumber}
-                          >
-                            {loan.utrNumber}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500 text-xs">-</span>
-                        )}
+                        <div
+                          className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 select-all"
+                          title={loan.utrNumber || undefined}
+                        >
+                          {loan.utrNumber || <span className="text-slate-400 dark:text-slate-500 font-sans font-normal">-</span>}
+                        </div>
                       </td>
 
                       {/* Customer */}
