@@ -2366,13 +2366,13 @@ function SingleReportView({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition mb-2 cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition mb-2 cursor-pointer"
           >
             <ChevronLeft className="h-4 w-4" />
             Back to Dashboard
           </button>
-          <h2 className="text-2xl font-bold text-gray-900">{reportDetails.title}</h2>
-          <p className="mt-1 text-sm text-gray-600">Dedicated single report worksheet with advanced filters and exports.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{reportDetails.title}</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">Dedicated single report worksheet with advanced filters and exports.</p>
         </div>
         <div className="relative print:hidden">
           <button
@@ -2390,14 +2390,14 @@ function SingleReportView({
                 className="fixed inset-0 z-10" 
                 onClick={() => setIsExportDropdownOpen(false)} 
               />
-              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg z-20 focus:outline-none">
+              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 shadow-lg z-20 focus:outline-none">
                 <button
                   type="button"
                   onClick={() => {
                     handleExportCsv();
                     setIsExportDropdownOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   <Download className="h-4 w-4 text-emerald-500" />
                   Export as CSV
@@ -2408,19 +2408,19 @@ function SingleReportView({
                     handleExportJson();
                     setIsExportDropdownOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   <Download className="h-4 w-4 text-amber-500" />
                   Export as JSON
                 </button>
-                <div className="my-1 border-t border-slate-100" />
+                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
                 <button
                   type="button"
                   onClick={() => {
                     handlePrint();
                     setIsExportDropdownOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   <FileText className="h-4 w-4 text-blue-500" />
                   Print / Save PDF
@@ -2451,66 +2451,75 @@ function SingleReportView({
 
             const colorClasses = {
               blue: {
-                bg: "bg-blue-50/50",
-                border: "border-blue-100 hover:border-blue-200",
-                text: "text-blue-700",
-                iconBg: "bg-blue-100/80 text-blue-600",
-                accent: "from-blue-500 to-blue-600",
+                bg: "bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900",
+                border: "border-blue-200/80 dark:border-blue-900/60 hover:border-blue-400 dark:hover:border-blue-600",
+                text: "text-blue-700 dark:text-blue-400",
+                iconBg: "bg-blue-100/80 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-700/60 shadow-xs",
+                accent: "from-blue-500 to-indigo-600",
+                aura: "from-blue-200/70 via-indigo-200/40 to-transparent dark:from-blue-500/25 dark:via-indigo-500/15",
               },
               emerald: {
-                bg: "bg-emerald-50/50",
-                border: "border-emerald-100 hover:border-emerald-200",
-                text: "text-emerald-700",
-                iconBg: "bg-emerald-100/80 text-emerald-600",
-                accent: "from-emerald-500 to-emerald-600",
+                bg: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900",
+                border: "border-emerald-200/80 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-600",
+                text: "text-emerald-700 dark:text-emerald-400",
+                iconBg: "bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/60 shadow-xs",
+                accent: "from-emerald-500 to-teal-600",
+                aura: "from-emerald-200/70 via-teal-200/40 to-transparent dark:from-emerald-500/25 dark:via-teal-500/15",
               },
               amber: {
-                bg: "bg-amber-50/50",
-                border: "border-amber-100 hover:border-amber-200",
-                text: "text-amber-700",
-                iconBg: "bg-amber-100/80 text-amber-600",
-                accent: "from-amber-500 to-amber-600",
+                bg: "bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white dark:from-amber-950/40 dark:via-slate-900 dark:to-slate-900",
+                border: "border-amber-200/80 dark:border-amber-900/60 hover:border-amber-400 dark:hover:border-amber-600",
+                text: "text-amber-700 dark:text-amber-400",
+                iconBg: "bg-amber-100/80 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-700/60 shadow-xs",
+                accent: "from-amber-500 to-orange-600",
+                aura: "from-amber-200/70 via-orange-200/40 to-transparent dark:from-amber-500/25 dark:via-orange-500/15",
               },
               red: {
-                bg: "bg-red-50/50",
-                border: "border-red-100 hover:border-red-200",
-                text: "text-red-700",
-                iconBg: "bg-red-100/80 text-red-600",
-                accent: "from-red-500 to-red-600",
+                bg: "bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-white dark:from-rose-950/40 dark:via-slate-900 dark:to-slate-900",
+                border: "border-rose-200/80 dark:border-rose-900/60 hover:border-rose-400 dark:hover:border-rose-600",
+                text: "text-rose-700 dark:text-rose-400",
+                iconBg: "bg-rose-100/80 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-700/60 shadow-xs",
+                accent: "from-rose-500 to-red-600",
+                aura: "from-rose-200/70 via-pink-200/40 to-transparent dark:from-rose-500/25 dark:via-pink-500/15",
               },
               indigo: {
-                bg: "bg-indigo-50/50",
-                border: "border-indigo-100 hover:border-indigo-200",
-                text: "text-indigo-700",
-                iconBg: "bg-indigo-100/80 text-indigo-600",
-                accent: "from-indigo-500 to-indigo-600",
+                bg: "bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-white dark:from-indigo-950/40 dark:via-slate-900 dark:to-slate-900",
+                border: "border-indigo-200/80 dark:border-indigo-900/60 hover:border-indigo-400 dark:hover:border-indigo-600",
+                text: "text-indigo-700 dark:text-indigo-400",
+                iconBg: "bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/60 shadow-xs",
+                accent: "from-indigo-500 to-purple-600",
+                aura: "from-indigo-200/70 via-purple-200/40 to-transparent dark:from-indigo-500/25 dark:via-purple-500/15",
               },
             }[card.color as "blue" | "emerald" | "amber" | "red" | "indigo"] || {
-              bg: "bg-slate-50/50",
-              border: "border-slate-100 hover:border-slate-200",
-              text: "text-slate-700",
-              iconBg: "bg-slate-100/80 text-slate-600",
+              bg: "bg-gradient-to-br from-slate-500/10 via-slate-500/5 to-white dark:from-slate-800/40 dark:via-slate-900 dark:to-slate-900",
+              border: "border-slate-200/80 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700",
+              text: "text-slate-700 dark:text-slate-400",
+              iconBg: "bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs",
               accent: "from-slate-500 to-slate-600",
+              aura: "from-slate-200/70 via-slate-200/40 to-transparent dark:from-slate-600/25 dark:via-slate-700/15",
             };
 
             return (
               <div
                 key={card.label}
-                className={`relative overflow-hidden rounded-xl border ${colorClasses.border} ${colorClasses.bg} p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5`}
+                className={`relative overflow-hidden rounded-2xl border ${colorClasses.border} ${colorClasses.bg} p-5 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 group`}
               >
+                {/* Dynamic Top-Right Accent Aura Glow */}
+                <div className={`absolute -top-8 -right-8 w-28 h-28 rounded-full bg-gradient-to-br ${colorClasses.aura} blur-xl pointer-events-none group-hover:scale-125 transition-transform duration-500`} />
+
                 {/* Visual Top Highlight Accent */}
                 <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${colorClasses.accent}`} />
                 
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-500">{card.label}</span>
-                  <div className={`rounded-lg p-2 ${colorClasses.iconBg}`}>
-                    <IconComponent className="h-5 w-5" />
+                <div className="relative z-10 flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{card.label}</span>
+                  <div className={`rounded-xl p-2 ${colorClasses.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+                    <IconComponent className="h-4 w-4" />
                   </div>
                 </div>
                 
-                <div className="mt-3">
-                  <span className="text-2xl font-bold tracking-tight text-slate-900">{card.value}</span>
-                  <p className="mt-1 text-xs text-slate-500 font-medium">{card.note}</p>
+                <div className="relative z-10 mt-3">
+                  <span className="text-2xl font-black tracking-tight text-slate-900 dark:text-white leading-none">{card.value}</span>
+                  <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">{card.note}</p>
                 </div>
               </div>
             );
@@ -2526,7 +2535,7 @@ function SingleReportView({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search details..."
-            className="h-10 w-full rounded-md border border-slate-300 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
           />
         </label>
 
@@ -2652,7 +2661,7 @@ function renderCell(cell: string, header: string) {
   if (trimmed.startsWith("₹") || trimmed.startsWith("-₹")) {
     const isNegative = trimmed.startsWith("-");
     return (
-      <span className={`font-mono font-semibold tracking-tight ${isNegative ? "text-rose-600" : "text-slate-800"}`}>
+      <span className={`font-mono font-semibold tracking-tight ${isNegative ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-100"}`}>
         {trimmed}
       </span>
     );
@@ -2661,7 +2670,7 @@ function renderCell(cell: string, header: string) {
   // 2. Percentages
   if (trimmed.endsWith("%") && !Number.isNaN(parseFloat(trimmed))) {
     return (
-      <span className="font-mono font-semibold text-slate-700 bg-slate-100/70 border border-slate-200/50 px-2 py-0.5 rounded text-xs">
+      <span className="font-mono font-semibold text-slate-700 dark:text-slate-200 bg-slate-100/70 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700 px-2 py-0.5 rounded text-xs">
         {trimmed}
       </span>
     );
@@ -2670,7 +2679,7 @@ function renderCell(cell: string, header: string) {
   // 3. Priorities & Buckets
   if (trimmed === "High" || trimmed === "critical") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/30 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
         High
       </span>
@@ -2678,7 +2687,7 @@ function renderCell(cell: string, header: string) {
   }
   if (trimmed === "Critical" || trimmed === "high") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 border border-rose-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-950/30 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
         <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
         Critical
       </span>
@@ -2686,7 +2695,7 @@ function renderCell(cell: string, header: string) {
   }
   if (trimmed === "Medium" || trimmed === "watch") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 dark:bg-sky-950/30 px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-800/60">
         <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
         Medium
       </span>
@@ -2694,7 +2703,7 @@ function renderCell(cell: string, header: string) {
   }
   if (trimmed === "Low" || trimmed === "current") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-600 border border-slate-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
         <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
         Low
       </span>
@@ -2705,7 +2714,7 @@ function renderCell(cell: string, header: string) {
   const lowerVal = trimmed.toLowerCase();
   if (["paid", "paid off", "success", "received", "settled"].includes(lowerVal)) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
         {trimmed}
       </span>
@@ -2714,7 +2723,7 @@ function renderCell(cell: string, header: string) {
 
   if (["overdue", "broken ptp", "failed", "breached", "breached leads"].includes(lowerVal) || lowerVal.includes("breach")) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 border border-rose-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-950/30 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
         <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
         {trimmed}
       </span>
@@ -2723,7 +2732,7 @@ function renderCell(cell: string, header: string) {
 
   if (["new", "pending", "contacted", "ready", "active ptp", "active", "warning"].includes(lowerVal) || lowerVal.includes("active")) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200">
+      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60">
         <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
         {trimmed}
       </span>
@@ -2732,14 +2741,14 @@ function renderCell(cell: string, header: string) {
 
   // 5. Default formatting: Dates or Codes
   if (lowerHeader.includes("date") || lowerHeader.includes("timestamp") || lowerHeader.includes("submitted")) {
-    return <span className="text-slate-600 font-medium whitespace-nowrap">{trimmed}</span>;
+    return <span className="text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">{trimmed}</span>;
   }
 
   if (lowerHeader.includes("account") || lowerHeader.includes("id") || lowerHeader.includes("phone") || lowerHeader.includes("pan") || lowerHeader.includes("aadhaar")) {
-    return <span className="font-mono font-medium text-slate-800 tracking-tight">{trimmed}</span>;
+    return <span className="font-mono font-medium text-slate-800 dark:text-slate-200 tracking-tight">{trimmed}</span>;
   }
 
-  return <span className="text-slate-700 font-medium">{trimmed}</span>;
+  return <span className="text-slate-700 dark:text-slate-300 font-medium">{trimmed}</span>;
 }
 
 function ReportTable({ id, headers, rows, title }: { id?: string; headers: string[]; rows: string[][]; title: string }) {
@@ -2793,11 +2802,11 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
   };
 
   return (
-    <div id={id || exportFilename} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden transition-all hover:shadow-md">
-      <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/60 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+    <div id={id || exportFilename} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden transition-all hover:shadow-md">
+      <div className="flex flex-col gap-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
-          <p className="mt-1 text-xs font-medium text-slate-500">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
             {rows.length ? `Showing ${startIndex + 1}-${endIndex} of ${rows.length} records` : "No records matching query"}
           </p>
         </div>
@@ -2806,9 +2815,9 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
             <button
               type="button"
               onClick={() => exportCsv(exportRows, exportFilename)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-707 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white cursor-pointer"
             >
-              <Download className="h-4 w-4 text-slate-500" />
+              <Download className="h-4 w-4 text-slate-500 dark:text-slate-400" />
               Download CSV
             </button>
           </AppTooltip>
@@ -2817,9 +2826,9 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
             <button
               type="button"
               onClick={handlePrintTable}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-707 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white cursor-pointer"
             >
-              <Printer className="h-4 w-4 text-slate-500" />
+              <Printer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
               Print Table
             </button>
           </AppTooltip>
@@ -2828,28 +2837,28 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
             ariaLabel={`${title} rows per page`}
             value={pageSize}
             onValueChange={setPageSize}
-            className="w-32 bg-white"
+            className="w-32 bg-white dark:bg-slate-800"
             options={reportPageSizeOptions}
           />
-          <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 border border-blue-100">
+          <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60">
             {rows.length} items
           </span>
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-100">
-          <thead className="bg-slate-50/30">
+        <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
+          <thead className="bg-slate-50/30 dark:bg-slate-800/60">
             <tr>
               {headers.map((head) => (
-                <th key={head} className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 ${getHeaderAlignment(head)}`}>
+                <th key={head} className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 ${getHeaderAlignment(head)}`}>
                   {head}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {visibleRows.map((row, rowIndex) => (
-              <tr key={row.join("-") + rowIndex} className="hover:bg-slate-50/50 transition border-b border-slate-100">
+              <tr key={row.join("-") + rowIndex} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition border-b border-slate-100 dark:border-slate-800">
                 {row.map((cell, index) => {
                   const head = headers[index] || "";
                   return (
@@ -2871,14 +2880,14 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
         </table>
       </div>
       {rows.length > rowsPerPage && (
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/30 px-6 py-4 text-sm font-semibold text-slate-500">
+        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/30 px-6 py-4 text-sm font-semibold text-slate-500 dark:text-slate-400">
           <span>Page {safePage} of {totalPages}</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPage(1)}
               disabled={safePage === 1}
-              className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
             >
               First
             </button>
@@ -2886,7 +2895,7 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
               type="button"
               onClick={() => setPage((value) => Math.max(1, value - 1))}
               disabled={safePage === 1}
-              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50/50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/40 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
               Prev
@@ -2904,7 +2913,7 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
               type="button"
               onClick={() => setPage(totalPages)}
               disabled={safePage === totalPages}
-              className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
             >
               Last
             </button>

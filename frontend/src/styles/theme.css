@@ -1197,8 +1197,19 @@
     background: #94a3b8;
   }
 
-  .dark [class~="bg-slate-50/50"] {
-    background-color: var(--surface) !important;
+  .dark [class~="bg-slate-50/50"],
+  .dark [class*="bg-blue-50/50"],
+  .dark [class*="bg-emerald-50/50"],
+  .dark [class*="bg-green-50/50"],
+  .dark [class*="bg-amber-50/50"],
+  .dark [class*="bg-yellow-50/50"],
+  .dark [class*="bg-red-50/50"],
+  .dark [class*="bg-rose-50/50"],
+  .dark [class*="bg-indigo-50/50"],
+  .dark [class*="bg-purple-50/50"],
+  .dark [class*="bg-teal-50/50"],
+  .dark [class*="bg-cyan-50/50"] {
+    background-color: var(--card) !important;
   }
 
   .dark .overflow-visible.rounded-lg.border.bg-white {

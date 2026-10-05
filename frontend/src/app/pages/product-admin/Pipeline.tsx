@@ -33,46 +33,46 @@ const columnsList: ColumnKey[] = [
 // Column header styling and icons helper
 const columnMeta: Record<ColumnKey, { headerClass: string; icon: any; iconColor: string; bgBadge: string }> = {
   "New Lead": {
-    headerClass: "border-t-4 border-t-blue-500 bg-blue-50/10 dark:bg-blue-955/5",
+    headerClass: "border-t-4 border-t-blue-500 bg-blue-50/10 dark:bg-blue-950/20",
     icon: UserPlus,
     iconColor: "text-blue-500",
-    bgBadge: "bg-blue-50 dark:bg-blue-955/35 text-blue-600 dark:text-blue-400"
+    bgBadge: "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
   },
   "Contacted": {
-    headerClass: "border-t-4 border-t-indigo-500 bg-indigo-50/10 dark:bg-indigo-955/5",
+    headerClass: "border-t-4 border-t-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/20",
     icon: PhoneCall,
     iconColor: "text-indigo-500",
-    bgBadge: "bg-indigo-50 dark:bg-indigo-955/35 text-indigo-600 dark:text-indigo-400"
+    bgBadge: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400"
   },
   "Documents Pending": {
-    headerClass: "border-t-4 border-t-amber-500 bg-amber-50/10 dark:bg-amber-955/5",
+    headerClass: "border-t-4 border-t-amber-500 bg-amber-50/10 dark:bg-amber-950/20",
     icon: FileClock,
     iconColor: "text-amber-500",
-    bgBadge: "bg-amber-50 dark:bg-amber-955/35 text-amber-600 dark:text-amber-400"
+    bgBadge: "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
   },
   "Bank Verification": {
-    headerClass: "border-t-4 border-t-violet-500 bg-violet-50/10 dark:bg-violet-955/5",
+    headerClass: "border-t-4 border-t-violet-500 bg-violet-50/10 dark:bg-violet-950/20",
     icon: Activity,
     iconColor: "text-violet-500",
-    bgBadge: "bg-violet-50 dark:bg-violet-955/35 text-violet-600 dark:text-violet-400"
+    bgBadge: "bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
   },
   "Approved": {
-    headerClass: "border-t-4 border-t-emerald-500 bg-emerald-50/10 dark:bg-emerald-955/5",
+    headerClass: "border-t-4 border-t-emerald-500 bg-emerald-50/10 dark:bg-emerald-950/20",
     icon: CheckCircle2,
     iconColor: "text-emerald-500",
-    bgBadge: "bg-emerald-50 dark:bg-emerald-955/35 text-emerald-600 dark:text-emerald-400"
+    bgBadge: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
   },
   "Disbursed": {
-    headerClass: "border-t-4 border-t-teal-500 bg-teal-50/10 dark:bg-teal-955/5",
+    headerClass: "border-t-4 border-t-teal-500 bg-teal-50/10 dark:bg-teal-950/20",
     icon: CircleDollarSign,
     iconColor: "text-teal-500",
-    bgBadge: "bg-teal-50 dark:bg-teal-955/35 text-teal-600 dark:text-teal-400"
+    bgBadge: "bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400"
   },
   "Closed": {
-    headerClass: "border-t-4 border-t-slate-500 bg-slate-50/10 dark:bg-slate-950/5",
+    headerClass: "border-t-4 border-t-slate-500 bg-slate-50/10 dark:bg-slate-950/20",
     icon: Archive,
     iconColor: "text-slate-500",
-    bgBadge: "bg-slate-50 dark:bg-slate-950/35 text-slate-600 dark:text-slate-400"
+    bgBadge: "bg-slate-50 dark:bg-slate-950/40 text-slate-600 dark:text-slate-400"
   }
 };
 
