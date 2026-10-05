@@ -60,14 +60,6 @@ const PAGE_SIZE_OPTIONS = [
   { label: "100 / page", value: "100" },
 ];
 
-const PAYMENT_STATUS_OPTIONS = [
-  { label: "All Payment Status", value: "all" },
-  { label: "Pending", value: "pending" },
-  { label: "Part Payment", value: "partial" },
-  { label: "Paid", value: "paid" },
-  { label: "Overdue", value: "overdue" },
-];
-
 const DATE_FILTER_OPTIONS = [
   { label: "All Due Dates", value: "all" },
   { label: "Due Today", value: "today" },
@@ -158,7 +150,6 @@ export function LoanManagement() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("15");
@@ -315,17 +306,6 @@ export function LoanManagement() {
     URL.revokeObjectURL(url);
   };
 
-  // Status options for select
-  const statusOptions = useMemo(() => {
-    return [
-      { label: "All Status", value: "all" },
-      { label: "Active", value: "Active" },
-      { label: "Part Payment", value: "Part Payment" },
-      { label: "Paid Off", value: "Paid Off" },
-      { label: "Overdue", value: "Overdue" },
-    ];
-  }, []);
-
   // Filtered Loans
   const filteredLoans = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -392,18 +372,6 @@ export function LoanManagement() {
         }
       }
 
-      let matchesPaymentStatus = true;
-      if (paymentStatusFilter !== "all") {
-        const psf = paymentStatusFilter.toLowerCase();
-        if (psf === "partial" || psf === "part payment") {
-          matchesPaymentStatus = isPartPaymentLoan || (loan.paymentStatus || "").toLowerCase() === "partial";
-        } else if (psf === "paid") {
-          matchesPaymentStatus = isPaidOffLoan || (loan.paymentStatus || "").toLowerCase() === "paid";
-        } else {
-          matchesPaymentStatus = (loan.paymentStatus || "").toLowerCase() === psf;
-        }
-      }
-
       let matchesDate = true;
       if (dateFilter !== "all" && loan.dueDate) {
         if (!dueKey) {
@@ -419,9 +387,9 @@ export function LoanManagement() {
         }
       }
 
-      return matchesSearch && matchesStatus && matchesPaymentStatus && matchesDate;
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [loans, searchTerm, statusFilter, paymentStatusFilter, dateFilter]);
+  }, [loans, searchTerm, statusFilter, dateFilter]);
 
   const totals = useMemo(() => {
     const todayKey = toDateKey(new Date()) || "";
@@ -456,17 +424,16 @@ export function LoanManagement() {
   const resetFilters = () => {
     setSearchTerm("");
     setStatusFilter("all");
-    setPaymentStatusFilter("all");
     setDateFilter("all");
     setCurrentPage(1);
   };
 
   const hasActiveFilters =
-    searchTerm.trim() !== "" || statusFilter !== "all" || paymentStatusFilter !== "all" || dateFilter !== "all";
+    searchTerm.trim() !== "" || statusFilter !== "all" || dateFilter !== "all";
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [pageSize, searchTerm, statusFilter, paymentStatusFilter, dateFilter]);
+  }, [pageSize, searchTerm, statusFilter, dateFilter]);
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
@@ -708,10 +675,10 @@ export function LoanManagement() {
           )}
         </div>
 
-        {/* Search & Dropdown Filters Bar */}
+        {/* Search & Due Date Filter Bar */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
           {/* Search box */}
-          <div className="relative md:col-span-5">
+          <div className="relative md:col-span-8 lg:col-span-9">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
@@ -731,30 +698,8 @@ export function LoanManagement() {
             )}
           </div>
 
-          {/* Status Dropdown */}
-          <div className="md:col-span-2">
-            <NiceSelect
-              ariaLabel="Filter by loan status"
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-              className="w-full"
-              options={statusOptions}
-            />
-          </div>
-
-          {/* Payment Status Dropdown */}
-          <div className="md:col-span-2">
-            <NiceSelect
-              ariaLabel="Filter by payment status"
-              value={paymentStatusFilter}
-              onValueChange={setPaymentStatusFilter}
-              className="w-full"
-              options={PAYMENT_STATUS_OPTIONS}
-            />
-          </div>
-
           {/* Date Filter Dropdown */}
-          <div className="md:col-span-3">
+          <div className="md:col-span-4 lg:col-span-3">
             <NiceSelect
               ariaLabel="Filter by due date"
               value={dateFilter}
