@@ -758,7 +758,7 @@ export function LoanManagement() {
           <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
             <thead className="bg-slate-50 dark:bg-slate-800/70">
               <tr>
-                {["Loan ID", "Customer", "Principal", "Total Due", "Paid", "Balance", "Due Date", "Payment Date", "Status", "Payment", "Actions"].map(
+                {["Loan ID", "UTR", "Customer", "Principal", "Total Due", "Paid", "Balance", "Due Date", "Payment Date", "Status", "Payment", "Actions"].map(
                   (heading) => (
                     <th
                       key={heading}
@@ -773,7 +773,7 @@ export function LoanManagement() {
             <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800/80 dark:bg-slate-900">
               {showInitialLoading ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-16 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="px-5 py-16 text-center text-sm text-slate-500 dark:text-slate-400">
                     <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-blue-600" />
                     Loading loan portfolio...
                   </td>
@@ -784,13 +784,22 @@ export function LoanManagement() {
 
                   return (
                     <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                      {/* Loan ID & UTR */}
+                      {/* Loan ID */}
                       <td className="whitespace-nowrap px-5 py-4">
                         <div className="text-sm font-bold text-slate-950 dark:text-white">{loan.id}</div>
-                        {loan.utrNumber && (
-                          <div className="font-mono text-xs text-slate-500 dark:text-slate-400" title="Disbursement UTR">
-                            UTR: {loan.utrNumber}
-                          </div>
+                      </td>
+
+                      {/* UTR */}
+                      <td className="whitespace-nowrap px-5 py-4">
+                        {loan.utrNumber ? (
+                          <span
+                            className="inline-block max-w-[220px] truncate font-mono text-xs font-semibold text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded select-all"
+                            title={loan.utrNumber}
+                          >
+                            {loan.utrNumber}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 text-xs">-</span>
                         )}
                       </td>
 
@@ -884,7 +893,7 @@ export function LoanManagement() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={11} className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
                     No matching loans found in this filter range.
                   </td>
                 </tr>
