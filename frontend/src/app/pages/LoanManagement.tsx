@@ -724,7 +724,17 @@ export function LoanManagement() {
               "No matching loans found"
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={!filteredLoans.length}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 shadow-sm transition"
+              title="Export current table loans to CSV spreadsheet"
+            >
+              <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              Export CSV
+            </button>
             <NiceSelect
               ariaLabel="Loan rows per page"
               value={pageSize}
