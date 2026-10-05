@@ -296,10 +296,146 @@ async function sendNocEmail(req, res) {
   return res.json({ success: true, message: 'NOC certificate emailed successfully to borrower.', data: result });
 }
 
+async function recordRepayment(req, res) {
+  const loanId = req.params.id;
+  const {
+    amount,
+    method = 'Bank Transfer',
+    reference,
+    notes = '',
+    paidAt = null,
+    closeFully = false,
+  } = req.body;
+
+  const context = await repaymentModel.findLoanContext({ loanId });
+  if (!context) {
+    return notFound(res, 'Loan record not found.');
+  }
+
+  const isFullClose = Boolean(closeFully);
+  const numAmount = Number(amount);
+  const remainingBalance = Number(context.loan.balance || (context.loan.totalAmount - context.loan.amountPaid) || 0);
+
+  if (!isFullClose && (!Number.isFinite(numAmount) || numAmount <= 0)) {
+    return res.status(400).json({ success: false, message: 'Please enter a valid repayment amount greater than 0.' });
+  }
+
+  const effectiveAmount = isFullClose && (!Number.isFinite(numAmount) || numAmount <= 0)
+    ? remainingBalance
+    : numAmount;
+
+  const paymentRef = (reference && String(reference).trim()) ? String(reference).trim() : `MAN-${Date.now()}`;
+  let repayment = null;
+
+  if (effectiveAmount > 0) {
+    repayment = await repaymentModel.createRepayment(context, {
+      amount: effectiveAmount,
+      method: String(method || 'Bank Transfer').trim(),
+      reference: paymentRef,
+      metadata: {
+        notes: String(notes || (isFullClose ? 'Full settlement recorded' : 'Repayment recorded')).trim(),
+        source: 'manual_repayment',
+      },
+      paidAt: paidAt ? new Date(paidAt) : new Date(),
+      receivedBy: req.user?.name || 'Accountant',
+    });
+  }
+
+  const loanUpdate = await repaymentModel.refreshLoanAfterRepayment(context, { closeFully: isFullClose });
+  loanModel.invalidateLoansCache();
+
+  // Record status log
+  if (context.lead && (context.lead.id || context.lead.rawId)) {
+    try {
+      await leadStatusModel.createForLead(context.lead, {
+        actor: req.user?.name || 'Accountant',
+        actorRole: req.user?.role || 'accountant',
+        description: (isFullClose || loanUpdate.balance <= 0)
+          ? `Loan settled and marked Paid Off. Amount: ₹${effectiveAmount || 0}`
+          : `Repayment of ₹${effectiveAmount} received. Remaining balance: ₹${loanUpdate.balance}`,
+        metadata: {
+          amount: effectiveAmount,
+          balance: loanUpdate.balance,
+          loanId: context.loan.id,
+          method: method || 'Bank Transfer',
+          reference: paymentRef,
+          totalPaid: loanUpdate.totalPaid,
+        },
+        publicStatus: (isFullClose || loanUpdate.balance <= 0) ? 'Repayment completed' : 'Repayment received',
+        source: 'loan_management',
+        sourceKey: `manual-repayment:${paymentRef}`,
+        stageKey: (isFullClose || loanUpdate.balance <= 0) ? 'closed' : 'repayment_active',
+        status: context.lead.status || 'Converted',
+        title: (isFullClose || loanUpdate.balance <= 0) ? 'Loan Settled / Paid Off' : 'Repayment received',
+      });
+    } catch (logErr) {
+      console.error('[loanController] Failed to record lead status log:', logErr);
+    }
+  }
+
+  // Update customer active loan counts
+  if (context.loan.customerId) {
+    try {
+      await query(`
+        UPDATE customers
+        SET active_loans = (SELECT COUNT(*) FROM loans WHERE customer_id = ? AND status IN ('Active', 'Overdue')),
+            total_repaid = (SELECT COALESCE(SUM(amount_paid), 0) FROM loans WHERE customer_id = ?)
+        WHERE id = ?
+      `, [context.loan.customerId, context.loan.customerId, context.loan.customerId]);
+    } catch (custErr) {
+      console.error('[loanController] Failed to update customer counts:', custErr);
+    }
+  }
+
+  // Webhook notification if repayment happened
+  if (repayment) {
+    try {
+      const summary = await repaymentModel.repaymentSummaryByLead(context.lead);
+      await sourceStatusWebhookService.dispatchRepaymentEvent(context.lead, repayment, summary);
+    } catch (whErr) {
+      console.error('[loanController] Webhook dispatch error:', whErr);
+    }
+  }
+
+  return success(res, {
+    loanId,
+    amount: effectiveAmount,
+    balance: loanUpdate.balance,
+    status: loanUpdate.loanStatus,
+    paymentStatus: loanUpdate.paymentStatus,
+    repayment,
+  }, (isFullClose || loanUpdate.balance <= 0) ? 'Loan successfully settled and marked as Paid Off.' : 'Repayment recorded successfully.');
+}
+
+async function markPaidOff(req, res) {
+  req.body = { ...req.body, closeFully: true };
+  return recordRepayment(req, res);
+}
+
+async function updateLoanStatus(req, res) {
+  const loanId = req.params.id;
+  const { status } = req.body;
+  if (!['Active', 'Paid Off', 'Overdue'].includes(status)) {
+    return res.status(400).json({ success: false, message: 'Invalid loan status value.' });
+  }
+
+  if (status === 'Paid Off') {
+    req.body = { ...req.body, closeFully: true };
+    return recordRepayment(req, res);
+  }
+
+  await query('UPDATE loans SET status = ? WHERE id = ?', [status, loanId]);
+  loanModel.invalidateLoansCache();
+  return success(res, { loanId, status }, `Loan status updated to ${status}.`);
+}
+
 module.exports = {
   getLoan,
   listLoans,
   bulkRepayment,
   downloadNocPdf,
   sendNocEmail,
+  recordRepayment,
+  markPaidOff,
+  updateLoanStatus,
 };
