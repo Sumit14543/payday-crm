@@ -16,11 +16,10 @@ import {
   Download,
   Printer,
   ShieldCheck,
-  CreditCard,
   RotateCcw,
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
-import { apiGet, apiGetBlob, apiPost, apiPostForm } from "../lib/api";
+import { apiGet, apiGetBlob, apiPostForm } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
 import { useAuth } from "../lib/auth";
 
@@ -74,14 +73,6 @@ const DATE_FILTER_OPTIONS = [
   { label: "Due This Week", value: "week" },
   { label: "Due This Month", value: "month" },
   { label: "Overdue (Past Due)", value: "overdue" },
-];
-
-const PAYMENT_METHOD_OPTIONS = [
-  { label: "Bank Transfer (IMPS/NEFT)", value: "Bank Transfer" },
-  { label: "UPI", value: "UPI" },
-  { label: "Cash", value: "Cash" },
-  { label: "Cheque", value: "Cheque" },
-  { label: "Payment Gateway", value: "Payment Gateway" },
 ];
 
 function formatCurrency(value: number | null | undefined) {
@@ -141,17 +132,6 @@ export function LoanManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("15");
   const [error, setError] = useState<string | null>(null);
-
-  // Repayment / Mark Paid Off Modal States
-  const [paymentModalLoan, setPaymentModalLoan] = useState<Loan | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<string>("Bank Transfer");
-  const [paymentReference, setPaymentReference] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [paymentNotes, setPaymentNotes] = useState<string>("");
-  const [isFullSettlement, setIsFullSettlement] = useState<boolean>(true);
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState<boolean>(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
   // Bulk upload states
@@ -246,58 +226,6 @@ export function LoanManagement() {
     enabled: true,
     intervalMs: 60_000,
   });
-
-  // Open Payment Modal
-  const openPaymentModal = (loan: Loan, forceFullClose: boolean = false) => {
-    setPaymentModalLoan(loan);
-    const balance = Number(loan.balance || 0);
-    setPaymentAmount(String(balance > 0 ? balance : loan.totalAmount));
-    setIsFullSettlement(forceFullClose || balance <= 0 || true);
-    setPaymentMethod("Bank Transfer");
-    setPaymentReference("");
-    setPaymentDate(new Date().toISOString().slice(0, 10));
-    setPaymentNotes(forceFullClose ? "Full settlement recorded" : "Payment collected");
-    setPaymentError(null);
-  };
-
-  // Submit Repayment
-  const handleSubmitRepayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!paymentModalLoan) return;
-
-    const numAmount = Number(paymentAmount);
-    if (!isFullSettlement && (!Number.isFinite(numAmount) || numAmount <= 0)) {
-      setPaymentError("Please enter a valid repayment amount greater than 0.");
-      return;
-    }
-
-    setIsSubmittingPayment(true);
-    setPaymentError(null);
-
-    try {
-      await apiPost(`/loans/${encodeURIComponent(paymentModalLoan.id)}/repayment`, {
-        amount: numAmount,
-        method: paymentMethod,
-        reference: paymentReference.trim() || `MAN-${Date.now()}`,
-        notes: paymentNotes.trim(),
-        paidAt: paymentDate,
-        closeFully: isFullSettlement,
-      });
-
-      const message = isFullSettlement
-        ? `Loan ${paymentModalLoan.id} settled and marked as Paid Off!`
-        : `Payment of ₹${numAmount} recorded for Loan ${paymentModalLoan.id}.`;
-
-      setActionSuccessMessage(message);
-      setPaymentModalLoan(null);
-      refresh();
-      setTimeout(() => setActionSuccessMessage(null), 6000);
-    } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : "Failed to record payment.");
-    } finally {
-      setIsSubmittingPayment(false);
-    }
-  };
 
   // Download NOC PDF
   const handleDownloadNoc = async (loanId: string) => {
@@ -901,9 +829,8 @@ export function LoanManagement() {
                             View
                           </Link>
 
-                          {/* Action according to status */}
-                          {isSettled ? (
-                            /* Download NOC PDF */
+                          {/* Download NOC PDF if settled */}
+                          {isSettled && (
                             <button
                               type="button"
                               onClick={() => handleDownloadNoc(loan.id)}
@@ -912,17 +839,6 @@ export function LoanManagement() {
                             >
                               <FileText className="h-3.5 w-3.5" />
                               NOC
-                            </button>
-                          ) : (
-                            /* Record Repayment / Mark Paid Off */
-                            <button
-                              type="button"
-                              onClick={() => openPaymentModal(loan)}
-                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 shadow-sm transition"
-                              title="Mark Loan as Paid Off or record repayment"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Mark Paid
                             </button>
                           )}
                         </div>
@@ -984,220 +900,6 @@ export function LoanManagement() {
           </div>
         )}
       </div>
-
-      {/* Record Repayment / Mark Paid Off Modal */}
-      {paymentModalLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 transition-all">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4 dark:border-slate-800 dark:bg-slate-800/60">
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-950 dark:text-white">Record Payment / Settle Loan</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Loan ID: <strong className="font-mono text-slate-700 dark:text-slate-300">{paymentModalLoan.id}</strong>
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPaymentModalLoan(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Loan Context Summary */}
-            <div className="border-b border-slate-100 bg-blue-50/50 px-6 py-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-blue-950/20 dark:text-slate-300">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500">Customer:</span>
-                  <p className="font-bold truncate">{paymentModalLoan.customer || "N/A"}</p>
-                </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500">Total Due:</span>
-                  <p className="font-bold">{formatCurrency(paymentModalLoan.totalAmount)}</p>
-                </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500">Amount Paid:</span>
-                  <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(paymentModalLoan.amountPaid)}</p>
-                </div>
-                <div>
-                  <span className="text-slate-400 dark:text-slate-500">Balance:</span>
-                  <p className="font-black text-purple-700 dark:text-purple-400">{formatCurrency(paymentModalLoan.balance)}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Form */}
-            <form onSubmit={handleSubmitRepayment} className="p-6 space-y-4">
-              {paymentError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{paymentError}</span>
-                </div>
-              )}
-
-              {/* Quick Preset Buttons */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const bal = Number(paymentModalLoan.balance || 0);
-                    setPaymentAmount(String(bal > 0 ? bal : paymentModalLoan.totalAmount));
-                    setIsFullSettlement(true);
-                  }}
-                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 transition"
-                >
-                  Pay Full Balance ({formatCurrency(paymentModalLoan.balance)})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsFullSettlement(false)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition"
-                >
-                  Custom Amount
-                </button>
-              </div>
-
-              {/* Amount & Mode */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                    Repayment Amount (₹) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="any"
-                    required
-                    value={paymentAmount}
-                    onChange={(e) => {
-                      setPaymentAmount(e.target.value);
-                      const num = Number(e.target.value);
-                      if (num >= Number(paymentModalLoan.balance || 0)) {
-                        setIsFullSettlement(true);
-                      }
-                    }}
-                    placeholder="e.g. 5000"
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                    Payment Mode <span className="text-red-500">*</span>
-                  </label>
-                  <NiceSelect
-                    ariaLabel="Payment Method"
-                    value={paymentMethod}
-                    onValueChange={setPaymentMethod}
-                    className="w-full"
-                    options={PAYMENT_METHOD_OPTIONS}
-                  />
-                </div>
-              </div>
-
-              {/* UTR Reference & Date */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                    UTR / Ref Number
-                  </label>
-                  <input
-                    type="text"
-                    value={paymentReference}
-                    onChange={(e) => setPaymentReference(e.target.value)}
-                    placeholder="e.g. 40291039401"
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                  <span className="text-[10px] text-slate-400">Leave blank to auto-generate reference</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                    Payment Date <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              {/* Full Settlement Checkbox */}
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/30">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isFullSettlement}
-                    onChange={(e) => setIsFullSettlement(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
-                      Mark as Full Settlement (Paid Off)
-                    </span>
-                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                      Closes loan account, sets status to "Paid Off", clears collection queue, and generates NOC certificate.
-                    </p>
-                  </div>
-                </label>
-              </div>
-
-              {/* Remarks / Notes */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                  Notes / Remarks
-                </label>
-                <input
-                  type="text"
-                  value={paymentNotes}
-                  onChange={(e) => setPaymentNotes(e.target.value)}
-                  placeholder="e.g. Cleared via customer UPI"
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setPaymentModalLoan(null)}
-                  disabled={isSubmittingPayment}
-                  className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingPayment}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition shadow-sm"
-                >
-                  {isSubmittingPayment ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      Recording...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="h-4 w-4" />
-                      {isFullSettlement ? "Confirm Settlement (Paid Off)" : "Record Repayment"}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Bulk Repayment Modal */}
       {isUploadModalOpen && (
