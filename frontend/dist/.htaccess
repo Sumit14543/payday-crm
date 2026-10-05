@@ -1,0 +1,15 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Proxy /api requests to Express Node.js backend on port 8081
+    RewriteRule ^api/(.*)$ http://127.0.0.1:8081/api/$1 [P,L]
+
+    # Proxy /uploads requests to Express Node.js backend on port 8081
+    RewriteRule ^uploads/(.*)$ http://127.0.0.1:8081/uploads/$1 [P,L]
+
+    # SPA routing for React frontend
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule . /index.html [L]
+</IfModule>

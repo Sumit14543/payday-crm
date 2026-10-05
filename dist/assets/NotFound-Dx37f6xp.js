@@ -1,0 +1,6 @@
+import{c as t,j as e,L as s}from"./index-CbohD5aH.js";import{A as a}from"./arrow-left-PYMPcSd3.js";/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const l=[["path",{d:"m13.5 8.5-5 5",key:"1cs55j"}],["path",{d:"m8.5 8.5 5 5",key:"a8mexj"}],["circle",{cx:"11",cy:"11",r:"8",key:"4ej97u"}],["path",{d:"m21 21-4.3-4.3",key:"1qie3q"}]],r=t("search-x",l);function n(){return e.jsx("div",{className:"flex min-h-full items-center justify-center px-4 py-12 sm:px-6 lg:px-8",children:e.jsxs("div",{className:"w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm",children:[e.jsx("div",{className:"mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100",children:e.jsx(r,{className:"h-7 w-7 text-slate-500"})}),e.jsx("h1",{className:"mt-5 text-2xl font-bold text-slate-950",children:"Page not found"}),e.jsx("p",{className:"mt-2 text-sm text-slate-600",children:"This CRM page is not available yet or the link is incorrect."}),e.jsxs(s,{to:"/",className:"mt-6 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800",children:[e.jsx(a,{className:"h-4 w-4"}),"Back to Dashboard"]})]})})}export{n as NotFound};

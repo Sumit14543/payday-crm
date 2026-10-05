@@ -1,0 +1,217 @@
+name: Deploy new Testing 
+
+on:
+  push:
+    branches:
+      - testing
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: "https://testing-api.waqtmoney.com/api"
+          VITE_DOCUMENT_BASE_URL: "https://testing-api.waqtmoney.com/uploads"
+          VITE_FORCE_DIRECT_API: "true"
+          VITE_SUPPORT_PHONE: "+919217086608"
+          VITE_SUPPORT_WHATSAPP: "919217086608"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Debug SSH Connection
+        run: |
+          echo "Runner public IP:"
+          curl -s https://api.ipify.org
+          echo ""
+          echo "Testing SSH reachability..."
+          nc -vz -w 15 ${{ secrets.CPANEL_HOST }} ${{ secrets.CPANEL_PORT }}
+
+      - name: Deploy Frontend to Testing Server
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: "frontend/dist/"
+          TARGET: "/home/waqtmoney/public_html/testing/"
+          ARGS: "-rlgoDzvc --delete"
+
+      - name: Clean stale backend files on testing server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            cd /home/waqtmoney/public_html/testing-api || exit 0
+            rm -f controllers/authController.js services/emailService.js models/crmUserModel.js routes/authRoutes.js
+
+      - name: Deploy Backend to Testing API
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: "backend/"
+          TARGET: "/home/waqtmoney/public_html/testing-api/"
+          ARGS: "-rlgoDzvc"
+          EXCLUDE: >
+            /node_modules/,
+            /.env,
+            /.env.*,
+            /uploads/,
+            /backups/,
+            /deploy-doc/,
+            *.zip,
+            *.log,
+            *.err,
+            dev*.log,
+            backend-smoke.*
+
+      - name: Normalize Backend Permissions & Restart App
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            set +e
+
+            if [ -f /home/waqtmoney/nodevenv/public_html/testing-api/24/bin/activate ]; then
+              source /home/waqtmoney/nodevenv/public_html/testing-api/24/bin/activate
+            fi
+
+            node -v
+            npm -v
+
+            cd /home/waqtmoney/public_html/testing-api
+
+            echo "--- DIAGNOSTICS: CURRENT DIRECTORY ---"
+            pwd
+            ls -la
+
+            echo "--- DIAGNOSTICS: ENV CONFIG (SAFE) ---"
+            [ ! -f .env ] || cat .env | grep -E "PORT|DB_HOST|DB_PORT|DB_NAME" || true
+
+            echo "--- DIAGNOSTICS: HTACCESS ---"
+            [ ! -f .htaccess ] || cat .htaccess || true
+
+            echo "--- DIAGNOSTICS: ACTIVE NODE PROCESSES ---"
+            ps -ef | grep node || true
+
+            echo "--- DIAGNOSTICS: NETSTAT LISTENING PORTS ---"
+            netstat -tlpn || ss -tlnp || true
+
+            # Auto-heal: Read port from .env and update .htaccess if different from 8080
+            if [ -f .env ]; then
+              PORT=$(grep -E "^PORT=" .env | cut -d= -f2 | tr -d '\r' || echo "8080")
+              echo "Configured testing API PORT is $PORT"
+              if [ "$PORT" != "8080" ]; then
+                echo "Updating .htaccess to reverse proxy to port $PORT"
+                sed -i -E "s#(http://(127\.0\.0\.1|localhost):)[0-9]+#http://127.0.0.1:$PORT#g" .htaccess
+              fi
+            fi
+
+            echo "--- DIAGNOSTICS: LOAN MODEL FILE CONTENT ---"
+            cat models/loanModel.js | grep -E "processingFee|gstAmount|LEFT JOIN" || true
+
+            # Write diagnostics to publicly accessible file
+            {
+              echo "=== DIAGNOSTICS: CURRENT DIRECTORY ==="
+              pwd
+              ls -la
+              echo ""
+              echo "=== DIAGNOSTICS: ENV CONFIG ==="
+              [ ! -f .env ] || cat .env | grep -E "PORT|DB_HOST|DB_PORT|DB_NAME" || true
+              echo ""
+              echo "=== DIAGNOSTICS: HTACCESS ==="
+              [ ! -f .htaccess ] || cat .htaccess || true
+              echo ""
+              echo "=== DIAGNOSTICS: ACTIVE NODE PROCESSES ==="
+              ps -ef | grep node || true
+              echo ""
+              echo "=== DIAGNOSTICS: LIVE REVENUE CALCULATION ==="
+              node scratch/calculate_monthly_revenue.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: LIVE LOAN DATES DISTRIBUTION ==="
+              node scratch/check_loan_dates.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: LIVE TODAY REPAYMENTS DETAIL ==="
+              node scratch/check_today_repayments.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: TESTING LOANS REAL-TIME AUDIT ==="
+              node scratch/inspect_testing_loans.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: PRINT LOAN MODEL ==="
+              node scratch/print_loanModel.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: AUDIT REPAYMENTS FOR LNWQTMN01131 ==="
+              node scratch/inspect_loan_1131.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: AUDIT ALL REPAYMENTS ON TESTING SERVER ==="
+              node scratch/inspect_all_repayments_testing.js || true
+              echo ""
+              echo "=== DIAGNOSTICS: PM2 STATUS ==="
+              pm2 status || npx pm2 status || /root/.nvm/versions/node/v24.15.0/bin/pm2 status || true
+              echo ""
+              echo "=== DIAGNOSTICS: PM2 LOGS ==="
+              tail -n 50 ~/.pm2/logs/testing-api-out.log || tail -n 50 ~/.pm2/logs/testing-api-error.log || true
+              echo ""
+              echo "=== DIAGNOSTICS: LISTENING PORTS ==="
+              ss -tlnp || netstat -tlnp || true
+              echo ""
+              echo "=== DIAGNOSTICS: LOAN MODEL FILE CONTENT ==="
+              cat models/loanModel.js | grep -E "processingFee|gstAmount|LEFT JOIN" || true
+            } > /home/waqtmoney/public_html/testing/diagnostics.txt || true
+
+            echo "--- DIAGNOSTICS: PM2 STATUS ---"
+            /root/.nvm/versions/node/v24.15.0/bin/pm2 status || true
+
+            echo "--- DIAGNOSTICS: PM2 LOGS ---"
+            tail -n 50 ~/.pm2/logs/testing-api-out.log || tail -n 50 ~/.pm2/logs/testing-api-error.log || true
+
+            echo "--- DIAGNOSTICS: LISTENING PORTS ---"
+            ss -tlnp || netstat -tlnp || true
+
+            # Ensure .env has PORT=8083 for testing API
+            if [ -f .env ]; then
+              sed -i 's/^PORT=.*/PORT=8083/' .env || echo "PORT=8083" >> .env
+            fi
+
+            # Ensure .htaccess reverse proxy targets 8083
+            if [ -f .htaccess ]; then
+              sed -i -E 's#(http://(127\.0\.0\.1|localhost):)[0-9]+#http://127.0.0.1:8083#g' .htaccess
+            fi
+
+            echo "Ensuring Shruti credit manager credentials in database..."
+            node scripts/createShrutiUser.js || true
+
+            echo "Killing stale process on port 8083..."
+            fuser -k 8083/tcp || npx --yes kill-port 8083 || true
+
+            echo "Starting testing background Node app on port 8083..."
+            nohup PORT=8083 node index.js > node_testing.log 2>&1 &
+            sleep 3
+
+            echo "Deployment completed successfully."
+
+

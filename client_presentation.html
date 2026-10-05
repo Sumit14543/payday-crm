@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniFin CRM - Complete Product Walkthrough</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts & FontAwesome -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            outfit: ['Outfit', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              900: '#4c1d95',
+            },
+            fintech: {
+              dark: '#030712',
+              card: '#0f172a',
+              accent: '#10b981',
+              neon: '#a855f7',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #030712;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .slide.active {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+      z-index: 10;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .neon-glow-purple {
+      box-shadow: 0 0 40px rgba(168, 85, 247, 0.12);
+    }
+    .radial-bg {
+      background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.08) 0%, rgba(3, 7, 18, 0) 70%),
+                  radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.03) 0%, rgba(3, 7, 18, 0) 50%);
+    }
+    .browser-frame {
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="text-slate-100 radial-bg h-screen w-screen relative">
+
+  <!-- Header Branding -->
+  <header class="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-50 pointer-events-none">
+    <div class="flex items-center space-x-3 pointer-events-auto">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-brand-900/30">
+        <i class="fa-solid fa-bolt text-white text-lg"></i>
+      </div>
+      <div>
+        <span class="font-outfit font-bold text-lg tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">OMNIFIN CRM</span>
+        <span class="block text-[10px] text-emerald-400 font-medium tracking-widest uppercase">Multi-Tenant Loan Lifecycle Suite</span>
+      </div>
+    </div>
+    <div class="flex items-center space-x-6 text-sm text-slate-400 font-medium pointer-events-auto">
+      <span id="slide-counter">01 / 27</span>
+      <button onclick="toggleFullscreen()" class="hover:text-white p-2 rounded-lg bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800 transition">
+        <i class="fa-solid fa-expand"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Slide Deck Containers -->
+  <main class="w-full h-full relative">
+
+    <!-- SLIDE 1: Cover Page -->
+    <div class="slide active" id="slide-1">
+      <div class="h-full flex flex-col justify-center items-center px-6 text-center relative overflow-hidden">
+        <div class="absolute inset-0 bg-cover bg-center opacity-20 scale-105 pointer-events-none" style="background-image: url('presentation_cover.png'); filter: blur(2px);"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-fintech-dark via-fintech-dark/70 to-transparent"></div>
+        
+        <div class="relative z-10 max-w-4xl mx-auto space-y-6">
+          <span class="px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider bg-brand-900/50 text-brand-500 border border-brand-700/30 inline-block uppercase">White-Label Commercial Pitch</span>
+          <h1 class="text-4xl md:text-6xl font-extrabold font-outfit leading-tight tracking-tight text-white">
+            OmniFin Payday CRM <br>
+            <span class="bg-clip-text text-transparent bg-gradient-to-r from-brand-500 via-purple-400 to-emerald-400">Deep Operational Walkthrough</span>
+          </h1>
+          <p class="text-base md:text-lg text-slate-400 max-w-2xl mx-auto font-light leading-relaxed">
+            A secure, multi-tenant digital lending system, ready to deploy. Real software screens configured with anonymized, blurred merchant mockups.
+          </p>
+          <div class="pt-6 flex justify-center space-x-4">
+            <button onclick="nextSlide()" class="px-8 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-purple-600 text-white font-medium hover:shadow-lg hover:shadow-brand-600/30 hover:scale-[1.02] transition duration-300">
+              Explore Sidebar & APIs <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+            <a href="file:///d:/payday-loan-crm-n/payday-loan-crm/client_user_guide.md" class="px-6 py-3 rounded-xl bg-slate-900/60 text-slate-300 border border-slate-800 hover:bg-slate-800 hover:text-white transition duration-300 flex items-center">
+              <i class="fa-solid fa-book-open mr-2"></i> User Specifications
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: Multi-Tenant Architecture -->
+    <div class="slide" id="slide-2">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500">Core Engine</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Multi-Tenant Architecture</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              OmniFin hosts multiple independent lending brands (tenants) on a single unified core database and server setup. Each brand operates in total isolation.
+            </p>
+            <div class="space-y-3 text-sm font-sans">
+              <div class="flex items-start space-x-3">
+                <div class="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-folder-closed"></i></div>
+                <p class="text-slate-300 text-xs"><strong>Data Separation:</strong> Dynamic server routing isolates customer databases and transaction ledgers per brand, guaranteeing 100% security.</p>
+              </div>
+              <div class="flex items-start space-x-3">
+                <div class="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                <p class="text-slate-300 text-xs"><strong>Branding Customization:</strong> Color themes, corporate logos, and dashboard configurations resolve automatically based on the brand subdomain.</p>
+              </div>
+            </div>
+          </div>
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center font-sans">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 space-y-4 w-full">
+              <h3 class="font-outfit font-bold text-base text-white">White-Labeling Features</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="p-4 bg-slate-900/60 border border-slate-800/80 rounded-xl space-y-1">
+                  <span class="font-bold text-brand-400 block text-xs uppercase tracking-wider">Tenant A (Primary Brand)</span>
+                  <span class="text-slate-300 text-[11px] block leading-relaxed">Custom green dashboard themes, dedicated logo, and unique loan series OMNI-PD-.</span>
+                </div>
+                <div class="p-4 bg-slate-900/60 border border-slate-800/80 rounded-xl space-y-1">
+                  <span class="font-bold text-emerald-400 block text-xs uppercase tracking-wider">Tenant B (Partner Brand)</span>
+                  <span class="text-slate-300 text-[11px] block leading-relaxed">Custom purple themes, separate landing assets, and partner loan series APEX-PD-.</span>
+                </div>
+              </div>
+              <div class="p-4 bg-slate-950 rounded-xl border border-slate-900 text-slate-300 text-[11px] leading-relaxed">
+                <strong>Subdomain Domain Resolution:</strong> When a user navigates to a brand-specific URL (like <code>brand-a.omnifin.com</code>), the CRM instantly configures the appropriate user logins and theme styles automatically.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: Secure Login Screen -->
+    <div class="slide" id="slide-3">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Secure Workspaces</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Security Gate & Role Authentication</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Role-based access locks endpoints and screens based on workspace selections. Every operation is strictly authorized.
+            </p>
+            <div class="flex flex-wrap gap-2 text-[10px]">
+              <span class="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded font-mono font-bold">Telecaller</span>
+              <span class="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded font-mono font-bold">Credit Manager</span>
+              <span class="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded font-mono font-bold">Accountant</span>
+              <span class="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded font-mono font-bold">Collection</span>
+              <span class="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded font-mono font-bold">Product Admin</span>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/login</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/login_screen.png" alt="Login Page" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: Product Admin Dashboard -->
+    <div class="slide" id="slide-4">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Admin Control</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Product Admin Control Center</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              The Product Admin Dashboard consolidates all loan statistics, live pipelines, collection queues, interest earnings, and operational team performance in a single place.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-chart-line text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Aggregated Stats:</strong> Track Total Disbursed, Total Collected, and Active Loans in real time.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-users text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Lead Pipeline Overview:</strong> Shows count summaries for leads pending documentation, underwriting, or collection.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/dashboard</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/product_admin_dashboard.png" alt="Product Admin Dashboard" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: Telecaller Dashboard & Leads List -->
+    <div class="slide" id="slide-5">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Prospect Ingestion</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Telecaller Leads Workbench</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Telecallers access the Leads Panel to process assigned pipelines. Tabs sort prospects by stages, and quick-filters allow filtering by name, PAN, or status tags.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-list-check text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Queue Sorting:</strong> Instant pipeline groupings (New, Pending, Rejected, In Review).</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-phone text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Interactive Call Actions:</strong> Trigger calls and record results instantly inside the row logs.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/leads</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/leads_list.png" alt="Leads List" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: Lead Details Workspace -->
+    <div class="slide" id="slide-6">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Appraisal details</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Interactive Customer Deep-Dive</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Consolidates all personal metrics, bank statements, salary slips, references, and digital KYC parameters under a tabbed panel.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-paperclip text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Document Request Portal:</strong> Trigger secure tokenized upload links to client mobiles with one click.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-history text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Audit Trail logs:</strong> Tracks every modification, status alteration, and manager comment.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/leads/details</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/lead_details.png" alt="Lead details" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: Lead Pipeline View -->
+    <div class="slide" id="slide-7">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Pipelines</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Visual Lead Pipeline Staging</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides the Product Admin with a visual kanban-style pipeline of all leads. Track lead distribution across different stages in real time.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-arrows-spin text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Dynamic Staging:</strong> Instantly displays the number of active leads in each state.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-eye text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Underwriting Control:</strong> Allows admins to easily identify pipeline bottlenecks.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/pipeline</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/pipeline_view.png" alt="Pipeline view" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: Revenue Analytics Dashboard -->
+    <div class="slide" id="slide-8">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Finance Analytics</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Revenue Analytics Dashboard</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides admins with comprehensive metrics on financial yields, total interest earnings, processing fee collections, and recovery margins.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-coins text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Yield margins:</strong> Tracks interest yield mapping accrued vs collected values.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-file-export text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Reports Export:</strong> Quick CSV/XLS generation for accounting and tax auditing.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/revenue</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/revenue_analytics.png" alt="Revenue Analytics" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 9: Credit Underwriting Panels -->
+    <div class="slide" id="slide-9">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-purple-400">Risk Assessment</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Credit Underwriting Workspace</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Allows underwriters to pull bureau data, verify KYC compliance, configure interest terms, and approve/reject applications.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-file-invoice-dollar text-purple-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>CIBIL Scoring Engine:</strong> One-click query fetches credit reports from the API and extracts key data automatically.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-file-signature text-purple-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Sanction Dispatch:</strong> Generates tenant-branded loan contract agreements and routes them to eSign instantly.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/credit-manager</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/credit_manager_panel.png" alt="Credit Panel" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 10: Credit Applications List -->
+    <div class="slide" id="slide-10">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Risk Pipelines</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Appraisal Applications Registry</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Lists all applications under active review, mapping underwriter assignments, loan products, requested terms, and verification stages.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-stamp text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>eSign Tracking:</strong> Monitors digital signature progress via API, updating status when the customer signs.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-lock text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Audit Stamps:</strong> Log user IP, verification timestamps, and risk indicators for regulatory audit readiness.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/credit-applications</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/credit_applications.png" alt="Applications list" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 11: Accountant Payout Dashboard -->
+    <div class="slide" id="slide-11">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Disbursals</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Accountant Payout Workspace</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Once an application is e-signed, it routes to the Accountant Payout Queue. Accountants verify beneficiary details and execute payouts.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-calculator text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Fee Deductions:</strong> Automatically calculates processing fees, GST, and net disbursement values.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-list-ol text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Disbursal Timeline:</strong> A settlement log keeps track of daily disbursement amounts and details.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/accountant</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/accountant_panel.png" alt="Accountant Panel" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 12: Loan Registry & UTR Management -->
+    <div class="slide" id="slide-12">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Post-Disbursal</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Loan Management & UTR Binding</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides the master registry of all disbursed loans. Entering a bank Transaction UTR activates the repayment schedule and EMI cycles.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-code-branch text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Status Workflows:</strong> Tracks loans from Disbursed to Repaid, Overdue, or NPA status.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-key text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>UTR Validation:</strong> Enforces unique UTR values to prevent duplicate entries.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/loan-management</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/loan_management.png" alt="Loan Management" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 13: Collections & Recovery Case Board -->
+    <div class="slide" id="slide-13">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-red-500">Recovery</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Collections Case Dashboard</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              When a loan is overdue, it maps to the Collections Panel. Collection executives log customer responses, record partial payments, and document recovery steps.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-calendar-alt text-red-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>PTP (Promise to Pay):</strong> Logs promised repayment dates and schedules follow-up alerts automatically.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-file-invoice text-red-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Payment Logging:</strong> Record recovered cash amounts and link transaction IDs directly.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/collections</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/collection_panel.png" alt="Collections Panel" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 14: Consensual Customers Registry -->
+    <div class="slide" id="slide-14">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Assets & Customers</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Customers Master Registry</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              The Customers panel catalogs active borrowers, storing their personal dossiers, risk logs, dynamic payment records, and previous loan counts securely.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-user-tag text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Dossier Binding:</strong> Automatically groups historical loans and payments associated with each customer.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-magnifying-glass text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Unified Search:</strong> Fast lookup by client code, PAN ID, or mobile parameters.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/customers</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/customers.png" alt="Customers master list" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 15: Document Repository Console -->
+    <div class="slide" id="slide-15">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Assets & Documents</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Document Repository Console</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides the Product Admin with a central registry of all files uploaded by borrowers, underwriters, or accountants.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-file-pdf text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Document Categorization:</strong> Automaps PDFs to PAN Card, Aadhaar Card, or Bank Statement types.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-shield-alt text-brand-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Secure Storage:</strong> Fully compliant with data localization and security standards.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/documents</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/documents.png" alt="Documents list" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 16: Multi-Tenant Team Management -->
+    <div class="slide" id="slide-16">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500">Team Control</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Tenant Team Management</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides the Product Admin with control over system operators. Manage active duties, agent availability, and product routing.
+            </p>
+            <div class="space-y-3 pt-1 text-sm">
+              <div class="flex items-start space-x-2">
+                <i class="fa-solid fa-users-cog text-brand-400 mt-1"></i>
+                <p class="text-slate-300 text-xs"><strong>Duty Toggles:</strong> Switch agent operational status to take them off the round-robin lead allocation queue.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <i class="fa-solid fa-sliders text-brand-400 mt-1"></i>
+                <p class="text-slate-300 text-xs"><strong>Product Assignment:</strong> Bind specific agents to loan products (Standard, Express, Flexi).</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/team</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/team.png" alt="Team management" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 17: Global Settings Dashboard -->
+    <div class="slide" id="slide-17">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Settings</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">System Settings & Customizations</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides the Product Admin with control over system configuration. Set branding, adjust KYC rules, change interest variables, and manage API webhook endpoints.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-cogs text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Webhook Subscriptions:</strong> Hook system triggers directly to third-party endpoints.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-palette text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Theme Customization:</strong> Adjust primary/secondary color selectors for dynamic compilation.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/settings</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/settings.png" alt="Settings panel" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 18: Lending Lifecycle & User Roles Roadmap -->
+    <div class="slide" id="slide-18">
+      <div class="h-full flex flex-col justify-center py-16 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500">Operational Roadmap</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Lending Pipeline & Role Allocation</h2>
+            <p class="text-slate-300 text-xs leading-relaxed">
+              Every operational step, from lead submission to disbursal and repayment collections, is assigned to dedicated user roles to ensure fast SLAs, absolute regulatory compliance, and a seamless customer experience.
+            </p>
+            <div class="space-y-2 text-[11px] pt-1">
+              <div class="flex items-start space-x-2">
+                <span class="font-bold text-emerald-400 shrink-0">Admin:</span>
+                <span class="text-slate-300">Configures lending limits, manages API integrations, and supervises system yields.</span>
+              </div>
+              <div class="flex items-start space-x-2">
+                <span class="font-bold text-indigo-400 shrink-0">Telecaller:</span>
+                <span class="text-slate-300">Engages prospects, registers callback notes, and requests bank statements.</span>
+              </div>
+              <div class="flex items-start space-x-2">
+                <span class="font-bold text-purple-400 shrink-0">Credit Manager:</span>
+                <span class="text-slate-300">Fetches CIBIL, triggers eKYC, approves terms, and issues sanction agreements.</span>
+              </div>
+              <div class="flex items-start space-x-2">
+                <span class="font-bold text-teal-400 shrink-0">Accountant:</span>
+                <span class="text-slate-300">Audits beneficiary details, calculates payouts net of GST, and enters bank UTR.</span>
+              </div>
+              <div class="flex items-start space-x-2">
+                <span class="font-bold text-red-400 shrink-0">Collection:</span>
+                <span class="text-slate-300">Tracks overdue cases, registers partial repayments, and logs PTP schedules.</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[65vh] overflow-y-auto pr-2">
+            <div class="glass-panel p-5 rounded-3xl border-slate-800 space-y-4">
+              <h3 class="font-outfit font-bold text-sm text-white flex items-center gap-2">
+                <i class="fa-solid fa-route text-brand-500"></i> Step-by-Step Lending Roadmap
+              </h3>
+              <div class="space-y-3.5 relative pl-4 border-l border-slate-800 font-sans">
+                
+                <!-- Step 1 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">1</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">Lead Ingestion & Form Fill</span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[9px] font-mono">Customer</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Borrower submits the online lead form, automatically initializing the prospect dossier with tracking parameters.</p>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">2</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">Verification & Document Collection</span>
+                    <span class="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[9px] font-mono">Telecaller</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Telecaller validates contact info, updates callback remarks, and dispatches a dynamic document upload link to the borrower.</p>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">3</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">Risk Appraisal & eKYC Verification</span>
+                    <span class="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 text-[9px] font-mono">Credit Manager</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Credit Manager executes bureau credit checks, verifies Aadhaar eKYC via dynamic OTP, configures ROI rates, and issues the sanction sheet.</p>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">4</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">Agreement Signing (eSign)</span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[9px] font-mono">Customer</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Customer views the dynamic NBFC contract and signs it using remote Aadhaar-linked digital signature gateways.</p>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">5</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">Disbursal Check & Net Calculations</span>
+                    <span class="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 text-[9px] font-mono">Accountant</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Accountant validates beneficiary bank accounts, automatically nets platform processing fees and GST, and processes the transfer.</p>
+                </div>
+
+                <!-- Step 6 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">6</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">UTR Binding & Schedule Activation</span>
+                    <span class="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 text-[9px] font-mono">Accountant</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Accountant binds the unique bank transfer UTR number to activate the interest schedule and dynamic EMI repayment cycles.</p>
+                </div>
+
+                <!-- Step 7 -->
+                <div class="relative">
+                  <div class="absolute -left-[23px] top-0.5 w-4.5 h-4.5 rounded-full bg-brand-600 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white">7</div>
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-white text-xs">Overdue Follow-up & Collections</span>
+                    <span class="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 text-[9px] font-mono">Collection Executive</span>
+                  </div>
+                  <p class="text-slate-400 text-[10px] mt-0.5">Collection executive monitors overdue buckets (DPD 1-3, DPD 4-7, NPA), logs repayment PTPs, and reconciles payments via Cashfree links.</p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 19: Audit Logs -->
+    <div class="slide" id="slide-19">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500">Compliance & Security</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">System Audit Logs</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Compliance-ready audit log dashboard records every activity, database write, API callback, and login attempt with user IP, location, and metadata.
+            </p>
+            <div class="space-y-3 pt-1 text-sm">
+              <div class="flex items-start space-x-2">
+                <i class="fa-solid fa-user-lock text-brand-400 mt-1"></i>
+                <p class="text-slate-300 text-xs"><strong>Data Access Logs:</strong> Logs when credit information is pulled or bank details are viewed.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <i class="fa-solid fa-stamp text-brand-400 mt-1"></i>
+                <p class="text-slate-300 text-xs"><strong>Traceability:</strong> Meets regulatory standards for tracing data modifications back to individual users.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/audit-logs</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/audit_logs.png" alt="Audit logs" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 20: MIS Reports Panel -->
+    <div class="slide" id="slide-20">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Reporting</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">MIS & SLA Analytical Reports</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Consolidates operational SLA performance, daily disbursal logs, accountant reports, and collection yields in a unified dashboard.
+            </p>
+            <ul class="space-y-3 pt-1 text-sm">
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-stopwatch text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>SLA Monitoring:</strong> Tracks processing times from lead creation to sanction and disbursal.</span>
+              </li>
+              <li class="flex items-start space-x-2">
+                <i class="fa-solid fa-file-invoice-dollar text-emerald-400 mt-1"></i>
+                <span class="text-slate-300 text-xs"><strong>Interest accrued:</strong> Detailed analysis of interest yield mapping accrued vs collected values.</span>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="browser-frame bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 w-full max-h-full flex flex-col">
+              <div class="bg-slate-950 px-4 py-2 flex items-center space-x-2 border-b border-slate-800">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                <div class="bg-slate-900 rounded px-8 py-0.5 text-[9px] text-slate-500 flex-1 text-center font-mono">http://omnifin.crm.com/reports</div>
+              </div>
+              <div class="p-1 bg-slate-950 overflow-hidden flex items-center justify-center">
+                <img src="./screenshots/reports_view.png" alt="Reports panel" class="max-h-[50vh] w-full object-contain rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 21: CIBIL Bureau API Integration -->
+    <div class="slide" id="slide-21">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Bureau Integration</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Credit Bureau API Gate (`cibilService.js`)</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              OmniFin queries TransUnion CIBIL and other bureaus via a REST pipeline to gather borrower parameters instantly.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0"><i class="fa-solid fa-cloud-arrow-down"></i></div>
+                <p class="text-slate-300"><strong>Bureau Fetch:</strong> Obtains dynamic credit scores, previous defaults count, and active outstandings.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0"><i class="fa-solid fa-shield-halved"></i></div>
+                <p class="text-slate-300"><strong>Fraud Prevention:</strong> Flags multi-institution inquiries over the last 30 days to block loan stacking.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-4 font-mono text-xs">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <span class="text-slate-400 font-bold"><i class="fa-solid fa-code mr-1"></i> cibilService.js</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-sans font-bold text-[10px]">Active</span>
+              </div>
+              <div class="space-y-2">
+                <p class="text-brand-400">GET /api/bureau/score?pan=ABCDE1234F</p>
+                <div class="p-3 bg-slate-950 rounded-xl border border-slate-900 text-slate-300 text-[10px] space-y-1">
+                  <div>{</div>
+                  <div class="pl-4">"score": <span class="text-emerald-400">748</span>,</div>
+                  <div class="pl-4">"activeLoansCount": 2,</div>
+                  <div class="pl-4">"overdueAccounts": 0,</div>
+                  <div class="pl-4">"thirtyDayInquiries": 1,</div>
+                  <div class="pl-4">"dpdRecord": "No overdue"</div>
+                  <div>}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 22: OpenAI AI Credit Appraisal -->
+    <div class="slide" id="slide-22">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-brand-500">AI Underwriting</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">AI Credit File Analyzer (`openaiCibilAnalysisService.js`)</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Leverages advanced OpenAI GPT completion APIs to analyze raw credit bureau documents. It extracts summary variables and recommends underwriting decisions.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-brand-500/10 flex items-center justify-center text-brand-400 shrink-0"><i class="fa-solid fa-brain"></i></div>
+                <p class="text-slate-300"><strong>Natural Language Processing:</strong> Translates complex, dense bureau reports into a readable underwriter summary.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-brand-500/10 flex items-center justify-center text-brand-400 shrink-0"><i class="fa-solid fa-stamp"></i></div>
+                <p class="text-slate-300"><strong>AI Approvals:</strong> Identifies hidden default risks and flags them to speed up underwriter evaluation.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3 font-mono text-xs">
+                <span class="text-slate-400 font-bold"><i class="fa-solid fa-robot mr-1"></i> OpenAI Bureau Summary</span>
+                <span class="text-slate-400">Model: gpt-4o-mini</span>
+              </div>
+              <div class="space-y-3">
+                <div class="p-3 bg-indigo-950/40 rounded-xl border border-brand-900/30 text-xs text-brand-300 leading-relaxed">
+                  "Borrower shows a credit score of 748. There are zero active defaults. The borrower has two active loan accounts (Home Loan, Auto Loan). Both accounts show consistent repayment history with DPD values at 0. **Risk Rating: LOW**."
+                </div>
+                <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
+                  <div class="p-2 bg-slate-900 rounded-lg"><span class="block text-slate-400">Risk Score</span><span class="font-bold text-emerald-400 text-sm">Low Risk</span></div>
+                  <div class="p-2 bg-slate-900 rounded-lg"><span class="block text-slate-400">Defaults</span><span class="font-bold text-slate-300 text-sm">0 Found</span></div>
+                  <div class="p-2 bg-slate-900 rounded-lg"><span class="block text-slate-400">Max DPD</span><span class="font-bold text-slate-300 text-sm">0 DPD</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 23: Aadhaar eKYC Gateway Integration -->
+    <div class="slide" id="slide-23">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">KYC Verification</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">eKYC & Aadhaar OTP Gateway (`aadhaarService.js`)</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Validates borrower demographics dynamically via Aadhaar eKYC OTP triggers, protecting the platform from synthetic identity fraud.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-id-card"></i></div>
+                <p class="text-slate-300"><strong>UIDAI Verification:</strong> Matches legal name, date of birth, mother/father name, and photo against government records.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-mobile-screen"></i></div>
+                <p class="text-slate-300"><strong>Consensual Flow:</strong> Direct OTP integration sent to user's registered mobile ensures data authenticity.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3 font-mono text-xs">
+                <span class="text-slate-400 font-bold"><i class="fa-solid fa-passport mr-1"></i> eKYC Verification Console</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px]">Verified</span>
+              </div>
+              <div class="flex gap-4 items-center bg-slate-900/50 p-3 rounded-2xl border border-slate-800/80">
+                <div class="w-14 h-16 bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-xl"><i class="fa-solid fa-user-tie"></i></div>
+                <div class="text-xs space-y-1 flex-1">
+                  <div class="text-slate-400">Full Name: <span class="font-bold text-slate-200">John Doe</span></div>
+                  <div class="text-slate-400">DOB: <span class="font-bold text-slate-200">1990-01-01</span></div>
+                  <div class="text-slate-400">Address: <span class="font-bold text-slate-200">123 Street, Metro City, IN</span></div>
+                </div>
+              </div>
+              <div class="text-[10px] text-slate-500 font-mono flex justify-between bg-slate-950 p-2.5 rounded-xl">
+                <span>UIDAI Auth Transaction Token:</span>
+                <span class="text-indigo-400 font-bold">TXN_9827346128</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 24: Digio Digital Signature & eSign Engine -->
+    <div class="slide" id="slide-24">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-purple-400">Digital Contracts</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">eSign & Agreement Service (`loanAgreementService.js`)</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Dynamically generates loan sanction letters and agreements. Digital signatures are routed via secure eSign API webhooks.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-purple-500/10 flex items-center justify-center text-purple-400 shrink-0"><i class="fa-solid fa-file-pdf"></i></div>
+                <p class="text-slate-300"><strong>Agreement Generator:</strong> Builds professional PDF contracts with custom brand themes, sanction terms, and charges.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-purple-500/10 flex items-center justify-center text-purple-400 shrink-0"><i class="fa-solid fa-fingerprint"></i></div>
+                <p class="text-slate-300"><strong>Legal Compliance:</strong> eSign integration is fully compliant under the Indian IT Act.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-4 font-mono text-xs">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <span class="text-slate-400 font-bold"><i class="fa-solid fa-file-contract mr-1"></i> esignRoutes.js</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-sans text-[10px]">Signed</span>
+              </div>
+              <div class="p-3 bg-slate-950 rounded-xl space-y-1.5 text-[10px]">
+                <div class="text-slate-500">// Webhook response callback</div>
+                <div class="text-purple-400">"document_id": "DOC-982361-ESIGN",</div>
+                <div class="text-slate-300">"status": "signed",</div>
+                <div class="text-slate-300">"signer_email": "customer@email.com",</div>
+                <div class="text-slate-300">"signed_at": "2026-07-24T12:30:15Z"</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 25: Cashfree Payments Gateway Integration -->
+    <div class="slide" id="slide-25">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Collections Gateway</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Cashfree Repayment Integration (`cashfreePaymentLinkService.js`)</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Provides collections teams with tools to generate payment links. It maps repayments to active loans in real time.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-link"></i></div>
+                <p class="text-slate-300"><strong>Dynamic Link Generation:</strong> Generates unique URLs for UPI, netbanking, or cards.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-rotate"></i></div>
+                <p class="text-slate-300"><strong>Real-time Reconciliation:</strong> Reconciles payments instantly using payment gateway webhooks.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-3 font-mono text-xs">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span class="text-slate-400 font-bold"><i class="fa-solid fa-wallet mr-1"></i> Cashfree Payment API</span>
+                <span class="text-slate-500 text-[10px]">POST /repayments/link</span>
+              </div>
+              <div class="p-3 bg-slate-950 rounded-xl space-y-1.5 text-[10px]">
+                <div class="text-slate-400">Request: <span class="text-slate-300">{ amount: 15500, refId: "LOAN-983" }</span></div>
+                <div class="text-slate-400">Response: <span class="text-emerald-400">{ link_url: "https://cf.repay/l/9871" }</span></div>
+              </div>
+              <div class="p-2 bg-slate-900 rounded-lg text-slate-300 text-center font-sans">
+                Payment Link status: <span class="text-emerald-400 font-bold">PAID</span> (Reconciled)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 26: WhatsApp & SMS notifications -->
+    <div class="slide" id="slide-26">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-indigo-400">Automated Communications</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Authkey WhatsApp & SMS service (`authkeyWhatsAppService.js`)</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Ensures high message delivery rates. Automates WhatsApp alerts, transaction receipts, upload links, and collection warnings.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0"><i class="fa-brands fa-whatsapp"></i></div>
+                <p class="text-slate-300"><strong>WhatsApp Alerts:</strong> Sends sanction updates and links directly to customer WhatsApp chats.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                <p class="text-slate-300"><strong>Scheduled Reminders:</strong> Tracks overdue days to trigger automatic alerts based on collection rules.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-2 font-mono text-xs">
+                <span class="text-slate-400 font-bold"><i class="fa-brands fa-whatsapp text-emerald-400 mr-1"></i> WhatsApp Message Logs</span>
+                <span class="text-slate-500 text-[10px]">Status: Sent</span>
+              </div>
+              <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800/80 max-w-sm mx-auto">
+                <span class="font-bold text-emerald-400 text-xs block mb-1">OmniFin Updates</span>
+                <p class="text-slate-300 text-xs leading-relaxed font-sans">
+                  "Dear Customer, your loan application has been approved! Please click the link to e-sign your loan agreement: **https://cf.esign/t=987**"
+                </p>
+                <span class="text-[9px] text-slate-500 block text-right mt-1.5 font-mono">12:30 PM ✓✓</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 27: UTM Tracker & Affiliate Webhooks -->
+    <div class="slide" id="slide-27">
+      <div class="h-full flex flex-col justify-center py-20 px-12 md:px-20 max-w-7xl mx-auto font-sans">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-4">
+            <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Marketing Conversion</span>
+            <h2 class="text-2xl md:text-3xl font-extrabold font-outfit text-white">Campaign UTM & Source Webhook Router</h2>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Tracks lead sources (e.g. partner dashboards, affiliate ads) and sends real-time status updates back to original publishers via webhooks.
+            </p>
+            <div class="space-y-3 pt-1 text-xs">
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-code-merge"></i></div>
+                <p class="text-slate-300"><strong>Campaign Attribution:</strong> Capture traffic variables (UTM Source, Campaign ID) during lead creation.</p>
+              </div>
+              <div class="flex items-start space-x-2">
+                <div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0"><i class="fa-solid fa-share-nodes"></i></div>
+                <p class="text-slate-300"><strong>Affiliate Routing:</strong> Trigger webhooks to alert partner systems when a loan is disbursed or rejected.</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="lg:col-span-7 max-h-[60vh] flex items-center justify-center">
+            <div class="glass-panel p-6 rounded-3xl border-slate-800 w-full space-y-3 font-mono text-xs">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span class="text-slate-400 font-bold"><i class="fa-solid fa-network-wired mr-1"></i> sourceStatusWebhookService.js</span>
+                <span class="px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 text-[10px] font-sans">Dispatched</span>
+              </div>
+              <div class="space-y-2 text-[10px]">
+                <p class="text-brand-400">POST https://partner.api/callbacks/conversion</p>
+                <div class="p-3 bg-slate-950 rounded-xl space-y-1">
+                  <div>{</div>
+                  <div class="pl-4">"leadId": "OMNI-PD-002794",</div>
+                  <div class="pl-4">"partnerLeadId": "GP-18723",</div>
+                  <div class="pl-4">"conversionStage": "Disbursed",</div>
+                  <div class="pl-4">"netPayout": 14250,</div>
+                  <div class="pl-4">"timestamp": "2026-07-24T12:31:00Z"</div>
+                  <div>}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Presentation Navigation Control -->
+  <footer class="absolute bottom-0 left-0 w-full p-6 flex justify-between items-center z-50 font-sans">
+    <div class="flex items-center space-x-2 text-xs text-slate-500">
+      <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono font-bold">←</kbd>
+      <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono font-bold">→</kbd>
+      <span>or Space to navigate slides</span>
+    </div>
+    
+    <div class="flex space-x-3">
+      <button onclick="prevSlide()" class="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      <button onclick="nextSlide()" class="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 27;
+
+    function updateSlide() {
+      document.querySelectorAll('.slide').forEach(slide => {
+        slide.classList.remove('active');
+      });
+      const activeSlide = document.getElementById(`slide-${currentSlide}`);
+      if (activeSlide) {
+        activeSlide.classList.add('active');
+      }
+      document.getElementById('slide-counter').textContent = `${String(currentSlide).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
+    }
+
+    // Nav control handlers
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+
+    function changeSlide(num) {
+      currentSlide = num;
+      updateSlide();
+    }
+
+    // Keyboard controls
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft') {
+        prevSlide();
+      }
+    });
+
+    // Fullscreen toggler
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.log(`Error enabling fullscreen: ${err.message}`);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    }
+  </script>
+</body>
+</html>

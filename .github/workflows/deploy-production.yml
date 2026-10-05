@@ -1,0 +1,132 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: "https://payday-api.waqtmoney.com/api"
+          VITE_DOCUMENT_BASE_URL: "https://payday-api.waqtmoney.com/uploads"
+          VITE_FORCE_DIRECT_API: "true"
+          VITE_SUPPORT_PHONE: "+919217086608"
+          VITE_SUPPORT_WHATSAPP: "919217086608"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy Frontend to Production
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: "frontend/dist/"
+          TARGET: "/home/waqtmoney/public_html/payday/"
+          ARGS: "-rlgoDzvc --delete"
+
+      - name: List local backend database directory files
+        run: ls -la backend/database/
+
+      - name: Clean stale backend files on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            cd /home/waqtmoney/public_html/payday-api
+            rm -f app.js server.js database/bootstrap.js database/schema.js database/masterSchema.js
+
+      - name: Deploy Backend to Production API
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: "backend/"
+          TARGET: "/home/waqtmoney/public_html/payday-api/"
+          ARGS: "-rlDztvc"
+          EXCLUDE: >
+            /node_modules/,
+            /.env,
+            /.env.*,
+            /uploads/,
+            /backups/,
+            /deploy-doc/,
+            *.zip,
+            *.log,
+            *.err,
+            dev*.log,
+            backend-smoke.*
+
+      - name: Normalize Backend Permissions & Restart App
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            set -e
+
+            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
+              source /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            fi
+
+            node -v
+            npm -v
+
+            cd /home/waqtmoney/public_html/payday-api
+
+            pwd
+            ls -la
+
+            echo "Fixing cPanel-safe permissions..."
+            chmod 711 /home/waqtmoney || true
+            chmod 755 /home/waqtmoney/public_html /home/waqtmoney/public_html/payday-api || true
+            find . -type d -not -path '*/node_modules*' -exec chmod 755 {} \; || true
+            find . -type f -not -path '*/node_modules*' -exec chmod 644 {} \; || true
+            chmod 644 app.js server.js package.json || true
+            [ ! -f .env ] || chmod 600 .env || true
+            [ ! -f .htaccess ] || chmod 644 .htaccess || true
+
+            echo "Running diagnose_putty.js..."
+            node scratch/diagnose_putty.js || true
+
+            if [ ! -d node_modules ] || [ -L node_modules ]; then
+              echo "node_modules is missing. Running npm install..."
+              npm install --production || true
+            fi
+
+            echo "Restarting Passenger and background Node app on port 8081..."
+            curl -s http://127.0.0.1:8083/api/health/restart || true
+            pkill -u $USER node || pkill -9 -u $USER node || killall -9 node || true
+            mkdir -p tmp
+            touch tmp/restart.txt || true
+            [ ! -f index.js ] || touch index.js || true
+            [ ! -f app.js ] || touch app.js || true
+            [ ! -f passenger_wsgi.py ] || touch passenger_wsgi.py || true
+            nohup PORT=8081 node index.js > node_production.log 2>&1 &
+            sleep 3

@@ -1,0 +1,6 @@
+import{c as a,i as c,j as e,a0 as l,L as o,at as i}from"./index-CbohD5aH.js";/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const n=[["circle",{cx:"12",cy:"16",r:"1",key:"1au0dj"}],["rect",{x:"3",y:"10",width:"18",height:"12",rx:"2",key:"6s8ecr"}],["path",{d:"M7 10V7a5 5 0 0 1 10 0v3",key:"1pqi11"}]],d=a("lock-keyhole",n);function x(){const{user:t,activeRole:r}=c(),s=r||(t==null?void 0:t.role);return e.jsx("div",{className:"flex min-h-[70vh] items-center justify-center px-4 py-10",children:e.jsxs("div",{className:"w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm",children:[e.jsx("div",{className:"mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700",children:e.jsx(d,{className:"h-6 w-6"})}),e.jsx("h1",{className:"mt-4 text-xl font-bold text-slate-950",children:"Access restricted"}),e.jsxs("p",{className:"mt-2 text-sm leading-6 text-slate-500",children:["This page is not available for ",s?l[s]:"your current"," role."]}),t&&s&&e.jsx(o,{to:i[s],className:"mt-5 inline-flex h-10 items-center justify-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800",children:"Go to my workspace"})]})})}export{x as Unauthorized};

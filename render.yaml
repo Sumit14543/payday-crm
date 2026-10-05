@@ -1,0 +1,90 @@
+services:
+  - type: web
+    name: payday-loan-crm-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: payday-loan-crm-uploads
+      mountPath: /opt/render/project/src/backend/uploads
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_AUTO_CREATE
+        value: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: AUTH_TOKEN_SECRET
+        sync: false
+      - key: APP_USERS_JSON
+        sync: false
+      - key: INTEGRATION_API_KEYS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BIFROST_API_URL
+        sync: false
+      - key: BIFROST_AADHAAR_API_URL
+        sync: false
+      - key: BIFROST_API_TOKEN
+        sync: false
+      - key: BIFROST_AUTH_SCHEME
+        sync: false
+      - key: BIFROST_CALLBACK_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        sync: false
+      - key: AUTH_KEY
+        sync: false
+      - key: AUTHKEY_COUNTRY_CODE
+        value: 91
+      - key: AUTHKEY_DOCUMENT_UPLOAD_TEMPLATE_ID
+        value: 35018
+      - key: AUTHKEY_DOCUMENT_UPLOAD_TEMPLATE_NAME
+        value: document_upload_link
+      - key: ESIGN_PROVIDER
+        sync: false
+      - key: DIGIO_ENVIRONMENT
+        sync: false
+      - key: DIGIO_API_BASE_URL
+        sync: false
+      - key: DIGIO_CLIENT_ID
+        sync: false
+      - key: DIGIO_CLIENT_SECRET
+        sync: false
+      - key: DIGIO_SIGN_TYPE
+        sync: false
+      - key: DIGIO_NOTIFY_SIGNER
+        sync: false
+      - key: DIGIO_WEBHOOK_URL
+        sync: false
+      - key: DIGIO_REDIRECT_URL
+        sync: false

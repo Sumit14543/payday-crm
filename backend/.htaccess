@@ -1,0 +1,6 @@
+# Production Main API Reverse Proxy - Port 8081
+DirectoryIndex disabled
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ http://127.0.0.1:8081/$1 [P,L]
