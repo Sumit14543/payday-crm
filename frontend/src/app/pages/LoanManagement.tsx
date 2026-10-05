@@ -284,13 +284,13 @@ export function LoanManagement() {
       l.totalAmount || 0,
       l.amountPaid || 0,
       l.balance || 0,
-      `"${l.disbursedDate || l.startDate || ""}"`,
-      `"${l.dueDate || ""}"`,
-      `"${l.lastPaymentDate || ""}"`,
+      `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
+      `"${toDateKey(l.dueDate) || ""}"`,
+      `"${toDateKey(l.lastPaymentDate) || ""}"`,
       `"${l.status || ""}"`,
       `"${l.paymentStatus || ""}"`,
-      `"${l.utrNumber || ""}"`,
-      `"${l.accountNumber || ""}"`,
+      l.utrNumber ? `="${String(l.utrNumber).replace(/"/g, '""').trim()}"` : `""`,
+      l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
       `"${l.ifscCode || ""}"`,
     ]);
 
@@ -800,6 +800,11 @@ export function LoanManagement() {
                           {loan.customer || "Customer not linked"}
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">{loan.customerId}</div>
+                        {loan.accountNumber && (
+                          <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400 select-all" title="Bank Account Number">
+                            A/C: {loan.accountNumber}
+                          </div>
+                        )}
                       </td>
 
                       {/* Principal */}
