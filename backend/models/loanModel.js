@@ -98,8 +98,8 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
         NULLIF(TRIM(ls.bank_name), ''),
         (SELECT NULLIF(TRIM(bank_name), '') FROM loan_applications la_sub WHERE (la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id OR la_sub.application_id = lap.application_id OR la_sub.id = lap.lead_id) AND la_sub.bank_name IS NOT NULL AND la_sub.bank_name <> '' ORDER BY la_sub.id DESC LIMIT 1)
       ) AS bankName,
-      l.due_date AS dueDate, l.status, l.payment_status AS paymentStatus,
-      l.next_payment_date AS nextPaymentDate, l.next_payment_amount AS nextPaymentAmount,
+      DATE_FORMAT(l.due_date, '%Y-%m-%d') AS dueDate, l.status, l.payment_status AS paymentStatus,
+      DATE_FORMAT(l.next_payment_date, '%Y-%m-%d') AS nextPaymentDate, l.next_payment_amount AS nextPaymentAmount,
       l.created_at AS createdAt, l.updated_at AS updatedAt,
       COALESCE(
         (
@@ -319,8 +319,8 @@ async function findById(id) {
         NULLIF(TRIM(ls.bank_name), ''),
         (SELECT NULLIF(TRIM(bank_name), '') FROM loan_applications la_sub WHERE (la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id OR la_sub.application_id = lap.application_id OR la_sub.id = lap.lead_id) AND la_sub.bank_name IS NOT NULL AND la_sub.bank_name <> '' ORDER BY la_sub.id DESC LIMIT 1)
       ) AS bankName,
-      l.due_date AS dueDate, l.status, l.payment_status AS paymentStatus,
-      l.next_payment_date AS nextPaymentDate, l.next_payment_amount AS nextPaymentAmount,
+      DATE_FORMAT(l.due_date, '%Y-%m-%d') AS dueDate, l.status, l.payment_status AS paymentStatus,
+      DATE_FORMAT(l.next_payment_date, '%Y-%m-%d') AS nextPaymentDate, l.next_payment_amount AS nextPaymentAmount,
       c.email AS customerEmail, c.phone AS customerPhone, c.credit_score AS customerCreditScore,
       l.created_at AS createdAt, l.updated_at AS updatedAt,
       COALESCE(

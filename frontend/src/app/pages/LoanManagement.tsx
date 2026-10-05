@@ -80,11 +80,35 @@ function formatCurrency(value: number | null | undefined) {
   return money.format(Number(value || 0));
 }
 
+function toDateKey(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  try {
+    return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  } catch {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "-";
+  const str = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, d] = str.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
 }
 
 function statusBadge(status: string) {
@@ -305,16 +329,26 @@ export function LoanManagement() {
   // Filtered Loans
   const filteredLoans = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
     const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    const todayKey = toDateKey(now) || "";
+    const currentMonthKey = todayKey.slice(0, 7);
+
+    // Compute start and end of week (Monday to Sunday) in IST
+    const dayOfWeek = now.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const startOfWeekKey = toDateKey(monday) || "";
+    const endOfWeekKey = toDateKey(sunday) || "";
 
     return loans.filter((loan) => {
+      const dueKey = toDateKey(loan.dueDate) || "";
+      const formattedDue = formatDate(loan.dueDate).toLowerCase();
+      const formattedPaymentDate = formatDate(loan.lastPaymentDate).toLowerCase();
+
       const matchesSearch =
         !query ||
         loan.id.toLowerCase().includes(query) ||
@@ -323,9 +357,12 @@ export function LoanManagement() {
         (loan.utrNumber || "").toLowerCase().includes(query) ||
         (loan.status || "").toLowerCase().includes(query) ||
         (loan.paymentStatus || "").toLowerCase().includes(query) ||
+        dueKey.includes(query) ||
+        formattedDue.includes(query) ||
         (loan.dueDate || "").toLowerCase().includes(query) ||
         (loan.startDate || "").toLowerCase().includes(query) ||
         (loan.lastPaymentDate || "").toLowerCase().includes(query) ||
+        formattedPaymentDate.includes(query) ||
         String(loan.principal || "").includes(query) ||
         String(loan.totalAmount || "").includes(query) ||
         String(loan.balance || "").includes(query);
@@ -348,7 +385,7 @@ export function LoanManagement() {
           matchesStatus =
             ((loan.status || "").toLowerCase() === "overdue" ||
               (loan.paymentStatus || "").toLowerCase() === "overdue" ||
-              (loan.dueDate && String(loan.dueDate).slice(0, 10) < todayStr)) &&
+              (dueKey ? dueKey < todayKey : false)) &&
             !isPaidOffLoan;
         } else {
           matchesStatus = (loan.status || "").toLowerCase() === sf;
@@ -369,16 +406,16 @@ export function LoanManagement() {
 
       let matchesDate = true;
       if (dateFilter !== "all" && loan.dueDate) {
-        const loanDueStr = String(loan.dueDate).slice(0, 10);
-        if (dateFilter === "today") {
-          matchesDate = loanDueStr === todayStr;
+        if (!dueKey) {
+          matchesDate = false;
+        } else if (dateFilter === "today") {
+          matchesDate = dueKey === todayKey;
         } else if (dateFilter === "month") {
-          matchesDate = loanDueStr.slice(0, 7) === currentMonthStr;
+          matchesDate = dueKey.slice(0, 7) === currentMonthKey;
         } else if (dateFilter === "week") {
-          const loanDueDate = new Date(loan.dueDate);
-          matchesDate = loanDueDate >= startOfWeek && loanDueDate <= endOfWeek;
+          matchesDate = dueKey >= startOfWeekKey && dueKey <= endOfWeekKey;
         } else if (dateFilter === "overdue") {
-          matchesDate = loanDueStr < todayStr && !isPaidOffLoan;
+          matchesDate = dueKey < todayKey && !isPaidOffLoan;
         }
       }
 
@@ -387,19 +424,21 @@ export function LoanManagement() {
   }, [loans, searchTerm, statusFilter, paymentStatusFilter, dateFilter]);
 
   const totals = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayKey = toDateKey(new Date()) || "";
     return {
       allLoans: loans.length,
       activeLoans: loans.filter((loan) => (loan.status === "Active" || !loan.status) && Number(loan.balance || 0) > 0).length,
       partPaymentLoans: loans.filter((loan) => Number(loan.amountPaid || 0) > 0 && Number(loan.balance || 0) > 0).length,
       paidOffLoans: loans.filter((loan) => Number(loan.balance || 0) <= 0).length,
-      overdueLoans: loans.filter(
-        (loan) =>
-          ((loan.status || "").toLowerCase() === "overdue" ||
-            (loan.paymentStatus || "").toLowerCase() === "overdue" ||
-            (loan.dueDate && String(loan.dueDate).slice(0, 10) < todayStr)) &&
-          Number(loan.balance || 0) > 0
-      ).length,
+      overdueLoans: loans.filter((loan) => {
+        if (Number(loan.balance || 0) <= 0) return false;
+        const dueKey = toDateKey(loan.dueDate);
+        return (
+          (loan.status || "").toLowerCase() === "overdue" ||
+          (loan.paymentStatus || "").toLowerCase() === "overdue" ||
+          (dueKey ? dueKey < todayKey : false)
+        );
+      }).length,
       totalOutstanding: loans.reduce((sum, loan) => sum + Number(loan.balance || 0), 0),
       totalCollected: loans.reduce((sum, loan) => sum + Number(loan.amountPaid || 0), 0),
     };
