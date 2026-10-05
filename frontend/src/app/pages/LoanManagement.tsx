@@ -19,7 +19,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
-import { apiGet, apiGetBlob, apiPostForm } from "../lib/api";
+import { apiGet, apiPostForm } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
 import { useAuth } from "../lib/auth";
 
@@ -43,6 +43,7 @@ type Loan = {
   accountNumber?: string | null;
   ifscCode?: string | null;
   bankName?: string | null;
+  lastPaymentDate?: string | null;
 };
 
 const money = new Intl.NumberFormat("en-IN", {
@@ -62,8 +63,8 @@ const PAGE_SIZE_OPTIONS = [
 const PAYMENT_STATUS_OPTIONS = [
   { label: "All Payment Status", value: "all" },
   { label: "Pending", value: "pending" },
+  { label: "Part Payment", value: "partial" },
   { label: "Paid", value: "paid" },
-  { label: "Partial", value: "partial" },
   { label: "Overdue", value: "overdue" },
 ];
 
@@ -88,16 +89,19 @@ function formatDate(value: string | null | undefined) {
 
 function statusBadge(status: string) {
   const isPaidOff = status === "Paid Off" || status === "Closed";
+  const isPartial = status === "Part Payment" || status === "Partial";
   const isActive = status === "Active";
   const isOverdue = status === "Overdue";
 
-  const tone = isActive
-    ? "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:ring-blue-800"
-    : isPaidOff
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-800"
-      : isOverdue
-        ? "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/60 dark:text-red-300 dark:ring-red-800"
-        : "bg-slate-50 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700";
+  const tone = isPaidOff
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-800"
+    : isPartial
+      ? "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:ring-amber-800"
+      : isActive
+        ? "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:ring-blue-800"
+        : isOverdue
+          ? "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/60 dark:text-red-300 dark:ring-red-800"
+          : "bg-slate-50 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${tone}`}>{status || "Unknown"}</span>;
 }
@@ -105,12 +109,15 @@ function statusBadge(status: string) {
 function paymentStatusBadge(status: string) {
   const isRisk = status === "At Risk" || status === "Overdue";
   const isPaid = status === "Paid" || status === "Complete";
+  const isPartial = status === "Partial" || status === "Part Payment";
   const Icon = isRisk ? AlertCircle : CheckCircle2;
   const tone = isRisk
     ? "text-red-600 dark:text-red-400"
     : isPaid
       ? "text-emerald-600 dark:text-emerald-400"
-      : "text-amber-600 dark:text-amber-400";
+      : isPartial
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-slate-600 dark:text-slate-400";
 
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${tone}`}>
@@ -227,23 +234,6 @@ export function LoanManagement() {
     intervalMs: 60_000,
   });
 
-  // Download NOC PDF
-  const handleDownloadNoc = async (loanId: string) => {
-    try {
-      const blob = await apiGetBlob(`/loans/${encodeURIComponent(loanId)}/noc/pdf`);
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `NOC_${loanId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to download NOC PDF");
-    }
-  };
-
   // Export CSV
   const handleExportCsv = () => {
     if (!filteredLoans.length) {
@@ -262,6 +252,7 @@ export function LoanManagement() {
       "Balance (Rs)",
       "Disbursed Date",
       "Due Date",
+      "Payment Date",
       "Status",
       "Payment Status",
       "UTR Number",
@@ -280,6 +271,7 @@ export function LoanManagement() {
       l.balance || 0,
       `"${l.disbursedDate || l.startDate || ""}"`,
       `"${l.dueDate || ""}"`,
+      `"${l.lastPaymentDate || ""}"`,
       `"${l.status || ""}"`,
       `"${l.paymentStatus || ""}"`,
       `"${l.utrNumber || ""}"`,
@@ -301,16 +293,14 @@ export function LoanManagement() {
 
   // Status options for select
   const statusOptions = useMemo(() => {
-    const statuses = Array.from(
-      new Set([
-        "Active",
-        "Overdue",
-        "Paid Off",
-        ...loans.map((loan) => loan.status).filter(Boolean),
-      ])
-    ).sort();
-    return [{ label: "All Status", value: "all" }, ...statuses.map((status) => ({ label: status, value: status }))];
-  }, [loans]);
+    return [
+      { label: "All Status", value: "all" },
+      { label: "Active", value: "Active" },
+      { label: "Part Payment", value: "Part Payment" },
+      { label: "Paid Off", value: "Paid Off" },
+      { label: "Overdue", value: "Overdue" },
+    ];
+  }, []);
 
   // Filtered Loans
   const filteredLoans = useMemo(() => {
@@ -335,23 +325,46 @@ export function LoanManagement() {
         (loan.paymentStatus || "").toLowerCase().includes(query) ||
         (loan.dueDate || "").toLowerCase().includes(query) ||
         (loan.startDate || "").toLowerCase().includes(query) ||
+        (loan.lastPaymentDate || "").toLowerCase().includes(query) ||
         String(loan.principal || "").includes(query) ||
         String(loan.totalAmount || "").includes(query) ||
         String(loan.balance || "").includes(query);
 
-      const isPaidOffLoan = loan.status === "Paid Off" || loan.status === "Closed" || Number(loan.balance || 0) <= 0;
+      // Part Payment loan: paid something, but balance > 0
+      const isPartPaymentLoan = Number(loan.amountPaid || 0) > 0 && Number(loan.balance || 0) > 0;
+      // Paid Off loan: balance MUST be <= 0 (cannot be paid off if balance > 0)
+      const isPaidOffLoan = Number(loan.balance || 0) <= 0;
+
       let matchesStatus = true;
       if (statusFilter !== "all") {
-        if (statusFilter.toLowerCase() === "paid off") {
+        const sf = statusFilter.toLowerCase();
+        if (sf === "paid off") {
           matchesStatus = isPaidOffLoan;
+        } else if (sf === "part payment" || sf === "partial") {
+          matchesStatus = isPartPaymentLoan;
+        } else if (sf === "active") {
+          matchesStatus = (loan.status || "").toLowerCase() === "active" && !isPaidOffLoan;
+        } else if (sf === "overdue") {
+          matchesStatus =
+            ((loan.status || "").toLowerCase() === "overdue" ||
+              (loan.paymentStatus || "").toLowerCase() === "overdue" ||
+              (loan.dueDate && String(loan.dueDate).slice(0, 10) < todayStr)) &&
+            !isPaidOffLoan;
         } else {
-          matchesStatus = (loan.status || "").toLowerCase() === statusFilter.toLowerCase();
+          matchesStatus = (loan.status || "").toLowerCase() === sf;
         }
       }
 
       let matchesPaymentStatus = true;
       if (paymentStatusFilter !== "all") {
-        matchesPaymentStatus = (loan.paymentStatus || "").toLowerCase() === paymentStatusFilter.toLowerCase();
+        const psf = paymentStatusFilter.toLowerCase();
+        if (psf === "partial" || psf === "part payment") {
+          matchesPaymentStatus = isPartPaymentLoan || (loan.paymentStatus || "").toLowerCase() === "partial";
+        } else if (psf === "paid") {
+          matchesPaymentStatus = isPaidOffLoan || (loan.paymentStatus || "").toLowerCase() === "paid";
+        } else {
+          matchesPaymentStatus = (loan.paymentStatus || "").toLowerCase() === psf;
+        }
       }
 
       let matchesDate = true;
@@ -377,13 +390,15 @@ export function LoanManagement() {
     const todayStr = new Date().toISOString().slice(0, 10);
     return {
       allLoans: loans.length,
-      activeLoans: loans.filter((loan) => loan.status === "Active").length,
-      paidOffLoans: loans.filter((loan) => loan.status === "Paid Off" || loan.status === "Closed" || Number(loan.balance || 0) <= 0).length,
+      activeLoans: loans.filter((loan) => (loan.status === "Active" || !loan.status) && Number(loan.balance || 0) > 0).length,
+      partPaymentLoans: loans.filter((loan) => Number(loan.amountPaid || 0) > 0 && Number(loan.balance || 0) > 0).length,
+      paidOffLoans: loans.filter((loan) => Number(loan.balance || 0) <= 0).length,
       overdueLoans: loans.filter(
         (loan) =>
-          loan.status === "Overdue" ||
-          loan.paymentStatus === "Overdue" ||
-          (loan.dueDate && String(loan.dueDate).slice(0, 10) < todayStr && Number(loan.balance || 0) > 0)
+          ((loan.status || "").toLowerCase() === "overdue" ||
+            (loan.paymentStatus || "").toLowerCase() === "overdue" ||
+            (loan.dueDate && String(loan.dueDate).slice(0, 10) < todayStr)) &&
+          Number(loan.balance || 0) > 0
       ).length,
       totalOutstanding: loans.reduce((sum, loan) => sum + Number(loan.balance || 0), 0),
       totalCollected: loans.reduce((sum, loan) => sum + Number(loan.amountPaid || 0), 0),
@@ -439,7 +454,7 @@ export function LoanManagement() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Loan Portfolio</p>
           <h2 className="mt-2 text-3xl font-bold text-gray-950 dark:text-white">Active Loan Management</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Real-time loan accounts, repayments, settlements, NOC certificates, and portfolio monitoring.
+            Real-time loan accounts, repayments, settlements, and portfolio monitoring.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -598,6 +613,21 @@ export function LoanManagement() {
 
           <button
             type="button"
+            onClick={() => setStatusFilter("Part Payment")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              statusFilter === "Part Payment"
+                ? "bg-amber-600 text-white shadow-sm"
+                : "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/60"
+            }`}
+          >
+            Part Payment
+            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "Part Payment" ? "bg-white/20 text-white" : "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200"}`}>
+              {totals.partPaymentLoans}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setStatusFilter("Paid Off")}
             className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
               statusFilter === "Paid Off"
@@ -734,7 +764,7 @@ export function LoanManagement() {
           <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
             <thead className="bg-slate-50 dark:bg-slate-800/70">
               <tr>
-                {["Loan ID", "Customer", "Principal", "Total Due", "Paid", "Balance", "Due Date", "Status", "Payment", "Actions"].map(
+                {["Loan ID", "Customer", "Principal", "Total Due", "Paid", "Balance", "Due Date", "Payment Date", "Status", "Payment", "Actions"].map(
                   (heading) => (
                     <th
                       key={heading}
@@ -749,14 +779,14 @@ export function LoanManagement() {
             <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800/80 dark:bg-slate-900">
               {showInitialLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-16 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td colSpan={11} className="px-5 py-16 text-center text-sm text-slate-500 dark:text-slate-400">
                     <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-blue-600" />
                     Loading loan portfolio...
                   </td>
                 </tr>
               ) : filteredLoans.length ? (
                 visibleLoans.map((loan) => {
-                  const isSettled = loan.status === "Paid Off" || loan.status === "Closed" || Number(loan.balance || 0) <= 0;
+                  const isSettled = Number(loan.balance || 0) <= 0;
 
                   return (
                     <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
@@ -810,11 +840,31 @@ export function LoanManagement() {
                         </span>
                       </td>
 
+                      {/* Payment Date */}
+                      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        {loan.amountPaid > 0 || loan.lastPaymentDate ? (
+                          <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                            <Calendar className="h-4 w-4 text-emerald-500 shrink-0" />
+                            {formatDate(loan.lastPaymentDate)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 text-xs">-</span>
+                        )}
+                      </td>
+
                       {/* Status */}
                       <td className="whitespace-nowrap px-5 py-4">{statusBadge(loan.status)}</td>
 
                       {/* Payment Status */}
-                      <td className="whitespace-nowrap px-5 py-4">{paymentStatusBadge(loan.paymentStatus)}</td>
+                      <td className="whitespace-nowrap px-5 py-4">
+                        {paymentStatusBadge(
+                          Number(loan.balance || 0) <= 0
+                            ? "Paid"
+                            : Number(loan.amountPaid || 0) > 0
+                              ? "Partial"
+                              : loan.paymentStatus || "Pending"
+                        )}
+                      </td>
 
                       {/* Action buttons */}
                       <td className="whitespace-nowrap px-5 py-4 text-sm">
@@ -828,19 +878,6 @@ export function LoanManagement() {
                             <Eye className="h-3.5 w-3.5" />
                             View
                           </Link>
-
-                          {/* Download NOC PDF if settled */}
-                          {isSettled && (
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadNoc(loan.id)}
-                              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900/80 transition"
-                              title="Download No Objection Certificate"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                              NOC
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -848,7 +885,7 @@ export function LoanManagement() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={10} className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td colSpan={11} className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
                     No matching loans found in this filter range.
                   </td>
                 </tr>

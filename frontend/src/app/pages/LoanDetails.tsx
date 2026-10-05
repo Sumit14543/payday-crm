@@ -47,6 +47,7 @@ type LoanDetail = {
   customerEmail: string | null;
   customerPhone: string | null;
   customerCreditScore: number | null;
+  lastPaymentDate?: string | null;
 };
 
 const PAYMENT_METHOD_OPTIONS = [
@@ -108,49 +109,7 @@ export function LoanDetails() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isInitiating, setIsInitiating] = useState(false);
-  const [isNocSending, setIsNocSending] = useState(false);
 
-  // Repayment Modal
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<string>("Bank Transfer");
-  const [paymentReference, setPaymentReference] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [paymentNotes, setPaymentNotes] = useState<string>("");
-  const [isFullSettlement, setIsFullSettlement] = useState<boolean>(true);
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState<boolean>(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
-
-  const handleDownloadNocPdf = async () => {
-    if (!loanId) return;
-    try {
-      const blob = await apiGetBlob(`/loans/${encodeURIComponent(loanId)}/noc/pdf`);
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `NOC_${loanId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to download NOC PDF");
-    }
-  };
-
-  const handleSendNocEmail = async () => {
-    if (!loanId) return;
-    setIsNocSending(true);
-    try {
-      await apiPost(`/loans/${encodeURIComponent(loanId)}/noc/send-email`, {});
-      alert("NOC Certificate email sent successfully to borrower!");
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send NOC email");
-    } finally {
-      setIsNocSending(false);
-    }
-  };
 
   const handleInitiateReloan = async () => {
     if (!loan?.customerId) return;
@@ -362,42 +321,6 @@ export function LoanDetails() {
         </div>
       ) : loan ? (
         <>
-          {/* NOC Banner if loan is settled */}
-          {isLoanSettled && (
-            <div className="mb-6 rounded-xl border border-emerald-300 bg-emerald-50/90 p-5 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/50">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="flex items-center gap-2 text-base font-bold text-emerald-950 dark:text-emerald-200">
-                    <FileText className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
-                    No Objection Certificate (NOC / No Dues Certificate)
-                  </h3>
-                  <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-300">
-                    This loan account is fully settled and closed. The NOC certificate can be downloaded or emailed to the borrower.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDownloadNocPdf}
-                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                  >
-                    <FileText className="h-4 w-4" />
-                    Download NOC PDF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSendNocEmail}
-                    disabled={isNocSending}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3.5 py-2 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-slate-700"
-                  >
-                    <Send className="h-4 w-4" />
-                    {isNocSending ? "Sending Email..." : "Resend NOC Email"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Stat Cards */}
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -442,6 +365,7 @@ export function LoanDetails() {
                 <InfoRow label="Total Amount" value={formatCurrency(loan.totalAmount)} />
                 <InfoRow label="Disbursed Date" value={formatDate(loan.disbursedDate || loan.startDate)} />
                 <InfoRow label="Due Date" value={formatDate(loan.dueDate)} />
+                <InfoRow label="Payment Date" value={loan.amountPaid > 0 || loan.lastPaymentDate ? formatDate(loan.lastPaymentDate) : "-"} />
                 <InfoRow label="Payment Status" value={loan.paymentStatus || "Pending"} />
                 <InfoRow
                   label="Next Payment Date"
@@ -663,7 +587,7 @@ export function LoanDetails() {
                       Mark as Full Settlement (Paid Off)
                     </span>
                     <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                      Closes loan account, sets status to "Paid Off", and generates NOC certificate.
+                      Closes loan account and sets status to "Paid Off".
                     </p>
                   </div>
                 </label>

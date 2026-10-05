@@ -101,7 +101,20 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
       l.due_date AS dueDate, l.status, l.payment_status AS paymentStatus,
       l.next_payment_date AS nextPaymentDate, l.next_payment_amount AS nextPaymentAmount,
       l.created_at AS createdAt, l.updated_at AS updatedAt,
-      (SELECT MAX(received_at) FROM loan_repayments WHERE loan_id = l.id) AS lastPaymentDate,
+      COALESCE(
+        (
+          SELECT MAX(received_at)
+          FROM loan_repayments r
+          WHERE (r.loan_id = l.id OR r.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
+            AND r.status IN ('received', 'success', 'paid', 'settled')
+        ),
+        (
+          SELECT MAX(created_at)
+          FROM loan_repayments r2
+          WHERE (r2.loan_id = l.id OR r2.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r2.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
+            AND r2.status IN ('received', 'success', 'paid', 'settled')
+        )
+      ) AS lastPaymentDate,
       COALESCE(
         (SELECT NULLIF(TRIM(reference), '') FROM lead_accounting_payments WHERE (reference IS NOT NULL AND reference <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
         (SELECT NULLIF(TRIM(transaction_id), '') FROM lead_accounting_payments WHERE (transaction_id IS NOT NULL AND transaction_id <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
@@ -310,7 +323,20 @@ async function findById(id) {
       l.next_payment_date AS nextPaymentDate, l.next_payment_amount AS nextPaymentAmount,
       c.email AS customerEmail, c.phone AS customerPhone, c.credit_score AS customerCreditScore,
       l.created_at AS createdAt, l.updated_at AS updatedAt,
-      (SELECT MAX(received_at) FROM loan_repayments WHERE loan_id = l.id) AS lastPaymentDate,
+      COALESCE(
+        (
+          SELECT MAX(received_at)
+          FROM loan_repayments r
+          WHERE (r.loan_id = l.id OR r.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
+            AND r.status IN ('received', 'success', 'paid', 'settled')
+        ),
+        (
+          SELECT MAX(created_at)
+          FROM loan_repayments r2
+          WHERE (r2.loan_id = l.id OR r2.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r2.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
+            AND r2.status IN ('received', 'success', 'paid', 'settled')
+        )
+      ) AS lastPaymentDate,
       COALESCE(
         (SELECT NULLIF(TRIM(reference), '') FROM lead_accounting_payments WHERE (reference IS NOT NULL AND reference <> '') AND (TRIM(loan_id) = TRIM(l.id) OR UPPER(TRIM(loan_id)) = UPPER(TRIM(l.id))) ORDER BY id DESC LIMIT 1),
         (SELECT NULLIF(TRIM(transaction_id), '') FROM lead_accounting_payments WHERE (transaction_id IS NOT NULL AND transaction_id <> '') AND (TRIM(loan_id) = TRIM(l.id) OR UPPER(TRIM(loan_id)) = UPPER(TRIM(l.id))) ORDER BY id DESC LIMIT 1),
