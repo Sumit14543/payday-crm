@@ -284,17 +284,6 @@ export function LoanDetails() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {/* Record Repayment / Settle Button if active */}
-            {loan && !isLoanSettled && (
-              <button
-                type="button"
-                onClick={() => openPaymentModal(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 shadow-sm transition"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Record Payment / Mark Paid Off
-              </button>
-            )}
 
             {/* Initiate Reloan if settled */}
             {isLoanSettled &&
