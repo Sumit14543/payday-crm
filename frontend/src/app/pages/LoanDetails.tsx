@@ -116,6 +116,17 @@ export function LoanDetails() {
   const [error, setError] = useState<string | null>(null);
   const [isInitiating, setIsInitiating] = useState(false);
 
+  // Repayment Modal
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<string>("Bank Transfer");
+  const [paymentReference, setPaymentReference] = useState<string>("");
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [paymentNotes, setPaymentNotes] = useState<string>("");
+  const [isFullSettlement, setIsFullSettlement] = useState<boolean>(true);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState<boolean>(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
   const handleInitiateReloan = async () => {
     if (!loan?.customerId) return;
