@@ -7,7 +7,7 @@ const camSheetModel = require('../models/camSheetModel');
 const loanAgreementModel = require('../models/loanAgreementModel');
 const sanctionModel = require('../models/sanctionModel');
 const leadModel = require('../models/leadModel');
-const { ensureUploadDir, resolveUploadPath, uploadPath } = require('../config/uploads');
+const { ensureUploadDir, resolveUploadPath, uploadPath, syncUploadedFile } = require('../config/uploads');
 const leadStatusModel = require('../models/leadStatusModel');
 const authkeyWhatsAppService = require('../services/authkeyWhatsAppService');
 const emailService = require('../services/emailService');
@@ -374,6 +374,7 @@ async function uploadSanctionAcceptanceProof(req, res) {
   }
 
   const relativePath = `/uploads/sanction-acceptance/${req.file.filename}`;
+  syncUploadedFile(req.file.path, relativePath);
   const updatedSanction = await sanctionModel.updateAcceptanceProof(sanction.id, {
     path: relativePath,
     originalFileName: req.file.originalname,

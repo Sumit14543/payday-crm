@@ -8,7 +8,7 @@ const leadModel = require('../models/leadModel');
 const leadStatusModel = require('../models/leadStatusModel');
 const telecallerModel = require('../models/telecallerModel');
 const { config } = require('../config/env');
-const { ensureUploadDir } = require('../config/uploads');
+const { ensureUploadDir, syncUploadedFile } = require('../config/uploads');
 const authkeyWhatsAppService = require('../services/authkeyWhatsAppService');
 const { getTenantPool, tenantLocalStorage } = require('../config/db');
 const { notFound, requireFields, success } = require('../utils/http');
@@ -321,6 +321,7 @@ async function uploadPublicDocument(req, res) {
     if (!file) continue;
 
     const relativePath = `/uploads/lead-documents/${file.filename}`;
+    syncUploadedFile(file.path, relativePath);
     const updatedRequest = await documentRequestModel.markUploaded(request, {
       mimeType: file.mimetype,
       originalName: file.originalname,

@@ -26,6 +26,25 @@ async function downloadUpload(req, res) {
   }
 
   if (!fs.existsSync(filePath)) {
+    const gcs = require('../config/gcs');
+    if (gcs.isGCSConfigured()) {
+      try {
+        const gcsFile = gcs.getGCSFile(uploadRef);
+        if (gcsFile) {
+          const [exists] = await gcsFile.exists();
+          if (exists) {
+            const [metadata] = await gcsFile.getMetadata().catch(() => [{}]);
+            const contentType = metadata.contentType || contentTypeFor(uploadRef);
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `inline; filename="${path.basename(uploadRef)}"`);
+            return gcsFile.createReadStream().pipe(res);
+          }
+        }
+      } catch (gcsErr) {
+        console.warn(`[GCS Stream Error] ${uploadRef}:`, gcsErr.message);
+      }
+    }
+
     const error = new Error('File not found.');
     error.statusCode = 404;
     error.publicMessage = error.message;

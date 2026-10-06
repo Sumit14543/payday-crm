@@ -104,10 +104,28 @@ function resolveUploadedFileName(value) {
   return path.resolve(UPLOADS_ROOT, fileName);
 }
 
+function syncUploadedFile(localFilePath, relativeUploadPath) {
+  const isEnabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.ENABLE_GCS_SYNC || '').trim().toLowerCase()
+  );
+  const prefix = String(process.env.GCS_PREFIX || '').trim();
+
+  // Safety guard: only sync if ENABLE_GCS_SYNC is on or testing prefix is configured
+  if (!isEnabled && !prefix.includes('test-uploads')) {
+    return;
+  }
+
+  const gcs = require('./gcs');
+  gcs.uploadToGCS(localFilePath, relativeUploadPath).catch((err) => {
+    console.warn(`[GCS Sync] Failed to sync ${relativeUploadPath} to GCS:`, err.message);
+  });
+}
+
 module.exports = {
   DEFAULT_UPLOADS_ROOT,
   UPLOADS_ROOT,
   ensureUploadDir,
   resolveUploadPath,
   uploadPath,
+  syncUploadedFile,
 };

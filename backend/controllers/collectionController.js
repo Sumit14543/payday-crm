@@ -3,6 +3,7 @@ const leadStatusModel = require('../models/leadStatusModel');
 const repaymentModel = require('../models/repaymentModel');
 const sourceStatusWebhookService = require('../services/sourceStatusWebhookService');
 const { invalidateCollectionsCache } = require('./referenceController');
+const { syncUploadedFile } = require('../config/uploads');
 const { success } = require('../utils/http');
 
 async function getCaseOr404(caseId) {
@@ -111,6 +112,7 @@ async function createPayment(req, res) {
   if (req.file) {
     proofUrl = `/uploads/payment-proofs/${req.file.filename}`;
     proofOriginalName = req.file.originalname || req.file.filename;
+    syncUploadedFile(req.file.path, proofUrl);
   }
 
   const repayment = await repaymentModel.createRepayment(context, {
