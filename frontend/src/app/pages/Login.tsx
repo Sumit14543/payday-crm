@@ -32,7 +32,7 @@ const roleIcons: Record<UserRole | "product-admin", any> = {
 
 const extendedRoleLabels: Record<UserRole | "product-admin", string> = {
   telecaller: "Telecaller",
-  "credit-manager": "Credit Manager",
+  "credit-manager": "Credit Manager (Shruti Singh)",
   accountant: "Accountant",
   collection: "Collection",
   superadmin: "Superadmin",
@@ -229,6 +229,11 @@ export function Login() {
     const isAllowedDomain = ALLOWED_DOMAINS.some((d) => cleanEmail.endsWith(d));
     if (!isAllowedDomain && role !== "superadmin" && role !== "product-admin") {
       setError("Access Denied: Only authorized company email addresses (@waqtmoney.in, @waqtfinance.com, @geetpay.com, @loaninwallet.com) are permitted.");
+      return;
+    }
+
+    if (role === "credit-manager" && cleanEmail !== "shruti@waqtmoney.in") {
+      setError("Access Denied: Only Shruti Singh (shruti@waqtmoney.in) is authorized for Credit Panel.");
       return;
     }
 
@@ -606,21 +611,37 @@ export function Login() {
 
                   {/* Email Input */}
                   <div>
-                    <label className="text-xs font-extrabold uppercase tracking-wider text-slate-500 block mb-1.5">
-                      EMAIL ADDRESS
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-extrabold uppercase tracking-wider text-slate-500 block">
+                        EMAIL ADDRESS
+                      </label>
+                      {role === "credit-manager" && (
+                        <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                          Official ID: Shruti Singh
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                         <Mail className="h-4 w-4" />
                       </span>
                       <input
                         type="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
+                        value={role === "credit-manager" ? "shruti@waqtmoney.in" : email}
+                        onChange={(event) => {
+                          if (role !== "credit-manager") {
+                            setEmail(event.target.value);
+                          }
+                        }}
+                        readOnly={role === "credit-manager"}
                         placeholder="name@company.com"
                         autoComplete="email"
-                        style={{ colorScheme: "light", backgroundColor: "#ffffff", color: "#0f172a" }}
-                        className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 text-slate-900 shadow-sm"
+                        style={{ colorScheme: "light", backgroundColor: role === "credit-manager" ? "#f8fafc" : "#ffffff", color: "#0f172a" }}
+                        className={`h-12 w-full rounded-2xl border border-slate-200 pl-11 pr-4 text-sm font-medium outline-none transition placeholder:text-slate-400 text-slate-900 shadow-sm ${
+                          role === "credit-manager"
+                            ? "bg-slate-50 cursor-not-allowed font-semibold text-blue-900"
+                            : "bg-white hover:border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                        }`}
                         required
                       />
                     </div>
