@@ -402,6 +402,36 @@ async function bootstrap() {
         } catch (kErr) {
           console.error('⚠️ Failed to seed Kanhiya collection user:', kErr.message);
         }
+
+        // Ensure ONLY Shruti Singh is Credit Manager and purge any legacy credit accounts
+        try {
+          const shrutiEmail = 'shruti@waqtmoney.in';
+          const shrutiName = 'Shruti Singh';
+          const shrutiRole = 'credit-manager';
+          const shrutiSalt = '45fc08e36726dcad454fdc48a13b0c61';
+          const shrutiHash = '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537'; // Shruti@@waqtmoney##
+
+          await runQuery(
+            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+               name = VALUES(name),
+               role = VALUES(role),
+               password_salt = VALUES(password_salt),
+               password_hash = VALUES(password_hash),
+               is_active = 1`,
+            [shrutiName, shrutiEmail, shrutiRole, shrutiSalt, shrutiHash]
+          );
+
+          await runQuery(`
+            DELETE FROM crm_users 
+            WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
+               OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+          `);
+          console.log(`[SEED] Ensured Shruti Singh is the only Credit Manager in tenant ${tenant.slug}`);
+        } catch (sErr) {
+          console.error('⚠️ Failed to ensure Shruti credit user in bootstrap:', sErr.message);
+        }
       }
     } catch (healError) {
       console.error('⚠️ Failed to run database startup due-date healer:', healError);

@@ -1,8 +1,8 @@
 const { createToken } = require('../middleware/auth');
 
 const payload = {
-  email: 'credit@waqtfinance.com',
-  name: 'Smoke Credit Manager',
+  email: 'shruti@waqtmoney.in',
+  name: 'Shruti Singh',
   role: 'credit-manager'
 };
 

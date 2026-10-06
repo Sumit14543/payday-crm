@@ -24,19 +24,14 @@ async function main() {
     [salt, hashShruti]
   );
 
-  // 2. credit@waqtfinance.com -> Admin@123
-  await query(
-    `INSERT INTO crm_users (email, name, role, password_salt, password_hash, is_active)
-     VALUES ('credit@waqtfinance.com', 'Waqt Credit Manager', 'credit-manager', ?, ?, 1)
-     ON DUPLICATE KEY UPDATE
-       name = 'Waqt Credit Manager',
-       password_salt = VALUES(password_salt),
-       password_hash = VALUES(password_hash),
-       is_active = 1`,
-    [salt, hashAdmin]
-  );
+  // 2. Delete any non-Shruti credit manager accounts
+  await query(`
+    DELETE FROM crm_users 
+    WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
+       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+  `);
 
-  console.log('✅ Specific credentials set successfully.');
+  console.log('✅ Shruti credentials set and legacy credit manager accounts purged successfully.');
   process.exit(0);
 }
 

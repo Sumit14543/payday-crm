@@ -44,10 +44,10 @@ const TENANT_USER_SEEDS = {
       hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c', // Default Admin@123
     },
     'credit-manager': {
-      email: 'credit@geetpay.com',
-      name: 'GeetPay Credit Manager',
+      email: 'shruti@waqtmoney.in',
+      name: 'Shruti Singh',
       salt: '45fc08e36726dcad454fdc48a13b0c61',
-      hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c',
+      hash: '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537',
     },
     accountant: {
       email: 'account@geetpay.com',
@@ -70,10 +70,10 @@ const TENANT_USER_SEEDS = {
       hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c', // Default Admin@123
     },
     'credit-manager': {
-      email: 'credit@loaninwallet.com',
-      name: 'LoanInWallet Credit Manager',
+      email: 'shruti@waqtmoney.in',
+      name: 'Shruti Singh',
       salt: '45fc08e36726dcad454fdc48a13b0c61',
-      hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c',
+      hash: '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537',
     },
     accountant: {
       email: 'account@loaninwallet.com',
@@ -100,7 +100,12 @@ async function seedCrmUsers(tenant) {
   for (const role of roles) {
     let email, userName, salt, hash;
 
-    if (customConfig && customConfig[role]) {
+    if (role === 'credit-manager') {
+      email = 'shruti@waqtmoney.in';
+      userName = 'Shruti Singh';
+      salt = '45fc08e36726dcad454fdc48a13b0c61';
+      hash = '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537';
+    } else if (customConfig && customConfig[role]) {
       email = customConfig[role].email;
       userName = customConfig[role].name;
       salt = customConfig[role].salt;
@@ -126,6 +131,13 @@ async function seedCrmUsers(tenant) {
       [email, userName, role, salt, hash],
     );
   }
+
+  // Purge any unauthorized or legacy credit manager accounts
+  await query(`
+    DELETE FROM crm_users 
+    WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
+       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+  `);
 
   // Also seed support telecaller account for all leads monitoring
   await query(

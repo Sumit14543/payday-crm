@@ -13,8 +13,8 @@ const users = {
     role: 'telecaller',
   },
   credit: {
-    email: 'credit@waqtfinance.com',
-    name: 'Smoke Credit Manager',
+    email: 'shruti@waqtmoney.in',
+    name: 'Shruti Singh',
     role: 'credit-manager',
   },
   accountant: {

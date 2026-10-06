@@ -86,7 +86,7 @@ async function seedCompleteDemoData() {
         loan_amount: 40000,
         status: 'approved',
         priority: 'High',
-        assigned_to: 'test.credit@waqtmoney.in',
+        assigned_to: 'shruti@waqtmoney.in',
         source_system: 'waqtmoney',
         employment_status: 'Salaried',
         monthly_income: 50000,
@@ -179,9 +179,9 @@ async function seedCompleteDemoData() {
       INSERT INTO lead_credit_handoffs (lead_id, application_id, status, notes, submitted_by, submitted_at, reviewed_by, decision)
       VALUES 
         ('9004', 'WQTMN09004', 'ready', 'Documents 100% verified. Income ₹85k. Recommended for ₹1,00,000 sanction.', 'test.telecaller@waqtmoney.in', '2026-09-14 13:50:00', NULL, NULL),
-        ('9005', 'WQTMN09005', 'approved', 'FOIR 40%, CIBIL 760. Approved ₹40,000.', 'test.telecaller@waqtmoney.in', '2026-09-14 14:25:00', 'test.credit@waqtmoney.in', 'approved'),
-        ('9006', 'WQTMN09006', 'approved', 'Approved ₹60,000 for 30 days.', 'test.telecaller@waqtmoney.in', '2026-09-10 09:30:00', 'test.credit@waqtmoney.in', 'approved'),
-        ('9007', 'WQTMN09007', 'approved', 'Approved ₹80,000 for 30 days.', 'test.telecaller@waqtmoney.in', '2026-08-15 10:30:00', 'test.credit@waqtmoney.in', 'approved')
+        ('9005', 'WQTMN09005', 'approved', 'FOIR 40%, CIBIL 760. Approved ₹40,000.', 'test.telecaller@waqtmoney.in', '2026-09-14 14:25:00', 'shruti@waqtmoney.in', 'approved'),
+        ('9006', 'WQTMN09006', 'approved', 'Approved ₹60,000 for 30 days.', 'test.telecaller@waqtmoney.in', '2026-09-10 09:30:00', 'shruti@waqtmoney.in', 'approved'),
+        ('9007', 'WQTMN09007', 'approved', 'Approved ₹80,000 for 30 days.', 'test.telecaller@waqtmoney.in', '2026-08-15 10:30:00', 'shruti@waqtmoney.in', 'approved')
       ON DUPLICATE KEY UPDATE status = VALUES(status)
     `);
     console.log('✅ Credit Manager Queue & Handoffs Seeded');
@@ -208,9 +208,9 @@ async function seedCompleteDemoData() {
     await query(`
       INSERT INTO lead_status_events (lead_id, application_id, stage_key, occurred_at, actor)
       VALUES 
-        ('9005', 'WQTMN09005', 'accounting_handoff', '2026-09-14 14:45:00', 'test.credit@waqtmoney.in'),
-        ('9006', 'WQTMN09006', 'accounting_handoff', '2026-09-10 10:20:00', 'test.credit@waqtmoney.in'),
-        ('9007', 'WQTMN09007', 'accounting_handoff', '2026-08-15 11:25:00', 'test.credit@waqtmoney.in')
+        ('9005', 'WQTMN09005', 'accounting_handoff', '2026-09-14 14:45:00', 'shruti@waqtmoney.in'),
+        ('9006', 'WQTMN09006', 'accounting_handoff', '2026-09-10 10:20:00', 'shruti@waqtmoney.in'),
+        ('9007', 'WQTMN09007', 'accounting_handoff', '2026-08-15 11:25:00', 'shruti@waqtmoney.in')
       ON DUPLICATE KEY UPDATE stage_key = VALUES(stage_key)
     `);
     console.log('✅ Sanction Letters, eSign Agreements, & Accounting Queue Seeded');
