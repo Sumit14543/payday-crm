@@ -62,23 +62,29 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
         0
       ) AS amountPaid,
       l.balance,
-      COALESCE(
-        (SELECT DATE(COALESCE(disbursed_at, paid_at)) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT DATE(COALESCE(disbursed_at, paid_at)) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        (SELECT DATE(COALESCE(sub.disbursement_date, sub.created_at)) FROM lead_sanctions sub WHERE sub.id = ls.id),
-        (SELECT DATE(la_sub.created_at) FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
-        DATE(l.start_date),
-        DATE(l.created_at),
-        NULL
+      DATE_FORMAT(
+        COALESCE(
+          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
+          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
+          (SELECT COALESCE(sub.disbursement_date, sub.created_at) FROM lead_sanctions sub WHERE sub.id = ls.id),
+          (SELECT la_sub.created_at FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
+          l.start_date,
+          l.created_at,
+          NULL
+        ),
+        '%Y-%m-%d'
       ) AS startDate,
-      COALESCE(
-        (SELECT DATE(COALESCE(disbursed_at, paid_at)) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT DATE(COALESCE(disbursed_at, paid_at)) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        (SELECT DATE(COALESCE(sub.disbursement_date, sub.created_at)) FROM lead_sanctions sub WHERE sub.id = ls.id),
-        (SELECT DATE(la_sub.created_at) FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
-        DATE(l.start_date),
-        DATE(l.created_at),
-        NULL
+      DATE_FORMAT(
+        COALESCE(
+          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
+          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
+          (SELECT COALESCE(sub.disbursement_date, sub.created_at) FROM lead_sanctions sub WHERE sub.id = ls.id),
+          (SELECT la_sub.created_at FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
+          l.start_date,
+          l.created_at,
+          NULL
+        ),
+        '%Y-%m-%d'
       ) AS disbursedDate,
       COALESCE(
         (SELECT NULLIF(TRIM(account_number), '') FROM lead_accounting_payments WHERE (account_number IS NOT NULL AND account_number <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),

@@ -17,6 +17,7 @@ import {
   Printer,
   ShieldCheck,
   RotateCcw,
+  Zap,
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
 import { apiGet, apiPostForm } from "../lib/api";
@@ -58,6 +59,12 @@ const PAGE_SIZE_OPTIONS = [
   { label: "25 / page", value: "25" },
   { label: "50 / page", value: "50" },
   { label: "100 / page", value: "100" },
+];
+
+const DISBURSED_FILTER_OPTIONS = [
+  { label: "All Disbursed Dates", value: "all" },
+  { label: "Today Disbursed", value: "today" },
+  { label: "This Month Disbursed", value: "month" },
 ];
 
 const DATE_FILTER_OPTIONS = [
@@ -151,6 +158,7 @@ export function LoanManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
+  const [disbursedFilter, setDisbursedFilter] = useState<"all" | "today" | "month">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("15");
   const [error, setError] = useState<string | null>(null);
@@ -326,7 +334,9 @@ export function LoanManagement() {
 
     return loans.filter((loan) => {
       const dueKey = toDateKey(loan.dueDate) || "";
+      const disbursalKey = toDateKey(loan.disbursedDate || loan.startDate) || "";
       const formattedDue = formatDate(loan.dueDate).toLowerCase();
+      const formattedDisbursed = formatDate(loan.disbursedDate || loan.startDate).toLowerCase();
       const formattedPaymentDate = formatDate(loan.lastPaymentDate).toLowerCase();
 
       const matchesSearch =
@@ -339,8 +349,11 @@ export function LoanManagement() {
         (loan.paymentStatus || "").toLowerCase().includes(query) ||
         dueKey.includes(query) ||
         formattedDue.includes(query) ||
+        disbursalKey.includes(query) ||
+        formattedDisbursed.includes(query) ||
         (loan.dueDate || "").toLowerCase().includes(query) ||
         (loan.startDate || "").toLowerCase().includes(query) ||
+        (loan.disbursedDate || "").toLowerCase().includes(query) ||
         (loan.lastPaymentDate || "").toLowerCase().includes(query) ||
         formattedPaymentDate.includes(query) ||
         String(loan.principal || "").includes(query) ||
@@ -387,12 +400,31 @@ export function LoanManagement() {
         }
       }
 
-      return matchesSearch && matchesStatus && matchesDate;
+      let matchesDisbursed = true;
+      if (disbursedFilter === "today") {
+        matchesDisbursed = disbursalKey === todayKey;
+      } else if (disbursedFilter === "month") {
+        matchesDisbursed = disbursalKey ? disbursalKey.slice(0, 7) === currentMonthKey : false;
+      }
+
+      return matchesSearch && matchesStatus && matchesDate && matchesDisbursed;
     });
-  }, [loans, searchTerm, statusFilter, dateFilter]);
+  }, [loans, searchTerm, statusFilter, dateFilter, disbursedFilter]);
 
   const totals = useMemo(() => {
     const todayKey = toDateKey(new Date()) || "";
+    const currentMonthKey = todayKey.slice(0, 7);
+
+    const todayDisbursedLoans = loans.filter((loan) => {
+      const disbursalKey = toDateKey(loan.disbursedDate || loan.startDate);
+      return disbursalKey === todayKey;
+    });
+
+    const monthDisbursedLoans = loans.filter((loan) => {
+      const disbursalKey = toDateKey(loan.disbursedDate || loan.startDate);
+      return disbursalKey ? disbursalKey.slice(0, 7) === currentMonthKey : false;
+    });
+
     return {
       allLoans: loans.length,
       activeLoans: loans.filter((loan) => (loan.status === "Active" || !loan.status) && Number(loan.balance || 0) > 0).length,
@@ -409,6 +441,10 @@ export function LoanManagement() {
       }).length,
       totalOutstanding: loans.reduce((sum, loan) => sum + Number(loan.balance || 0), 0),
       totalCollected: loans.reduce((sum, loan) => sum + Number(loan.amountPaid || 0), 0),
+      todayDisbursedCount: todayDisbursedLoans.length,
+      todayDisbursedAmount: todayDisbursedLoans.reduce((sum, loan) => sum + Number(loan.principal || 0), 0),
+      monthDisbursedCount: monthDisbursedLoans.length,
+      monthDisbursedAmount: monthDisbursedLoans.reduce((sum, loan) => sum + Number(loan.principal || 0), 0),
     };
   }, [loans]);
 
@@ -425,15 +461,16 @@ export function LoanManagement() {
     setSearchTerm("");
     setStatusFilter("all");
     setDateFilter("all");
+    setDisbursedFilter("all");
     setCurrentPage(1);
   };
 
   const hasActiveFilters =
-    searchTerm.trim() !== "" || statusFilter !== "all" || dateFilter !== "all";
+    searchTerm.trim() !== "" || statusFilter !== "all" || dateFilter !== "all" || disbursedFilter !== "all";
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [pageSize, searchTerm, statusFilter, dateFilter]);
+  }, [pageSize, searchTerm, statusFilter, dateFilter, disbursedFilter]);
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
@@ -519,11 +556,53 @@ export function LoanManagement() {
       </div>
 
       {/* KPI Stat Cards */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {/* Today Disbursed */}
+        <div
+          onClick={() => setDisbursedFilter(disbursedFilter === "today" ? "all" : "today")}
+          className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-sky-200/90 dark:border-sky-900/60 border-t-4 border-t-sky-500 border-l-4 border-l-sky-500 bg-gradient-to-br from-sky-500/10 via-sky-500/5 to-white dark:from-sky-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
+            disbursedFilter === "today" ? "ring-2 ring-sky-500 shadow-md" : ""
+          }`}
+          title="Filter loans disbursed today"
+        >
+          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Today Disbursed
+            <div className="p-2 rounded-xl bg-sky-100/80 dark:bg-sky-900/40 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-700/60 group-hover:scale-105 transition">
+              <Zap className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-2xl xl:text-3xl font-black text-sky-700 dark:text-sky-400">{formatCurrency(totals.todayDisbursedAmount)}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-semibold">
+            {totals.todayDisbursedCount} loan{totals.todayDisbursedCount === 1 ? "" : "s"} today
+          </p>
+        </div>
+
+        {/* This Month Disbursed */}
+        <div
+          onClick={() => setDisbursedFilter(disbursedFilter === "month" ? "all" : "month")}
+          className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-indigo-200/90 dark:border-indigo-900/60 border-t-4 border-t-indigo-500 border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-white dark:from-indigo-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
+            disbursedFilter === "month" ? "ring-2 ring-indigo-500 shadow-md" : ""
+          }`}
+          title="Filter loans disbursed this month"
+        >
+          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            This Month Disbursed
+            <div className="p-2 rounded-xl bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/60 group-hover:scale-105 transition">
+              <Calendar className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-2xl xl:text-3xl font-black text-indigo-700 dark:text-indigo-400">{formatCurrency(totals.monthDisbursedAmount)}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-semibold">
+            {totals.monthDisbursedCount} loan{totals.monthDisbursedCount === 1 ? "" : "s"} this month
+          </p>
+        </div>
+
         {/* Active Loans */}
         <div
-          onClick={() => setStatusFilter("Active")}
-          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-blue-200/90 dark:border-blue-900/60 border-t-4 border-t-blue-500 border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200"
+          onClick={() => setStatusFilter(statusFilter === "Active" ? "all" : "Active")}
+          className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-blue-200/90 dark:border-blue-900/60 border-t-4 border-t-blue-500 border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
+            statusFilter === "Active" ? "ring-2 ring-blue-500 shadow-md" : ""
+          }`}
         >
           <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Active Loans
@@ -531,7 +610,7 @@ export function LoanManagement() {
               <TrendingUp className="h-4 w-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-blue-700 dark:text-blue-400">{totals.activeLoans}</p>
+          <p className="text-2xl xl:text-3xl font-black text-blue-700 dark:text-blue-400">{totals.activeLoans}</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Running repayment portfolios</p>
         </div>
 
@@ -543,14 +622,16 @@ export function LoanManagement() {
               <IndianRupee className="h-4 w-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-purple-700 dark:text-purple-400">{formatCurrency(totals.totalOutstanding)}</p>
+          <p className="text-2xl xl:text-3xl font-black text-purple-700 dark:text-purple-400">{formatCurrency(totals.totalOutstanding)}</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Total balance awaiting collection</p>
         </div>
 
         {/* Total Collected / Paid Off */}
         <div
-          onClick={() => setStatusFilter("Paid Off")}
-          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/90 dark:border-emerald-900/60 border-t-4 border-t-emerald-500 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200"
+          onClick={() => setStatusFilter(statusFilter === "Paid Off" ? "all" : "Paid Off")}
+          className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/90 dark:border-emerald-900/60 border-t-4 border-t-emerald-500 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
+            statusFilter === "Paid Off" ? "ring-2 ring-emerald-500 shadow-md" : ""
+          }`}
         >
           <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Collected / Settled
@@ -558,7 +639,7 @@ export function LoanManagement() {
               <CheckCircle2 className="h-4 w-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-emerald-700 dark:text-emerald-400">{formatCurrency(totals.totalCollected)}</p>
+          <p className="text-2xl xl:text-3xl font-black text-emerald-700 dark:text-emerald-400">{formatCurrency(totals.totalCollected)}</p>
           <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
             {totals.paidOffLoans} loans fully settled (Paid Off)
           </p>
@@ -566,8 +647,10 @@ export function LoanManagement() {
 
         {/* Overdue Loans */}
         <div
-          onClick={() => setStatusFilter("Overdue")}
-          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-rose-200/90 dark:border-rose-900/60 border-t-4 border-t-rose-500 border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-white dark:from-rose-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200"
+          onClick={() => setStatusFilter(statusFilter === "Overdue" ? "all" : "Overdue")}
+          className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-rose-200/90 dark:border-rose-900/60 border-t-4 border-t-rose-500 border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-white dark:from-rose-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
+            statusFilter === "Overdue" ? "ring-2 ring-rose-500 shadow-md" : ""
+          }`}
         >
           <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Overdue Loans
@@ -575,14 +658,14 @@ export function LoanManagement() {
               <AlertCircle className="h-4 w-4" />
             </div>
           </div>
-          <p className="text-3xl font-black text-rose-700 dark:text-rose-400">{totals.overdueLoans}</p>
+          <p className="text-2xl xl:text-3xl font-black text-rose-700 dark:text-rose-400">{totals.overdueLoans}</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Past due date requiring recovery</p>
         </div>
       </div>
 
       {/* Filter and Search Panel */}
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        {/* Quick Status Tabs */}
+        {/* Quick Status & Disbursal Tabs */}
         <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1">
             Status:
@@ -663,6 +746,54 @@ export function LoanManagement() {
             </span>
           </button>
 
+          <span className="hidden lg:inline-block h-4 w-px bg-slate-200 dark:bg-slate-700 mx-2" />
+
+          {/* Quick Disbursal Tabs */}
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1">
+            Disbursed:
+          </span>
+          <button
+            type="button"
+            onClick={() => setDisbursedFilter("all")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              disbursedFilter === "all"
+                ? "bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            }`}
+          >
+            All
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDisbursedFilter("today")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              disbursedFilter === "today"
+                ? "bg-sky-600 text-white shadow-sm"
+                : "bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-950/50 dark:text-sky-300 dark:hover:bg-sky-900/60"
+            }`}
+          >
+            Today Disbursed
+            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${disbursedFilter === "today" ? "bg-white/20 text-white" : "bg-sky-100 dark:bg-sky-900 text-sky-800 dark:text-sky-200"}`}>
+              {totals.todayDisbursedCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDisbursedFilter("month")}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              disbursedFilter === "month"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+            }`}
+          >
+            This Month
+            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${disbursedFilter === "month" ? "bg-white/20 text-white" : "bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200"}`}>
+              {totals.monthDisbursedCount}
+            </span>
+          </button>
+
           {hasActiveFilters && (
             <button
               type="button"
@@ -675,10 +806,10 @@ export function LoanManagement() {
           )}
         </div>
 
-        {/* Search & Due Date Filter Bar */}
+        {/* Search, Disbursed Date & Due Date Filter Bar */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
           {/* Search box */}
-          <div className="relative md:col-span-8 lg:col-span-9">
+          <div className="relative md:col-span-6 lg:col-span-6">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
@@ -698,8 +829,19 @@ export function LoanManagement() {
             )}
           </div>
 
+          {/* Disbursed Filter Dropdown */}
+          <div className="md:col-span-3 lg:col-span-3">
+            <NiceSelect
+              ariaLabel="Filter by disbursed date"
+              value={disbursedFilter}
+              onValueChange={(val) => setDisbursedFilter(val as "all" | "today" | "month")}
+              className="w-full"
+              options={DISBURSED_FILTER_OPTIONS}
+            />
+          </div>
+
           {/* Date Filter Dropdown */}
-          <div className="md:col-span-4 lg:col-span-3">
+          <div className="md:col-span-3 lg:col-span-3">
             <NiceSelect
               ariaLabel="Filter by due date"
               value={dateFilter}
@@ -836,12 +978,17 @@ export function LoanManagement() {
                         )}
                       </td>
 
-                      {/* Due Date */}
+                      {/* Due Date & Disbursal */}
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Calendar className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                        <span className="inline-flex items-center gap-1.5 font-medium">
+                          <Calendar className="h-4 w-4 text-slate-400 dark:text-slate-500 shrink-0" />
                           {formatDate(loan.dueDate)}
                         </span>
+                        {(loan.disbursedDate || loan.startDate) && (
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5" title="Disbursed Date">
+                            Disbursed: {formatDate(loan.disbursedDate || loan.startDate)}
+                          </div>
+                        )}
                       </td>
 
                       {/* Payment Date */}
