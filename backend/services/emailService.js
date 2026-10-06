@@ -95,6 +95,23 @@ async function sendMail(options = {}) {
   }
 }
 
+function getOtpSmtpConfig() {
+  if (process.env.TELECALLER_OTP_SMTP_HOST && process.env.TELECALLER_OTP_SMTP_USERNAME) {
+    const host = process.env.TELECALLER_OTP_SMTP_HOST.trim();
+    const port = Number(process.env.TELECALLER_OTP_SMTP_PORT || 465);
+    const secure = process.env.TELECALLER_OTP_SMTP_SECURE !== undefined
+      ? ['1', 'true', 'yes', 'ssl'].includes(String(process.env.TELECALLER_OTP_SMTP_SECURE).trim().toLowerCase())
+      : port === 465;
+    const username = process.env.TELECALLER_OTP_SMTP_USERNAME.trim();
+    const password = (process.env.TELECALLER_OTP_SMTP_PASSWORD || '').trim();
+    const fromEmail = (process.env.TELECALLER_OTP_SMTP_FROM_EMAIL || username).trim();
+    const fromName = process.env.TELECALLER_OTP_SMTP_FROM_NAME || 'Waqt CRM Security';
+
+    return { host, port, secure, username, password, fromEmail, fromName };
+  }
+  return getSmtpConfig();
+}
+
 async function sendTelecallerOtpEmail({ toEmail, otpCode, userName }) {
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
@@ -120,7 +137,11 @@ async function sendTelecallerOtpEmail({ toEmail, otpCode, userName }) {
     </div>
   `;
 
-  return await sendMail({
+  const smtpConfig = getOtpSmtpConfig();
+  const transporter = createTransporter(smtpConfig);
+
+  return await transporter.sendMail({
+    from: `"${smtpConfig.fromName}" <${smtpConfig.fromEmail}>`,
     to: toEmail,
     subject: `🔐 Your Login OTP Code: ${otpCode} - CRM Security`,
     html: htmlContent,
@@ -131,5 +152,6 @@ module.exports = {
   isConfigured,
   sendMail,
   sendTelecallerOtpEmail,
+  sendLoginOtpEmail: sendTelecallerOtpEmail,
 };
 

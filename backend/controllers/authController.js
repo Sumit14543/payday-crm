@@ -81,7 +81,7 @@ async function login(req, res) {
   }
 
   if (roleClean === 'credit-manager' && emailClean !== 'shruti@waqtmoney.in') {
-    const error = new Error('Access Denied: Only Shruti Singh (shruti@waqtmoney.in) is authorized to login into the Credit Panel.');
+    const error = new Error('Access Denied: Only authorized Credit Manager account (shruti@waqtmoney.in) is authorized to login into the Credit Panel.');
     error.statusCode = 403;
     error.publicMessage = error.message;
     throw error;
@@ -122,10 +122,10 @@ async function login(req, res) {
   // Clear failed login attempts on successful credentials
   loginAttempts.delete(rateLimitKey);
 
-  // Telecaller & Collection Roles: Mandatory 2FA Email OTP Verification
+  // Telecaller, Collection & Credit Manager Roles: Mandatory 2FA Email OTP Verification
   const userRoleClean = String(user.role || '').trim().toLowerCase();
   const userEmailClean = String(user.email || '').trim().toLowerCase();
-  const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userEmailClean.includes('himanshu');
+  const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userRoleClean === 'credit-manager' || userEmailClean.includes('himanshu');
 
   if (isOtpRequired) {
     const otpCode = String(Math.floor(100000 + Math.random() * 900000));
