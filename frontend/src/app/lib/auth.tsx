@@ -58,7 +58,7 @@ export const roleHomeRoutes: Record<UserRole, string> = {
 export const roleDefaultEmails: Record<UserRole, string> = {
   accountant: "account@waqtfinance.com",
   collection: "prakash@waqtfinance.com",
-  "credit-manager": "shruti@waqtmoney.in",
+  "credit-manager": "shrutisingh@waqtmoney.in",
   telecaller: "telecaller@waqtfinance.com",
   superadmin: "admin@paydaycrm.com",
   "product-admin": "productadmin@paydaycrm.com",

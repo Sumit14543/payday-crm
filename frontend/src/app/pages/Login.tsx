@@ -155,7 +155,7 @@ export function Login() {
       const domain = branding.slug === "waqtfinance" ? "waqtfinance.com" : `${branding.slug}.com`;
       setEmail(domain === "waqtfinance.com" ? "support@waqtfinance.com" : "productadmin@paydaycrm.com");
     } else if (nextRole === "credit-manager") {
-      setEmail("shruti@waqtmoney.in");
+      setEmail("shrutisingh@waqtmoney.in");
     } else {
       const domain = branding.slug === "waqtfinance" ? "waqtfinance.com" : `${branding.slug}.com`;
       const defaultEmailPrefix = nextRole === "collection" ? "prakash" : nextRole;
@@ -232,8 +232,8 @@ export function Login() {
       return;
     }
 
-    if (role === "credit-manager" && cleanEmail !== "shruti@waqtmoney.in") {
-      setError("Access Denied: Only authorized Credit Manager account (shruti@waqtmoney.in) is permitted for Credit Panel.");
+    if (role === "credit-manager" && cleanEmail !== "shrutisingh@waqtmoney.in") {
+      setError("Access Denied: Only authorized Credit Manager account (shrutisingh@waqtmoney.in) is permitted for Credit Panel.");
       return;
     }
 

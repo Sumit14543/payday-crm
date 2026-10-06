@@ -11,7 +11,7 @@ if (!tenantSlug || !role || !email || !newPassword) {
   console.log('\n❌ Missing arguments!');
   console.log('Usage: node scripts/changeUserPassword.js <tenant_slug> <role> <email> <new_password>');
   console.log('Example: node scripts/changeUserPassword.js geetpay telecaller telecaller@geetpay.com MyNewPassword123');
-  console.log('Example: node scripts/changeUserPassword.js waqtfinance credit shruti@waqtmoney.in WaqtNewPass786\n');
+  console.log('Example: node scripts/changeUserPassword.js waqtfinance credit shrutisingh@waqtmoney.in WaqtNewPass786\n');
   process.exit(1);
 }
 

@@ -18,7 +18,7 @@ const TENANT_USER_SEEDS = {
       hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c', // Default Admin@123
     },
     'credit-manager': {
-      email: 'shruti@waqtmoney.in',
+      email: 'shrutisingh@waqtmoney.in',
       name: 'Shruti Singh',
       salt: '45fc08e36726dcad454fdc48a13b0c61',
       hash: '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537',
@@ -44,7 +44,7 @@ const TENANT_USER_SEEDS = {
       hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c', // Default Admin@123
     },
     'credit-manager': {
-      email: 'shruti@waqtmoney.in',
+      email: 'shrutisingh@waqtmoney.in',
       name: 'Shruti Singh',
       salt: '45fc08e36726dcad454fdc48a13b0c61',
       hash: '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537',
@@ -70,7 +70,7 @@ const TENANT_USER_SEEDS = {
       hash: '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c', // Default Admin@123
     },
     'credit-manager': {
-      email: 'shruti@waqtmoney.in',
+      email: 'shrutisingh@waqtmoney.in',
       name: 'Shruti Singh',
       salt: '45fc08e36726dcad454fdc48a13b0c61',
       hash: '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537',
@@ -101,7 +101,7 @@ async function seedCrmUsers(tenant) {
     let email, userName, salt, hash;
 
     if (role === 'credit-manager') {
-      email = 'shruti@waqtmoney.in';
+      email = 'shrutisingh@waqtmoney.in';
       userName = 'Shruti Singh';
       salt = '45fc08e36726dcad454fdc48a13b0c61';
       hash = '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537';
@@ -135,8 +135,8 @@ async function seedCrmUsers(tenant) {
   // Purge any unauthorized or legacy credit manager accounts
   await query(`
     DELETE FROM crm_users 
-    WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
-       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+    WHERE (role = 'credit-manager' AND email <> 'shrutisingh@waqtmoney.in')
+       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
   `);
 
   // Also seed support telecaller account for all leads monitoring

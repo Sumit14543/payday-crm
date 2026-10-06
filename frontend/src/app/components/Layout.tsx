@@ -150,7 +150,7 @@ export function Layout() {
   const searchContainerRef = useRef<HTMLLabelElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const role = activeRole || user?.role;
-  const isShrutiUser = role === "credit-manager" || user?.role === "credit-manager" || String(user?.email || "").toLowerCase().startsWith("shruti@waqtmoney");
+  const isShrutiUser = role === "credit-manager" || user?.role === "credit-manager" || String(user?.email || "").toLowerCase().includes("shruti");
   const isNandiniUser = user?.email?.toLowerCase() === "nandini@waqtmoney.in" || user?.name?.toLowerCase().includes("nandini") || user?.name?.toLowerCase().includes("nandni");
   const isHimanshuUser = user?.email?.toLowerCase() === "himanshukumar@waqtfinance.com" || user?.name?.toLowerCase().includes("himanshu");
   const isKanhaiyaUser = user?.email?.toLowerCase() === "kanhiayakumar@waqtfinance.com" || user?.name?.toLowerCase().includes("kanhiya") || user?.name?.toLowerCase().includes("kanhaiya");
@@ -1194,7 +1194,7 @@ export function Layout() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Official Email</p>
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                      {isNandiniUser ? "nandini@waqtmoney.in" : isShrutiUser ? (user?.email || "shruti@waqtmoney.in") : user?.email}
+                      {isNandiniUser ? "nandini@waqtmoney.in" : isShrutiUser ? (user?.email || "shrutisingh@waqtmoney.in") : user?.email}
                     </p>
                   </div>
                 </div>

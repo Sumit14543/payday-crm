@@ -60,8 +60,8 @@ async function createRoleTestUsers() {
     // Purge test credit user or unauthorized credit manager accounts
     await query(`
       DELETE FROM crm_users 
-      WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
-         OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+      WHERE (role = 'credit-manager' AND email <> 'shrutisingh@waqtmoney.in')
+         OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
     `);
 
     console.log(`======================================================\n`);

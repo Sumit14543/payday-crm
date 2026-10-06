@@ -12,10 +12,10 @@ async function main() {
   const passAdmin = 'Admin@123';
   const hashAdmin = crypto.pbkdf2Sync(passAdmin, salt, 120000, 32, 'sha256').toString('hex');
 
-  // 1. shruti@waqtmoney.in -> Shruti@@waqtmoney##
+  // 1. shrutisingh@waqtmoney.in -> Shruti@@waqtmoney##
   await query(
     `INSERT INTO crm_users (email, name, role, password_salt, password_hash, is_active)
-     VALUES ('shruti@waqtmoney.in', 'Shruti Singh', 'credit-manager', ?, ?, 1)
+     VALUES ('shrutisingh@waqtmoney.in', 'Shruti Singh', 'credit-manager', ?, ?, 1)
      ON DUPLICATE KEY UPDATE
        name = 'Shruti Singh',
        password_salt = VALUES(password_salt),
@@ -27,11 +27,11 @@ async function main() {
   // 2. Delete any non-Shruti credit manager accounts
   await query(`
     DELETE FROM crm_users 
-    WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
-       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+    WHERE (role = 'credit-manager' AND email <> 'shrutisingh@waqtmoney.in')
+       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
   `);
 
-  console.log('✅ Shruti credentials set and legacy credit manager accounts purged successfully.');
+  console.log('✅ Shruti credentials set for shrutisingh@waqtmoney.in and legacy credit manager accounts purged successfully.');
   process.exit(0);
 }
 

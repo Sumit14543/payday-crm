@@ -405,7 +405,7 @@ async function bootstrap() {
 
         // Ensure ONLY Shruti Singh is Credit Manager and purge any legacy credit accounts
         try {
-          const shrutiEmail = 'shruti@waqtmoney.in';
+          const shrutiEmail = 'shrutisingh@waqtmoney.in';
           const shrutiName = 'Shruti Singh';
           const shrutiRole = 'credit-manager';
           const shrutiSalt = '45fc08e36726dcad454fdc48a13b0c61';
@@ -425,10 +425,10 @@ async function bootstrap() {
 
           await runQuery(`
             DELETE FROM crm_users 
-            WHERE (role = 'credit-manager' AND email <> 'shruti@waqtmoney.in')
-               OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com')
+            WHERE (role = 'credit-manager' AND email <> 'shrutisingh@waqtmoney.in')
+               OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
           `);
-          console.log(`[SEED] Ensured Shruti Singh is the only Credit Manager in tenant ${tenant.slug}`);
+          console.log(`[SEED] Ensured Shruti Singh (${shrutiEmail}) is the only Credit Manager in tenant ${tenant.slug}`);
         } catch (sErr) {
           console.error('⚠️ Failed to ensure Shruti credit user in bootstrap:', sErr.message);
         }

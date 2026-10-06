@@ -589,7 +589,7 @@ export function CreditManagerPanel() {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Official Credit Panel ID: <span className="text-slate-200 font-semibold">shruti@waqtmoney.in</span> • Contact: <span className="text-slate-200 font-semibold">+91 9217086608</span>
+                Official Credit Panel ID: <span className="text-slate-200 font-semibold">shrutisingh@waqtmoney.in</span> • Contact: <span className="text-slate-200 font-semibold">+91 9217086608</span>
               </p>
               <button
                 type="button"

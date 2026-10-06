@@ -13,7 +13,7 @@ const users = {
     role: 'telecaller',
   },
   credit: {
-    email: 'shruti@waqtmoney.in',
+    email: 'shrutisingh@waqtmoney.in',
     name: 'Shruti Singh',
     role: 'credit-manager',
   },

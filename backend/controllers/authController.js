@@ -80,8 +80,8 @@ async function login(req, res) {
     throw error;
   }
 
-  if (roleClean === 'credit-manager' && emailClean !== 'shruti@waqtmoney.in') {
-    const error = new Error('Access Denied: Only authorized Credit Manager account (shruti@waqtmoney.in) is authorized to login into the Credit Panel.');
+  if (roleClean === 'credit-manager' && emailClean !== 'shrutisingh@waqtmoney.in') {
+    const error = new Error('Access Denied: Only authorized Credit Manager account (shrutisingh@waqtmoney.in) is authorized to login into the Credit Panel.');
     error.statusCode = 403;
     error.publicMessage = error.message;
     throw error;

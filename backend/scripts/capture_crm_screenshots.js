@@ -175,7 +175,7 @@ async function capture() {
       {
         role: 'credit-manager',
         roleLabel: 'Credit Manager',
-        email: 'shruti@waqtmoney.in',
+        email: 'shrutisingh@waqtmoney.in',
         password: 'Shruti@@waqtmoney##',
         screenshots: [
           { path: 'credit_manager_panel.png', url: 'http://localhost:3000/credit-manager' },
