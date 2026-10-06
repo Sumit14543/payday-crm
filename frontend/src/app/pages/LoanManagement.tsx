@@ -556,7 +556,7 @@ export function LoanManagement() {
       </div>
 
       {/* KPI Stat Cards */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Today Disbursed */}
         <div
           onClick={() => setDisbursedFilter(disbursedFilter === "today" ? "all" : "today")}
@@ -595,23 +595,6 @@ export function LoanManagement() {
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-semibold">
             {totals.monthDisbursedCount} loan{totals.monthDisbursedCount === 1 ? "" : "s"} this month
           </p>
-        </div>
-
-        {/* Active Loans */}
-        <div
-          onClick={() => setStatusFilter(statusFilter === "Active" ? "all" : "Active")}
-          className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-blue-200/90 dark:border-blue-900/60 border-t-4 border-t-blue-500 border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
-            statusFilter === "Active" ? "ring-2 ring-blue-500 shadow-md" : ""
-          }`}
-        >
-          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Active Loans
-            <div className="p-2 rounded-xl bg-blue-100/80 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-700/60 group-hover:scale-105 transition">
-              <TrendingUp className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="text-2xl xl:text-3xl font-black text-blue-700 dark:text-blue-400">{totals.activeLoans}</p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Running repayment portfolios</p>
         </div>
 
         {/* Total Outstanding */}
@@ -743,54 +726,6 @@ export function LoanManagement() {
             Overdue
             <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "Overdue" ? "bg-white/20 text-white" : "bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200"}`}>
               {totals.overdueLoans}
-            </span>
-          </button>
-
-          <span className="hidden lg:inline-block h-4 w-px bg-slate-200 dark:bg-slate-700 mx-2" />
-
-          {/* Quick Disbursal Tabs */}
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1">
-            Disbursed:
-          </span>
-          <button
-            type="button"
-            onClick={() => setDisbursedFilter("all")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              disbursedFilter === "all"
-                ? "bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            }`}
-          >
-            All
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDisbursedFilter("today")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              disbursedFilter === "today"
-                ? "bg-sky-600 text-white shadow-sm"
-                : "bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-950/50 dark:text-sky-300 dark:hover:bg-sky-900/60"
-            }`}
-          >
-            Today Disbursed
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${disbursedFilter === "today" ? "bg-white/20 text-white" : "bg-sky-100 dark:bg-sky-900 text-sky-800 dark:text-sky-200"}`}>
-              {totals.todayDisbursedCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDisbursedFilter("month")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              disbursedFilter === "month"
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
-            }`}
-          >
-            This Month
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${disbursedFilter === "month" ? "bg-white/20 text-white" : "bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200"}`}>
-              {totals.monthDisbursedCount}
             </span>
           </button>
 
