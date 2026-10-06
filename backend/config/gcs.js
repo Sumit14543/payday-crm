@@ -6,8 +6,8 @@ require('./env');
 const APP_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_KEY_PATH = path.join(APP_ROOT, 'gcp-key.json');
 
-const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'waqtmoney-documents';
-const GCS_PREFIX = process.env.GCS_PREFIX || 'test-uploads';
+const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'waqt-finance-loan-documents-prod';
+const GCS_PREFIX = process.env.GCS_PREFIX || 'waqtmoney-documents/test-uploads';
 const ENABLE_GCS_SYNC = ['1', 'true', 'yes', 'on'].includes(
   String(process.env.ENABLE_GCS_SYNC || '').trim().toLowerCase()
 );
