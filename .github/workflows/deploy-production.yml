@@ -128,5 +128,5 @@ jobs:
             [ ! -f index.js ] || touch index.js || true
             [ ! -f app.js ] || touch app.js || true
             [ ! -f passenger_wsgi.py ] || touch passenger_wsgi.py || true
-            nohup PORT=8081 node index.js > node_production.log 2>&1 &
+            PORT=8081 nohup node index.js > node_production.log 2>&1 &
             sleep 3
