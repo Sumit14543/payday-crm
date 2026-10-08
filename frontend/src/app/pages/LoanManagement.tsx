@@ -947,9 +947,16 @@ export function LoanManagement() {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Today Disbursed */}
         <div
-          onClick={() => setDisbursedFilter(disbursedFilter === "today" ? "all" : "today")}
+          onClick={() => {
+            if (datePreset === "today" && dateType === "disbursed") {
+              handleDatePreset("all");
+            } else {
+              setDateType("disbursed");
+              handleDatePreset("today");
+            }
+          }}
           className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-sky-200/90 dark:border-sky-900/60 border-t-4 border-t-sky-500 border-l-4 border-l-sky-500 bg-gradient-to-br from-sky-500/10 via-sky-500/5 to-white dark:from-sky-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
-            disbursedFilter === "today" ? "ring-2 ring-sky-500 shadow-md" : ""
+            datePreset === "today" && dateType === "disbursed" ? "ring-2 ring-sky-500 shadow-md" : ""
           }`}
           title="Filter loans disbursed today"
         >
@@ -967,9 +974,16 @@ export function LoanManagement() {
 
         {/* This Month Disbursed */}
         <div
-          onClick={() => setDisbursedFilter(disbursedFilter === "month" ? "all" : "month")}
+          onClick={() => {
+            if (datePreset === "this_month" && dateType === "disbursed") {
+              handleDatePreset("all");
+            } else {
+              setDateType("disbursed");
+              handleDatePreset("this_month");
+            }
+          }}
           className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-indigo-200/90 dark:border-indigo-900/60 border-t-4 border-t-indigo-500 border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-white dark:from-indigo-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
-            disbursedFilter === "month" ? "ring-2 ring-indigo-500 shadow-md" : ""
+            datePreset === "this_month" && dateType === "disbursed" ? "ring-2 ring-indigo-500 shadow-md" : ""
           }`}
           title="Filter loans disbursed this month"
         >
