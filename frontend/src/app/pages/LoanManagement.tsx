@@ -97,6 +97,7 @@ type Loan = {
 };
 
 const COLLECTION_HEADERS = [
+  "Loan No.",
   "Name",
   "Email",
   "Mobile",
@@ -623,6 +624,7 @@ export function LoanManagement() {
 
       if (viewMode === "collection") {
         const headers = [
+          "Loan No.",
           "Name",
           "Email",
           "Mobile",
@@ -643,6 +645,7 @@ export function LoanManagement() {
         const rows = exportData.map((raw) => {
           const l = parseLoanRow(raw);
           return [
+            `"${(l.loanNo || l.id || "").replace(/"/g, '""')}"`,
             `"${(l.customerName || "").replace(/"/g, '""')}"`,
             `"${(l.email || "").replace(/"/g, '""')}"`,
             `"${l.mobile || l.mobileNumber || ""}"`,
@@ -1291,7 +1294,7 @@ export function LoanManagement() {
                   : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
               }`}
             >
-              15 Columns
+              16 Columns
             </span>
           </button>
 
@@ -1402,6 +1405,13 @@ export function LoanManagement() {
                   if (viewMode === "collection") {
                     return (
                       <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* 0. Loan No. (Loan ID) */}
+                        <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400 select-all">
+                          <Link to={`/admin/loans/${loan.id}`} className="hover:underline flex items-center gap-1">
+                            {loan.loanNo || loan.id}
+                          </Link>
+                        </td>
+
                         {/* 1. Name */}
                         <td className="whitespace-nowrap px-4 py-3.5">
                           <div className="text-sm font-bold text-slate-950 dark:text-white">{loan.customerName}</div>

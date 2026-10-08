@@ -268,7 +268,10 @@ async function enrichLoansBatch(loans) {
         WHERE status IN ('received', 'success', 'paid', 'settled')
           AND loan_id IN (${ph})
         ORDER BY received_at ASC, id ASC
-      `, loanIdArr)
+      `, loanIdArr).catch(err => {
+        console.warn('[LoanModel] loan_repayments batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -297,7 +300,10 @@ async function enrichLoansBatch(loans) {
         FROM lead_accounting_payments
         WHERE ${lapConds.join(' OR ')}
         ORDER BY id DESC
-      `, lapParams)
+      `, lapParams).catch(err => {
+        console.warn('[LoanModel] lead_accounting_payments batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -330,7 +336,10 @@ async function enrichLoansBatch(loans) {
         FROM lead_sanctions
         WHERE ${lsConds.join(' OR ')}
         ORDER BY (status = 'sent') DESC, id DESC
-      `, lsParams)
+      `, lsParams).catch(err => {
+        console.warn('[LoanModel] lead_sanctions batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -367,7 +376,10 @@ async function enrichLoansBatch(loans) {
         FROM loan_applications
         WHERE ${laConds.join(' OR ')}
         ORDER BY id DESC
-      `, laParams)
+      `, laParams).catch(err => {
+        console.warn('[LoanModel] loan_applications batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -396,7 +408,10 @@ async function enrichLoansBatch(loans) {
         FROM aadhaar_reports
         WHERE ${arConds.join(' OR ')}
         ORDER BY id DESC
-      `, arParams)
+      `, arParams).catch(err => {
+        console.warn('[LoanModel] aadhaar_reports batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -425,7 +440,10 @@ async function enrichLoansBatch(loans) {
         FROM cibil_reports
         WHERE ${cibConds.join(' OR ')}
         ORDER BY id DESC
-      `, cibParams)
+      `, cibParams).catch(err => {
+        console.warn('[LoanModel] cibil_reports batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -446,11 +464,14 @@ async function enrichLoansBatch(loans) {
   if (camConds.length) {
     promises.push(
       query(`
-        SELECT id, lead_id, application_id, inhand_salary, decided_by
+        SELECT id, lead_id, application_id, monthly_income, net_income, decided_by
         FROM lead_cam_sheets
         WHERE ${camConds.join(' OR ')}
         ORDER BY id DESC
-      `, camParams)
+      `, camParams).catch(err => {
+        console.warn('[LoanModel] lead_cam_sheets batch query error:', err.message);
+        return [];
+      })
     );
   } else {
     promises.push(Promise.resolve([]));
@@ -724,7 +745,8 @@ async function enrichLoansBatch(loans) {
       app?.monthly_income ||
       l.customerMonthlyIncome ||
       extractIncomeFromPayload(payload) ||
-      cam?.inhand_salary ||
+      cam?.monthly_income ||
+      cam?.net_income ||
       cibilAnalysis?.monthlyIncome ||
       0
     );
