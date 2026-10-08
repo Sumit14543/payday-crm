@@ -825,13 +825,17 @@ async function enrichLoansBatch(loans) {
   });
 }
 
-async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all' } = {}) {
+async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all', fromDate = '', toDate = '', dateType = 'disbursed' } = {}) {
   const effectiveLimit = pageSize || limit;
   const parsedPage = Math.max(Number(page) || 1, 1);
   const parsedLimit = Math.min(Math.max(Number(effectiveLimit) || 50, 1), 5000);
   const offset = (parsedPage - 1) * parsedLimit;
 
-  const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${parsedPage}:${parsedLimit}`;
+  const cleanFromDate = cleanStr(fromDate);
+  const cleanToDate = cleanStr(toDate);
+  const cleanDateType = (cleanStr(dateType) || 'disbursed').toLowerCase();
+
+  const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${cleanFromDate}:${cleanToDate}:${cleanDateType}:${parsedPage}:${parsedLimit}`;
   const cached = loansListCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < LOANS_CACHE_TTL_MS)) {
     return cached.data;
@@ -861,23 +865,87 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
     }
   }
 
-  if (dateFilter !== 'all') {
-    if (dateFilter === 'today') {
-      clauses.push('l.due_date = CURDATE()');
-    } else if (dateFilter === 'month') {
-      clauses.push("DATE_FORMAT(l.due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
-    } else if (dateFilter === 'week') {
-      clauses.push('YEARWEEK(l.due_date, 1) = YEARWEEK(CURDATE(), 1)');
-    } else if (dateFilter === 'overdue') {
-      clauses.push('l.due_date < CURDATE() AND l.balance > 0');
+  // 1. Custom explicit date range filters
+  if (cleanFromDate || cleanToDate) {
+    if (cleanDateType === 'due') {
+      if (cleanFromDate) {
+        clauses.push('l.due_date >= ?');
+        params.push(cleanFromDate);
+      }
+      if (cleanToDate) {
+        clauses.push('l.due_date <= ?');
+        params.push(cleanToDate);
+      }
+    } else if (cleanDateType === 'collected') {
+      if (cleanFromDate && cleanToDate) {
+        clauses.push(`EXISTS (
+          SELECT 1 FROM loan_repayments lr
+          WHERE lr.loan_id = l.id
+            AND lr.status IN ('received', 'success', 'paid', 'settled')
+            AND DATE(lr.received_at) >= ? AND DATE(lr.received_at) <= ?
+        )`);
+        params.push(cleanFromDate, cleanToDate);
+      } else if (cleanFromDate) {
+        clauses.push(`EXISTS (
+          SELECT 1 FROM loan_repayments lr
+          WHERE lr.loan_id = l.id
+            AND lr.status IN ('received', 'success', 'paid', 'settled')
+            AND DATE(lr.received_at) >= ?
+        )`);
+        params.push(cleanFromDate);
+      } else if (cleanToDate) {
+        clauses.push(`EXISTS (
+          SELECT 1 FROM loan_repayments lr
+          WHERE lr.loan_id = l.id
+            AND lr.status IN ('received', 'success', 'paid', 'settled')
+            AND DATE(lr.received_at) <= ?
+        )`);
+        params.push(cleanToDate);
+      }
+    } else if (cleanDateType === 'created') {
+      if (cleanFromDate) {
+        clauses.push('DATE(l.created_at) >= ?');
+        params.push(cleanFromDate);
+      }
+      if (cleanToDate) {
+        clauses.push('DATE(l.created_at) <= ?');
+        params.push(cleanToDate);
+      }
+    } else {
+      // Default: 'disbursed'
+      if (cleanFromDate) {
+        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) >= ?');
+        params.push(cleanFromDate);
+      }
+      if (cleanToDate) {
+        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) <= ?');
+        params.push(cleanToDate);
+      }
     }
-  }
+  } else {
+    // 2. Preset filters when custom dates are not specified
+    if (dateFilter !== 'all') {
+      if (dateFilter === 'today') {
+        clauses.push('l.due_date = CURDATE()');
+      } else if (dateFilter === 'yesterday') {
+        clauses.push('l.due_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY)');
+      } else if (dateFilter === 'month') {
+        clauses.push("DATE_FORMAT(l.due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+      } else if (dateFilter === 'week') {
+        clauses.push('YEARWEEK(l.due_date, 1) = YEARWEEK(CURDATE(), 1)');
+      } else if (dateFilter === 'overdue') {
+        clauses.push('l.due_date < CURDATE() AND l.balance > 0');
+      }
+    }
 
-  if (disbursedFilter !== 'all') {
-    if (disbursedFilter === 'today') {
-      clauses.push('DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()');
-    } else if (disbursedFilter === 'month') {
-      clauses.push("DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+    if (disbursedFilter !== 'all') {
+      if (disbursedFilter === 'today') {
+        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()');
+      } else if (disbursedFilter === 'yesterday') {
+        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)');
+      } else if (disbursedFilter === 'month') {
+        clauses.push("DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+      }
     }
   }
 

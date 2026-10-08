@@ -275,6 +275,31 @@ const DATE_FILTER_OPTIONS = [
   { label: "Overdue (Past Due)", value: "overdue" },
 ];
 
+const DATE_TYPE_OPTIONS = [
+  { label: "Disbursal Date", value: "disbursed" },
+  { label: "Repayment Due Date", value: "due" },
+  { label: "Collection / Paid Date", value: "collected" },
+  { label: "Lead Created Date", value: "created" },
+];
+
+const DATE_PRESET_OPTIONS = [
+  { label: "All Time", value: "all" },
+  { label: "Today", value: "today" },
+  { label: "Yesterday", value: "yesterday" },
+  { label: "This Week", value: "this_week" },
+  { label: "This Month", value: "this_month" },
+  { label: "Last Month", value: "last_month" },
+];
+
+function getTodayDateStr(): string {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  } catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+}
+
 function formatCurrency(value: number | null | undefined) {
   return money.format(Number(value || 0));
 }
@@ -368,6 +393,10 @@ export function LoanManagement() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [disbursedFilter, setDisbursedFilter] = useState<"all" | "today" | "month">("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [dateType, setDateType] = useState<"disbursed" | "due" | "collected" | "created">("disbursed");
+  const [datePreset, setDatePreset] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("15");
   const [totalCount, setTotalCount] = useState(0);
@@ -375,6 +404,73 @@ export function LoanManagement() {
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+
+  const handleDatePreset = (preset: string) => {
+    setDatePreset(preset);
+    const todayStr = getTodayDateStr();
+    if (preset === "all") {
+      setFromDate("");
+      setToDate("");
+      setDateFilter("all");
+      setDisbursedFilter("all");
+      return;
+    }
+    if (preset === "today") {
+      setFromDate(todayStr);
+      setToDate(todayStr);
+      return;
+    }
+    if (preset === "yesterday") {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const yStr = toDateKey(d) || todayStr;
+      setFromDate(yStr);
+      setToDate(yStr);
+      return;
+    }
+    if (preset === "this_week") {
+      const now = new Date();
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
+      const monday = new Date(now.setDate(diff));
+      setFromDate(toDateKey(monday) || todayStr);
+      setToDate(todayStr);
+      return;
+    }
+    if (preset === "this_month") {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFromDate(toDateKey(firstDay) || todayStr);
+      setToDate(todayStr);
+      return;
+    }
+    if (preset === "last_month") {
+      const now = new Date();
+      const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      setFromDate(toDateKey(firstDayLastMonth) || todayStr);
+      setToDate(toDateKey(lastDayLastMonth) || todayStr);
+      return;
+    }
+  };
+
+  const handleFromDateChange = (val: string) => {
+    setFromDate(val);
+    setDatePreset(val || toDate ? "custom" : "all");
+  };
+
+  const handleToDateChange = (val: string) => {
+    setToDate(val);
+    setDatePreset(val || fromDate ? "custom" : "all");
+  };
+
+  const clearDateFilter = () => {
+    setFromDate("");
+    setToDate("");
+    setDatePreset("all");
+    setDateFilter("all");
+    setDisbursedFilter("all");
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -385,7 +481,7 @@ export function LoanManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter]);
+  }, [pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter, fromDate, toDate, dateType]);
 
   // Bulk upload states
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -462,8 +558,14 @@ export function LoanManagement() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (dateFilter !== "all") params.set("dateFilter", dateFilter);
-      if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
+      if (fromDate || toDate) {
+        params.set("dateType", dateType);
+      } else {
+        if (dateFilter !== "all") params.set("dateFilter", dateFilter);
+        if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
+      }
       params.set("page", String(currentPage));
       params.set("limit", pageSize);
 
@@ -489,7 +591,7 @@ export function LoanManagement() {
       }
       throw err;
     }
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter, fromDate, toDate, dateType]);
 
   const { isRefreshing, lastUpdatedAt, refresh } = useSmartPolling(loadLoans, {
     enabled: true,
@@ -503,8 +605,14 @@ export function LoanManagement() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (dateFilter !== "all") params.set("dateFilter", dateFilter);
-      if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
+      if (fromDate || toDate) {
+        params.set("dateType", dateType);
+      } else {
+        if (dateFilter !== "all") params.set("dateFilter", dateFilter);
+        if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
+      }
       params.set("limit", "5000"); // full export
 
       const exportData = await apiGet<Loan[]>(`/loans?${params.toString()}`);
@@ -736,11 +844,21 @@ export function LoanManagement() {
     setStatusFilter("all");
     setDateFilter("all");
     setDisbursedFilter("all");
+    setFromDate("");
+    setToDate("");
+    setDatePreset("all");
+    setDateType("disbursed");
     setCurrentPage(1);
   };
 
   const hasActiveFilters =
-    debouncedSearch.trim() !== "" || statusFilter !== "all" || dateFilter !== "all" || disbursedFilter !== "all";
+    debouncedSearch.trim() !== "" ||
+    statusFilter !== "all" ||
+    dateFilter !== "all" ||
+    disbursedFilter !== "all" ||
+    fromDate !== "" ||
+    toDate !== "" ||
+    datePreset !== "all";
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
@@ -1011,14 +1129,13 @@ export function LoanManagement() {
           )}
         </div>
 
-        {/* Search, Disbursed Date & Due Date Filter Bar */}
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-          {/* Search box */}
-          <div className="relative md:col-span-6 lg:col-span-6">
+        {/* Search Bar */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-12 mb-3">
+          <div className="relative md:col-span-12">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              placeholder="Search by customer, loan ID, phone, PAN, UTR..."
+              placeholder="Search by customer name, loan ID, phone, PAN number, UTR reference..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 pl-9 pr-9 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-blue-900/40"
@@ -1033,28 +1150,123 @@ export function LoanManagement() {
               </button>
             )}
           </div>
+        </div>
 
-          {/* Disbursed Filter Dropdown */}
-          <div className="md:col-span-3 lg:col-span-3">
-            <NiceSelect
-              ariaLabel="Filter by disbursed date"
-              value={disbursedFilter}
-              onValueChange={(val) => setDisbursedFilter(val as "all" | "today" | "month")}
-              className="w-full"
-              options={DISBURSED_FILTER_OPTIONS}
-            />
+        {/* Date Wise Filter Controls */}
+        <div className="rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/90 dark:border-slate-700/60 p-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-slate-700/50 mb-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Date Wise Filter:
+              </span>
+            </div>
+
+            {/* Quick Date Range Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {DATE_PRESET_OPTIONS.map((p) => {
+                const isActive = datePreset === p.value;
+                return (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => handleDatePreset(p.value)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                      isActive
+                        ? "bg-blue-600 text-white ring-2 ring-blue-400/40"
+                        : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Date Filter Dropdown */}
-          <div className="md:col-span-3 lg:col-span-3">
-            <NiceSelect
-              ariaLabel="Filter by due date"
-              value={dateFilter}
-              onValueChange={setDateFilter}
-              className="w-full"
-              options={DATE_FILTER_OPTIONS}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+            {/* Date Type / Field Selection */}
+            <div className="lg:col-span-4">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                Date Field Type
+              </label>
+              <NiceSelect
+                ariaLabel="Filter date field"
+                value={dateType}
+                onValueChange={(val) => setDateType(val as any)}
+                className="w-full text-xs font-semibold"
+                options={DATE_TYPE_OPTIONS}
+              />
+            </div>
+
+            {/* From Date Picker */}
+            <div className="lg:col-span-3">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => handleFromDateChange(e.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-blue-900/40"
+              />
+            </div>
+
+            {/* To Date Picker */}
+            <div className="lg:col-span-3">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => handleToDateChange(e.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-blue-900/40"
+              />
+            </div>
+
+            {/* Clear Date Action */}
+            <div className="lg:col-span-2">
+              {fromDate || toDate || datePreset !== "all" ? (
+                <button
+                  type="button"
+                  onClick={clearDateFilter}
+                  className="h-10 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100 hover:border-rose-300 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 transition shadow-sm"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear Date
+                </button>
+              ) : (
+                <div className="h-10 rounded-lg border border-dashed border-slate-200 dark:border-slate-700/60 flex items-center justify-center text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                  All Range
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Active Date Banner */}
+          {(fromDate || toDate) && (
+            <div className="mt-3 flex items-center justify-between rounded-lg bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>
+                  Filtering by{" "}
+                  <strong className="underline underline-offset-2">
+                    {DATE_TYPE_OPTIONS.find((o) => o.value === dateType)?.label || "Date"}
+                  </strong>
+                  : <strong>{fromDate ? formatDate(fromDate) : "Earliest"}</strong> to{" "}
+                  <strong>{toDate ? formatDate(toDate) : "Latest"}</strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={clearDateFilter}
+                className="text-xs font-bold text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-200 underline"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
