@@ -188,19 +188,25 @@ function parseLoanRow(loan: Loan) {
   const disbursedAmount = Number(loan.disbursedAmount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
   const loanRepayAmount = Number(loan.loanRepayAmount || loan.repaymentAmount || loan.totalAmount || Math.round(principal * 1.12));
 
+  const mobile = loan.mobile || loan.mobileNumber || (loan as any).phone || (loan as any).customerPhone || "-";
+  const email = loan.email || (loan as any).customerEmail || "-";
+  const panNumber = loan.panNumber || (loan as any).pan || (loan as any).pancard || "-";
+  const dob = loan.dob || (loan as any).dateOfBirth || null;
+  const monthlyIncome = Number(loan.monthlyIncome || (loan as any).incomeAmount || 0);
+
   return {
     ...loan,
     leadId: leadId || "-",
     loanNo: loanNo || loan.id,
     customerName: customerName || loan.customer || "Customer not linked",
-    email: loan.email || "-",
-    mobile: loan.mobile || loan.mobileNumber || "-",
-    mobileNumber: loan.mobileNumber || loan.mobile || "-",
-    dob: loan.dob || null,
-    panNumber: loan.panNumber || "-",
+    email,
+    mobile,
+    mobileNumber: mobile,
+    dob,
+    panNumber,
     principal,
     loanRepayAmount,
-    monthlyIncome: Number(loan.monthlyIncome || 0),
+    monthlyIncome,
     disbursedDate: loan.disbursedDate || loan.startDate || null,
     repaymentDate: loan.repaymentDate || loan.dueDate || null,
     tenure: loan.tenure || 30,
@@ -298,6 +304,13 @@ function formatDate(value: string | null | undefined) {
     const [y, m, d] = str.split("-").map(Number);
     const date = new Date(y, m - 1, d);
     return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  }
+  if (/^(\d{2})[-/](\d{2})[-/](\d{4})$/.test(str)) {
+    const parts = str.split(/[-/]/);
+    const date = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    }
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
