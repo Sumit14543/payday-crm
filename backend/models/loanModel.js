@@ -135,7 +135,48 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
       COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS gstAmount,
       COALESCE(ls.repayment_amount, ROUND(l.principal * 1.12)) AS repaymentAmount,
       (COALESCE(ls.repayment_amount, ROUND(l.principal * 1.12)) - l.principal) AS interestAmount,
-      COALESCE(ls.agreement_number, l.id) AS agreementNumber
+      COALESCE(ls.agreement_number, l.id) AS agreementNumber,
+      COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, '') AS leadId,
+      COALESCE(ls.agreement_number, l.id) AS loanNo,
+      COALESCE(c.name, ls.borrower, '') AS customerName,
+      COALESCE(c.email, ls.borrower_email, '') AS email,
+      COALESCE(c.phone, ls.borrower_phone, '') AS mobile,
+      COALESCE(la.reference1_mobile, '') AS alternativeNumber,
+      COALESCE(ar.gender, '') AS gender,
+      DATE_FORMAT(la.dob, '%Y-%m-%d') AS dob,
+      COALESCE(la.pan_number, '') AS panNumber,
+      COALESCE(la.monthly_income, c.monthly_income, 0) AS monthlyIncome,
+      COALESCE(la.property_type, 'Owned') AS houseType,
+      COALESCE(c.address, ar.address, la.office_address, '') AS address,
+      COALESCE(la.pincode, '') AS pincode,
+      COALESCE(la.city, '') AS city,
+      COALESCE(la.branch_name, 'Head Office') AS branchName,
+      COALESCE(lap.amount, ls.disbursed_amount, l.principal - COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) - COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18))) AS disbursedAmount,
+      COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) AS adminFee,
+      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS adminFeeGst,
+      (COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) + COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18))) AS totalAdminFee,
+      ROUND(COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) / 2, 2) AS cgst,
+      ROUND(COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) / 2, 2) AS sgst,
+      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS igst,
+      COALESCE(ls.tenure_days, DATEDIFF(l.due_date, l.start_date), 30) AS tenure,
+      COALESCE(ls.created_by, 'Credit Manager') AS sanctionedBy,
+      COALESCE(cam.decided_by, ls.created_by, 'Credit Desk') AS approvedBy,
+      DATE_FORMAT(COALESCE(ls.agreement_date, ls.created_at), '%Y-%m-%d') AS sanctionDate,
+      DATE_FORMAT(la.created_at, '%Y-%m-%d') AS leadInitiatedDate,
+      COALESCE(
+        (SELECT paid_by FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
+        'Accountant'
+      ) AS disbursedBy,
+      IF(c.total_loans > 1, 'Repeat', 'Fresh') AS repeatType,
+      COALESCE(
+        (SELECT status FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
+        'Disbursed'
+      ) AS disbursementStatus,
+      COALESCE(
+        (SELECT reference FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
+        (SELECT transaction_id FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
+        ''
+      ) AS disbursementReference
     FROM loans l
     LEFT JOIN customers c ON c.id = l.customer_id
     LEFT JOIN loan_repayment_schedule rs ON rs.installment_number = 1 AND rs.loan_id = l.id
@@ -163,6 +204,27 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
         sub.id DESC
       LIMIT 1
     )
+    LEFT JOIN loan_applications la ON la.id = (
+      SELECT sub_la.id FROM loan_applications sub_la
+      WHERE (sub_la.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id) AND sub_la.application_id <> '')
+         OR (sub_la.id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id) AS CHAR) AND sub_la.id <> 0)
+         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_la.mobile = c.phone)
+      ORDER BY sub_la.id DESC LIMIT 1
+    )
+    LEFT JOIN lead_cam_sheets cam ON cam.id = (
+      SELECT sub_cam.id FROM lead_cam_sheets sub_cam
+      WHERE (ls.cam_sheet_id IS NOT NULL AND sub_cam.id = ls.cam_sheet_id)
+         OR (sub_cam.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id) AND sub_cam.application_id <> '')
+         OR (sub_cam.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id) AS CHAR) AND sub_cam.lead_id <> '')
+      ORDER BY sub_cam.id DESC LIMIT 1
+    )
+    LEFT JOIN aadhaar_reports ar ON ar.id = (
+      SELECT sub_ar.id FROM aadhaar_reports sub_ar
+      WHERE (sub_ar.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id) AND sub_ar.application_id <> '')
+         OR (sub_ar.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id) AS CHAR) AND sub_ar.lead_id <> '')
+         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_ar.mobile = c.phone)
+      ORDER BY sub_ar.id DESC LIMIT 1
+    )
     ${whereClause}
     ORDER BY COALESCE(l.start_date, l.created_at) DESC, l.id DESC
     LIMIT ? OFFSET ?
@@ -183,9 +245,9 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   const loanIdPlaceholders = loanIds.map(() => '?').join(',');
   const repayments = loanIds.length
     ? await query(`
-        SELECT loan_id, amount, received_at 
+        SELECT loan_id, amount, received_at, method 
         FROM loan_repayments 
-        WHERE status = 'received' AND loan_id IN (${loanIdPlaceholders})
+        WHERE status IN ('received', 'success', 'paid', 'settled') AND loan_id IN (${loanIdPlaceholders})
         ORDER BY loan_id, received_at ASC, id ASC
       `, loanIds)
     : [];
@@ -257,9 +319,39 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
     l.todayRoi = todayRoi;
     l.monthRoi = monthRoi;
     l.totalRoi = totalRoi;
+
+    // Collection & Disbursement specific fields
+    const lastRep = reps.length > 0 ? reps[reps.length - 1] : null;
+    l.collectedAmount = Number(l.amountPaid || 0);
+    l.collectedMode = lastRep?.method || null;
+    l.collectedDate = lastRep?.received_at ? getLocalDate(lastRep.received_at) : (l.lastPaymentDate || null);
+
+    if (String(l.id || '').includes('/')) {
+      const parts = String(l.id).split('/');
+      if (!l.leadId && parts[0]) l.leadId = parts[0];
+      if (!l.loanNo || l.loanNo === l.id) l.loanNo = parts[1] || l.id;
+      if (!l.customer && parts[2]) l.customer = parts[2];
+      if (!l.customerName && parts[2]) l.customerName = parts[2];
+    }
+
+    l.companyBankAccount = '000705001234';
+    l.loanRepayAmount = Number(l.repaymentAmount || l.totalAmount || 0);
+    l.stateName = l.stateName || l.state || '-';
+    l.cityName = l.cityName || l.city || '-';
+    l.mobileNumber = l.mobileNumber || l.mobile || l.phone || '-';
+    l.repaymentDate = l.dueDate || null;
+    l.modeOfPayment = l.transferType || 'Bank Transfer';
+    l.roi = Number(l.interestRate || l.roi || 0);
+    l.processing = Number(l.processingFee || l.adminFee || 0);
+    l.adminFee = Number(l.adminFee || l.processingFee || 0);
+    l.adminFeeGst = Number(l.adminFeeGst || l.gstAmount || 0);
+    l.totalAdminFee = Number(l.totalAdminFee || (l.adminFee + l.adminFeeGst) || 0);
+    l.loanDisbursedDate = l.disbursedDate || l.startDate || null;
+
     l.repayments = reps.map(r => ({
       amount: Number(r.amount || 0),
-      receivedAt: r.received_at
+      receivedAt: r.received_at,
+      method: r.method,
     }));
   });
 

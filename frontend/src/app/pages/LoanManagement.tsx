@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   RotateCcw,
   Zap,
+  Wallet,
+  Banknote,
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
 import { apiGet, apiPostForm } from "../lib/api";
@@ -45,7 +47,199 @@ type Loan = {
   ifscCode?: string | null;
   bankName?: string | null;
   lastPaymentDate?: string | null;
+
+  // Collection & Disbursement fields
+  leadId?: string;
+  loanNo?: string;
+  customerName?: string;
+  email?: string;
+  mobile?: string;
+  mobileNumber?: string;
+  alternativeNumber?: string;
+  gender?: string;
+  dob?: string | null;
+  panNumber?: string;
+  monthlyIncome?: number;
+  disbursedAmount?: number;
+  adminFee?: number;
+  adminFeeGst?: number;
+  totalAdminFee?: number;
+  igst?: number;
+  cgst?: number;
+  sgst?: number;
+  processing?: number;
+  tenure?: number;
+  roi?: number;
+  repaymentAmount?: number;
+  loanRepayAmount?: number;
+  repaymentDate?: string | null;
+  modeOfPayment?: string;
+  companyBankAccount?: string;
+  disbursementReference?: string;
+  disbursementStatus?: string;
+  repeatType?: string;
+  leadInitiatedDate?: string | null;
+  sanctionedBy?: string;
+  approvedBy?: string;
+  sanctionDate?: string | null;
+  disbursedBy?: string;
+  loanDisbursedDate?: string | null;
+  houseType?: string;
+  address?: string;
+  pincode?: string;
+  stateName?: string;
+  cityName?: string;
+  branchName?: string;
+  collectedAmount?: number;
+  collectedMode?: string;
+  collectedDate?: string | null;
+  createdAt?: string;
 };
+
+const COLLECTION_HEADERS = [
+  "Name",
+  "Email",
+  "Mobile",
+  "DOB",
+  "PAN No.",
+  "Loan Amount",
+  "Repayamount Amount",
+  "Income Amount",
+  "Disbursed Date",
+  "Repay Date",
+  "LOAN TENURE",
+  "ROI",
+  "Collected Amount",
+  "Collected Mode",
+  "Collected Date",
+  "Actions",
+];
+
+const DISBURSEMENT_HEADERS = [
+  "LeadID",
+  "State Name",
+  "City Name",
+  "Branch Name",
+  "Customer ID",
+  "Pancard",
+  "Loan No.",
+  "Customer Name",
+  "Mobile Number",
+  "Gender",
+  "DOB",
+  "Alternative Number",
+  "Email",
+  "Loan Amount",
+  "Disbursed Amount",
+  "Admin Fee",
+  "Admin Fee GST",
+  "Total Admin Fee",
+  "IGST",
+  "CGST",
+  "SGST",
+  "Processing",
+  "Tenure",
+  "ROI(%)",
+  "Loan Repay Amount",
+  "Disbursement Date",
+  "Repayment Date",
+  "Mode Of Payment",
+  "Company Bank Account Number",
+  "Customer Bank Account Number",
+  "Customer Bank Name",
+  "Customer Bank IFSC",
+  "Refrence No Of Disbursement",
+  "Disbursement Status",
+  "Repeat Type",
+  "Lead Initiated Date",
+  "Sanctioned By",
+  "Approved By",
+  "Sanction Date",
+  "Loan Disbursed By",
+  "Loan Disbursed Date",
+  "House Type",
+  "Address",
+  "Pin Code",
+  "Actions",
+];
+
+function parseLoanRow(loan: Loan) {
+  let leadId = loan.leadId || "";
+  let loanNo = loan.loanNo || loan.id || "";
+  let customerName = loan.customerName || loan.customer || "";
+
+  if (String(loan.id || "").includes("/")) {
+    const parts = String(loan.id).split("/");
+    if (!leadId && parts[0]) leadId = parts[0];
+    if (parts[1]) loanNo = parts[1];
+    if ((!customerName || customerName === "Customer not linked") && parts[2]) {
+      customerName = parts[2];
+    }
+  }
+
+  const principal = Number(loan.principal || 0);
+  const adminFee = Number(loan.adminFee || loan.processing || Math.round(principal * 0.10));
+  const adminFeeGst = Number(loan.adminFeeGst || Math.round(adminFee * 0.18));
+  const totalAdminFee = Number(loan.totalAdminFee || (adminFee + adminFeeGst));
+  const igst = Number(loan.igst || adminFeeGst);
+  const cgst = Number(loan.cgst || Math.round((adminFeeGst / 2) * 100) / 100);
+  const sgst = Number(loan.sgst || Math.round((adminFeeGst / 2) * 100) / 100);
+  const processing = Number(loan.processing || adminFee);
+  const disbursedAmount = Number(loan.disbursedAmount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
+  const loanRepayAmount = Number(loan.loanRepayAmount || loan.repaymentAmount || loan.totalAmount || Math.round(principal * 1.12));
+
+  return {
+    ...loan,
+    leadId: leadId || "-",
+    loanNo: loanNo || loan.id,
+    customerName: customerName || loan.customer || "Customer not linked",
+    email: loan.email || "-",
+    mobile: loan.mobile || loan.mobileNumber || "-",
+    mobileNumber: loan.mobileNumber || loan.mobile || "-",
+    dob: loan.dob || null,
+    panNumber: loan.panNumber || "-",
+    principal,
+    loanRepayAmount,
+    monthlyIncome: Number(loan.monthlyIncome || 0),
+    disbursedDate: loan.disbursedDate || loan.startDate || null,
+    repaymentDate: loan.repaymentDate || loan.dueDate || null,
+    tenure: loan.tenure || 30,
+    roi: Number(loan.roi || loan.interestRate || 0),
+    collectedAmount: Number(loan.collectedAmount || loan.amountPaid || 0),
+    collectedMode: loan.collectedMode || (Number(loan.amountPaid || 0) > 0 ? "Bank Transfer" : "-"),
+    collectedDate: loan.collectedDate || loan.lastPaymentDate || null,
+    stateName: loan.stateName || "-",
+    cityName: loan.cityName || "-",
+    branchName: loan.branchName || "Main Branch",
+    alternativeNumber: loan.alternativeNumber || "-",
+    gender: loan.gender || "-",
+    disbursedAmount,
+    adminFee,
+    adminFeeGst,
+    totalAdminFee,
+    igst,
+    cgst,
+    sgst,
+    processing,
+    modeOfPayment: loan.modeOfPayment || "Bank Transfer",
+    companyBankAccount: loan.companyBankAccount || "000705001234",
+    accountNumber: loan.accountNumber || "-",
+    bankName: loan.bankName || "-",
+    ifscCode: loan.ifscCode || "-",
+    disbursementReference: loan.disbursementReference || loan.utrNumber || "-",
+    disbursementStatus: loan.disbursementStatus || "Disbursed",
+    repeatType: loan.repeatType || "Fresh",
+    leadInitiatedDate: loan.leadInitiatedDate || loan.createdAt || null,
+    sanctionedBy: loan.sanctionedBy || "Credit Manager",
+    approvedBy: loan.approvedBy || "Credit Desk",
+    sanctionDate: loan.sanctionDate || loan.startDate || null,
+    disbursedBy: loan.disbursedBy || "Accountant",
+    loanDisbursedDate: loan.loanDisbursedDate || loan.disbursedDate || loan.startDate || null,
+    houseType: loan.houseType || "Owned",
+    address: loan.address || "-",
+    pincode: loan.pincode || "-",
+  };
+}
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -155,6 +349,7 @@ export function LoanManagement() {
   const isSuperAdmin = user?.role === "superadmin";
 
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [viewMode, setViewMode] = useState<"collection" | "disbursement">("collection");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
@@ -264,54 +459,166 @@ export function LoanManagement() {
       return;
     }
 
-    const headers = [
-      "Loan ID",
-      "Customer Name",
-      "Customer ID",
-      "Principal (Rs)",
-      "Interest Rate (%)",
-      "Total Amount (Rs)",
-      "Amount Paid (Rs)",
-      "Balance (Rs)",
-      "Disbursed Date",
-      "Due Date",
-      "Payment Date",
-      "Status",
-      "Payment Status",
-      "UTR Number",
-      "Bank Account",
-      "IFSC Code",
-    ];
+    if (viewMode === "collection") {
+      const headers = [
+        "Name",
+        "Email",
+        "Mobile",
+        "DOB",
+        "PAN No.",
+        "Loan Amount",
+        "Repayment Amount",
+        "Income Amount",
+        "Disbursed Date",
+        "Repay Date",
+        "LOAN TENURE",
+        "ROI",
+        "Collected Amount",
+        "Collected Mode",
+        "Collected Date",
+      ];
 
-    const rows = filteredLoans.map((l) => [
-      `"${l.id}"`,
-      `"${(l.customer || "").replace(/"/g, '""')}"`,
-      `"${l.customerId || ""}"`,
-      l.principal || 0,
-      l.interestRate || 0,
-      l.totalAmount || 0,
-      l.amountPaid || 0,
-      l.balance || 0,
-      `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
-      `"${toDateKey(l.dueDate) || ""}"`,
-      `"${toDateKey(l.lastPaymentDate) || ""}"`,
-      `"${l.status || ""}"`,
-      `"${l.paymentStatus || ""}"`,
-      l.utrNumber ? `="${String(l.utrNumber).replace(/"/g, '""').trim()}"` : `""`,
-      l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
-      `"${l.ifscCode || ""}"`,
-    ]);
+      const rows = filteredLoans.map((raw) => {
+        const l = parseLoanRow(raw);
+        return [
+          `"${(l.customerName || "").replace(/"/g, '""')}"`,
+          `"${(l.email || "").replace(/"/g, '""')}"`,
+          `"${l.mobile || l.mobileNumber || ""}"`,
+          `"${toDateKey(l.dob) || ""}"`,
+          `"${(l.panNumber || "").replace(/"/g, '""')}"`,
+          l.principal || 0,
+          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+          l.monthlyIncome || 0,
+          `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
+          `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
+          `"${l.tenure || 30} Days"`,
+          `"${l.roi || l.interestRate || 0}%"`,
+          l.amountPaid || l.collectedAmount || 0,
+          `"${(l.collectedMode || (Number(l.amountPaid || 0) > 0 ? "Bank Transfer" : "-")).replace(/"/g, '""')}"`,
+          `"${toDateKey(l.collectedDate || l.lastPaymentDate) || ""}"`,
+        ];
+      });
 
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `loan_portfolio_export_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `loan_collection_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      // Disbursement mode
+      const headers = [
+        "LeadID",
+        "State Name",
+        "City Name",
+        "Branch Name",
+        "Customer ID",
+        "Pancard",
+        "Loan No.",
+        "Customer Name",
+        "Mobile Number",
+        "Gender",
+        "DOB",
+        "Alternative Number",
+        "Email",
+        "Loan Amount",
+        "Disbursed Amount",
+        "Admin Fee",
+        "Admin Fee GST",
+        "Total Admin Fee",
+        "IGST",
+        "CGST",
+        "SGST",
+        "Processing",
+        "Tenure",
+        "ROI(%)",
+        "Loan Repay Amount",
+        "Disbursement Date",
+        "Repayment Date",
+        "Mode Of Payment",
+        "Company Bank Account Number",
+        "Customer Bank Account Number",
+        "Customer Bank Name",
+        "Customer Bank IFSC",
+        "Refrence No Of Disbursement",
+        "Disbursement Status",
+        "Repeat Type",
+        "Lead Initiated Date",
+        "Sanctioned By",
+        "Approved By",
+        "Sanction Date",
+        "Loan Disbursed By",
+        "Loan Disbursed Date",
+        "House Type",
+        "Address",
+        "Pin Code",
+      ];
+
+      const rows = filteredLoans.map((raw) => {
+        const l = parseLoanRow(raw);
+        return [
+          `"${(l.leadId || "").replace(/"/g, '""')}"`,
+          `"${(l.stateName || "-").replace(/"/g, '""')}"`,
+          `"${(l.cityName || "-").replace(/"/g, '""')}"`,
+          `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
+          `"${(l.customerId || "").replace(/"/g, '""')}"`,
+          `"${(l.panNumber || "").replace(/"/g, '""')}"`,
+          `"${(l.loanNo || "").replace(/"/g, '""')}"`,
+          `"${(l.customerName || "").replace(/"/g, '""')}"`,
+          `"${l.mobile || l.mobileNumber || ""}"`,
+          `"${(l.gender || "-").replace(/"/g, '""')}"`,
+          `"${toDateKey(l.dob) || ""}"`,
+          `"${(l.alternativeNumber || "-").replace(/"/g, '""')}"`,
+          `"${(l.email || "").replace(/"/g, '""')}"`,
+          l.principal || 0,
+          l.disbursedAmount || l.principal || 0,
+          l.adminFee || l.processing || 0,
+          l.adminFeeGst || 0,
+          l.totalAdminFee || 0,
+          l.igst || 0,
+          l.cgst || 0,
+          l.sgst || 0,
+          l.processing || l.adminFee || 0,
+          `"${l.tenure || 30} Days"`,
+          `"${l.roi || l.interestRate || 0}%"`,
+          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+          `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
+          `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
+          `"${(l.modeOfPayment || "Bank Transfer").replace(/"/g, '""')}"`,
+          `"${(l.companyBankAccount || "000705001234").replace(/"/g, '""')}"`,
+          l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
+          `"${(l.bankName || "").replace(/"/g, '""')}"`,
+          `"${(l.ifscCode || "").replace(/"/g, '""')}"`,
+          `"${(l.disbursementReference || l.utrNumber || "").replace(/"/g, '""')}"`,
+          `"${(l.disbursementStatus || "Disbursed").replace(/"/g, '""')}"`,
+          `"${(l.repeatType || "Fresh").replace(/"/g, '""')}"`,
+          `"${toDateKey(l.leadInitiatedDate || l.createdAt) || ""}"`,
+          `"${(l.sanctionedBy || "Credit Manager").replace(/"/g, '""')}"`,
+          `"${(l.approvedBy || "Credit Desk").replace(/"/g, '""')}"`,
+          `"${toDateKey(l.sanctionDate || l.startDate) || ""}"`,
+          `"${(l.disbursedBy || "Accountant").replace(/"/g, '""')}"`,
+          `"${toDateKey(l.loanDisbursedDate || l.disbursedDate || l.startDate) || ""}"`,
+          `"${(l.houseType || "Owned").replace(/"/g, '""')}"`,
+          `"${(l.address || "").replace(/"/g, '""')}"`,
+          `"${(l.pincode || "").replace(/"/g, '""')}"`,
+        ];
+      });
+
+      const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `loan_disbursement_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
   };
 
   // Filtered Loans
@@ -332,19 +639,30 @@ export function LoanManagement() {
     const startOfWeekKey = toDateKey(monday) || "";
     const endOfWeekKey = toDateKey(sunday) || "";
 
-    return loans.filter((loan) => {
-      const dueKey = toDateKey(loan.dueDate) || "";
+    return loans.filter((raw) => {
+      const loan = parseLoanRow(raw);
+      const dueKey = toDateKey(loan.repaymentDate || loan.dueDate) || "";
       const disbursalKey = toDateKey(loan.disbursedDate || loan.startDate) || "";
-      const formattedDue = formatDate(loan.dueDate).toLowerCase();
+      const formattedDue = formatDate(loan.repaymentDate || loan.dueDate).toLowerCase();
       const formattedDisbursed = formatDate(loan.disbursedDate || loan.startDate).toLowerCase();
-      const formattedPaymentDate = formatDate(loan.lastPaymentDate).toLowerCase();
+      const formattedPaymentDate = formatDate(loan.collectedDate || loan.lastPaymentDate).toLowerCase();
 
       const matchesSearch =
         !query ||
         loan.id.toLowerCase().includes(query) ||
+        loan.loanNo.toLowerCase().includes(query) ||
+        loan.leadId.toLowerCase().includes(query) ||
         loan.customerId.toLowerCase().includes(query) ||
-        (loan.customer || "").toLowerCase().includes(query) ||
+        loan.customerName.toLowerCase().includes(query) ||
+        loan.email.toLowerCase().includes(query) ||
+        loan.mobile.toLowerCase().includes(query) ||
+        loan.panNumber.toLowerCase().includes(query) ||
+        loan.cityName.toLowerCase().includes(query) ||
+        loan.stateName.toLowerCase().includes(query) ||
+        (loan.accountNumber || "").toLowerCase().includes(query) ||
+        (loan.bankName || "").toLowerCase().includes(query) ||
         (loan.utrNumber || "").toLowerCase().includes(query) ||
+        (loan.disbursementReference || "").toLowerCase().includes(query) ||
         (loan.status || "").toLowerCase().includes(query) ||
         (loan.paymentStatus || "").toLowerCase().includes(query) ||
         dueKey.includes(query) ||
@@ -358,6 +676,7 @@ export function LoanManagement() {
         formattedPaymentDate.includes(query) ||
         String(loan.principal || "").includes(query) ||
         String(loan.totalAmount || "").includes(query) ||
+        String(loan.loanRepayAmount || "").includes(query) ||
         String(loan.balance || "").includes(query);
 
       // Part Payment loan: paid something, but balance > 0
@@ -788,6 +1107,61 @@ export function LoanManagement() {
         </div>
       </div>
 
+      {/* View Mode Switcher: Collection vs Disbursement */}
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setViewMode("collection")}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${
+              viewMode === "collection"
+                ? "bg-white text-blue-700 shadow-md dark:bg-slate-900 dark:text-blue-400"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <Wallet className="h-4 w-4" />
+            <span>Collection</span>
+            <span
+              className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                viewMode === "collection"
+                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                  : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+              }`}
+            >
+              15 Columns
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode("disbursement")}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${
+              viewMode === "disbursement"
+                ? "bg-white text-emerald-700 shadow-md dark:bg-slate-900 dark:text-emerald-400"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <Banknote className="h-4 w-4" />
+            <span>Disbursement</span>
+            <span
+              className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                viewMode === "disbursement"
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+              }`}
+            >
+              44 Columns
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Active Mode: <strong className="text-slate-900 dark:text-white capitalize">{viewMode}</strong>
+          </span>
+        </div>
+      </div>
+
       {/* Loan Portfolio Table Section */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
@@ -807,10 +1181,10 @@ export function LoanManagement() {
               onClick={handleExportCsv}
               disabled={!filteredLoans.length}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 shadow-sm transition"
-              title="Export current table loans to CSV spreadsheet"
+              title={`Export current table to ${viewMode === "collection" ? "Collection" : "Disbursement"} CSV`}
             >
               <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              Export CSV
+              Export {viewMode === "collection" ? "Collection" : "Disbursement"} CSV
             </button>
             <NiceSelect
               ariaLabel="Loan rows per page"
@@ -832,14 +1206,14 @@ export function LoanManagement() {
         )}
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left">
             <thead className="bg-slate-50 dark:bg-slate-800/70">
               <tr>
-                {["Loan ID", "UTR", "Customer", "Principal", "Total Due", "Paid", "Balance", "Due Date", "Payment Date", "Status", "Payment", "Actions"].map(
+                {(viewMode === "collection" ? COLLECTION_HEADERS : DISBURSEMENT_HEADERS).map(
                   (heading) => (
                     <th
                       key={heading}
-                      className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                      className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800"
                     >
                       {heading}
                     </th>
@@ -850,112 +1224,99 @@ export function LoanManagement() {
             <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800/80 dark:bg-slate-900">
               {showInitialLoading ? (
                 <tr>
-                  <td colSpan={12} className="px-5 py-16 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td
+                    colSpan={viewMode === "collection" ? COLLECTION_HEADERS.length : DISBURSEMENT_HEADERS.length}
+                    className="px-5 py-16 text-center text-sm text-slate-500 dark:text-slate-400"
+                  >
                     <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-blue-600" />
                     Loading loan portfolio...
                   </td>
                 </tr>
               ) : filteredLoans.length ? (
-                visibleLoans.map((loan) => {
-                  const isSettled = Number(loan.balance || 0) <= 0;
+                visibleLoans.map((rawLoan) => {
+                  const loan = parseLoanRow(rawLoan);
 
-                  return (
-                    <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                      {/* Loan ID */}
-                      <td className="whitespace-nowrap px-5 py-4">
-                        <div className="text-sm font-bold text-slate-950 dark:text-white">{loan.id}</div>
-                      </td>
+                  if (viewMode === "collection") {
+                    return (
+                      <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* 1. Name */}
+                        <td className="whitespace-nowrap px-4 py-3.5">
+                          <div className="text-sm font-bold text-slate-950 dark:text-white">{loan.customerName}</div>
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{loan.customerId}</div>
+                        </td>
 
-                      {/* UTR */}
-                      <td className="whitespace-nowrap px-5 py-4">
-                        <div
-                          className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 select-all"
-                          title={loan.utrNumber || undefined}
-                        >
-                          {loan.utrNumber || <span className="text-slate-400 dark:text-slate-500 font-sans font-normal">-</span>}
-                        </div>
-                      </td>
+                        {/* 2. Email */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs text-slate-600 dark:text-slate-300">
+                          {loan.email}
+                        </td>
 
-                      {/* Customer */}
-                      <td className="whitespace-nowrap px-5 py-4">
-                        <div className="text-sm font-semibold text-slate-950 dark:text-slate-100">
-                          {loan.customer || "Customer not linked"}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{loan.customerId}</div>
-                        {loan.accountNumber && (
-                          <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400 select-all" title="Bank Account Number">
-                            A/C: {loan.accountNumber}
-                          </div>
-                        )}
-                      </td>
+                        {/* 3. Mobile */}
+                        <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 select-all">
+                          {loan.mobile}
+                        </td>
 
-                      {/* Principal */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {formatCurrency(loan.principal)}
-                      </td>
+                        {/* 4. DOB */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300">
+                          {loan.dob ? formatDate(loan.dob) : "-"}
+                        </td>
 
-                      {/* Total Amount */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm font-bold text-slate-950 dark:text-white">
-                        {formatCurrency(loan.totalAmount)}
-                      </td>
+                        {/* 5. PAN No. */}
+                        <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs font-bold text-slate-900 dark:text-white uppercase select-all">
+                          {loan.panNumber}
+                        </td>
 
-                      {/* Amount Paid */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(loan.amountPaid)}
-                      </td>
+                        {/* 6. Loan Amount */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {formatCurrency(loan.principal)}
+                        </td>
 
-                      {/* Balance */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm font-black">
-                        {isSettled ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">₹0 (Cleared)</span>
-                        ) : (
-                          <span className="text-purple-700 dark:text-purple-400">{formatCurrency(loan.balance)}</span>
-                        )}
-                      </td>
+                        {/* 7. Repayamount Amount */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm font-bold text-slate-950 dark:text-white">
+                          {formatCurrency(loan.loanRepayAmount)}
+                        </td>
 
-                      {/* Due Date & Disbursal */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        <span className="inline-flex items-center gap-1.5 font-medium">
-                          <Calendar className="h-4 w-4 text-slate-400 dark:text-slate-500 shrink-0" />
-                          {formatDate(loan.dueDate)}
-                        </span>
-                        {(loan.disbursedDate || loan.startDate) && (
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5" title="Disbursed Date">
-                            Disbursed: {formatDate(loan.disbursedDate || loan.startDate)}
-                          </div>
-                        )}
-                      </td>
+                        {/* 8. Income Amount */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                          {loan.monthlyIncome ? formatCurrency(loan.monthlyIncome) : "-"}
+                        </td>
 
-                      {/* Payment Date */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        {loan.amountPaid > 0 || loan.lastPaymentDate ? (
-                          <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
-                            <Calendar className="h-4 w-4 text-emerald-500 shrink-0" />
-                            {formatDate(loan.lastPaymentDate)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500 text-xs">-</span>
-                        )}
-                      </td>
+                        {/* 9. Disbursed Date */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300">
+                          {formatDate(loan.disbursedDate)}
+                        </td>
 
-                      {/* Status */}
-                      <td className="whitespace-nowrap px-5 py-4">{statusBadge(loan.status)}</td>
+                        {/* 10. Repay Date */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs font-semibold text-slate-900 dark:text-slate-200">
+                          {formatDate(loan.repaymentDate)}
+                        </td>
 
-                      {/* Payment Status */}
-                      <td className="whitespace-nowrap px-5 py-4">
-                        {paymentStatusBadge(
-                          Number(loan.balance || 0) <= 0
-                            ? "Paid"
-                            : Number(loan.amountPaid || 0) > 0
-                              ? "Partial"
-                              : loan.paymentStatus || "Pending"
-                        )}
-                      </td>
+                        {/* 11. LOAN TENURE */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                          {loan.tenure} Days
+                        </td>
 
-                      {/* Action buttons */}
-                      <td className="whitespace-nowrap px-5 py-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          {/* View Details */}
+                        {/* 12. ROI */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {loan.roi}%
+                        </td>
+
+                        {/* 13. Collected Amount */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(loan.collectedAmount)}
+                        </td>
+
+                        {/* 14. Collected Mode */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                          {loan.collectedMode}
+                        </td>
+
+                        {/* 15. Collected Date */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300">
+                          {formatDate(loan.collectedDate)}
+                        </td>
+
+                        {/* 16. Actions */}
+                        <td className="whitespace-nowrap px-4 py-3.5 text-xs">
                           <Link
                             to={`/loan-management/${encodeURIComponent(loan.id)}`}
                             className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700 transition"
@@ -964,14 +1325,264 @@ export function LoanManagement() {
                             <Eye className="h-3.5 w-3.5" />
                             View
                           </Link>
-                        </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // Disbursement Mode
+                  return (
+                    <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors text-xs">
+                      {/* 1. LeadID */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono font-bold text-slate-900 dark:text-white select-all">
+                        {loan.leadId}
+                      </td>
+
+                      {/* 2. State Name */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.stateName}
+                      </td>
+
+                      {/* 3. City Name */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.cityName}
+                      </td>
+
+                      {/* 4. Branch Name */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.branchName}
+                      </td>
+
+                      {/* 5. Customer ID */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-700 dark:text-slate-300 select-all">
+                        {loan.customerId}
+                      </td>
+
+                      {/* 6. Pancard */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono font-bold uppercase text-slate-900 dark:text-white select-all">
+                        {loan.panNumber}
+                      </td>
+
+                      {/* 7. Loan No. */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono font-bold text-blue-700 dark:text-blue-400 select-all">
+                        {loan.loanNo}
+                      </td>
+
+                      {/* 8. Customer Name */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-semibold text-slate-950 dark:text-white">
+                        {loan.customerName}
+                      </td>
+
+                      {/* 9. Mobile Number */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-800 dark:text-slate-200 select-all">
+                        {loan.mobileNumber}
+                      </td>
+
+                      {/* 10. Gender */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.gender}
+                      </td>
+
+                      {/* 11. DOB */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.dob ? formatDate(loan.dob) : "-"}
+                      </td>
+
+                      {/* 12. Alternative Number */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-600 dark:text-slate-400 select-all">
+                        {loan.alternativeNumber}
+                      </td>
+
+                      {/* 13. Email */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-600 dark:text-slate-400">
+                        {loan.email}
+                      </td>
+
+                      {/* 14. Loan Amount */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
+                        {formatCurrency(loan.principal)}
+                      </td>
+
+                      {/* 15. Disbursed Amount */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-bold text-sky-700 dark:text-sky-400">
+                        {formatCurrency(loan.disbursedAmount)}
+                      </td>
+
+                      {/* 16. Admin Fee */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatCurrency(loan.adminFee)}
+                      </td>
+
+                      {/* 17. Admin Fee GST */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatCurrency(loan.adminFeeGst)}
+                      </td>
+
+                      {/* 18. Total Admin Fee */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-semibold text-slate-800 dark:text-slate-200">
+                        {formatCurrency(loan.totalAdminFee)}
+                      </td>
+
+                      {/* 19. IGST */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatCurrency(loan.igst)}
+                      </td>
+
+                      {/* 20. CGST */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatCurrency(loan.cgst)}
+                      </td>
+
+                      {/* 21. SGST */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatCurrency(loan.sgst)}
+                      </td>
+
+                      {/* 22. Processing */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatCurrency(loan.processing)}
+                      </td>
+
+                      {/* 23. Tenure */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.tenure} Days
+                      </td>
+
+                      {/* 24. ROI(%) */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-bold text-slate-800 dark:text-slate-200">
+                        {loan.roi}%
+                      </td>
+
+                      {/* 25. Loan Repay Amount */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-bold text-slate-950 dark:text-white">
+                        {formatCurrency(loan.loanRepayAmount)}
+                      </td>
+
+                      {/* 26. Disbursement Date */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatDate(loan.disbursedDate)}
+                      </td>
+
+                      {/* 27. Repayment Date */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-semibold text-slate-800 dark:text-slate-200">
+                        {formatDate(loan.repaymentDate)}
+                      </td>
+
+                      {/* 28. Mode Of Payment */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.modeOfPayment}
+                      </td>
+
+                      {/* 29. Company Bank Account Number */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-700 dark:text-slate-300 select-all">
+                        {loan.companyBankAccount}
+                      </td>
+
+                      {/* 30. Customer Bank Account Number */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-800 dark:text-slate-200 select-all">
+                        {loan.accountNumber}
+                      </td>
+
+                      {/* 31. Customer Bank Name */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.bankName}
+                      </td>
+
+                      {/* 32. Customer Bank IFSC */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-800 dark:text-slate-200 select-all">
+                        {loan.ifscCode}
+                      </td>
+
+                      {/* 33. Refrence No Of Disbursement */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200 select-all">
+                        {loan.disbursementReference}
+                      </td>
+
+                      {/* 34. Disbursement Status */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-800">
+                          {loan.disbursementStatus}
+                        </span>
+                      </td>
+
+                      {/* 35. Repeat Type */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            loan.repeatType === "Repeat"
+                              ? "bg-purple-50 text-purple-700 ring-1 ring-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:ring-purple-800"
+                              : "bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:ring-blue-800"
+                          }`}
+                        >
+                          {loan.repeatType}
+                        </span>
+                      </td>
+
+                      {/* 36. Lead Initiated Date */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatDate(loan.leadInitiatedDate)}
+                      </td>
+
+                      {/* 37. Sanctioned By */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.sanctionedBy}
+                      </td>
+
+                      {/* 38. Approved By */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.approvedBy}
+                      </td>
+
+                      {/* 39. Sanction Date */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatDate(loan.sanctionDate)}
+                      </td>
+
+                      {/* 40. Loan Disbursed By */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.disbursedBy}
+                      </td>
+
+                      {/* 41. Loan Disbursed Date */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {formatDate(loan.loanDisbursedDate)}
+                      </td>
+
+                      {/* 42. House Type */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        {loan.houseType}
+                      </td>
+
+                      {/* 43. Address */}
+                      <td className="max-w-[200px] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={loan.address}>
+                        {loan.address}
+                      </td>
+
+                      {/* 44. Pin Code */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-slate-700 dark:text-slate-300">
+                        {loan.pincode}
+                      </td>
+
+                      {/* 45. Actions */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        <Link
+                          to={`/loan-management/${encodeURIComponent(loan.id)}`}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700 transition"
+                          title="View Full Loan Profile"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          View
+                        </Link>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={12} className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <td
+                    colSpan={viewMode === "collection" ? COLLECTION_HEADERS.length : DISBURSEMENT_HEADERS.length}
+                    className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400"
+                  >
                     No matching loans found in this filter range.
                   </td>
                 </tr>
