@@ -276,6 +276,14 @@ const DATE_FILTER_OPTIONS = [
   { label: "Overdue (Past Due)", value: "overdue" },
 ];
 
+const STATUS_OPTIONS = [
+  { label: "All Status", value: "all" },
+  { label: "Active", value: "Active" },
+  { label: "Part Payment", value: "Part Payment" },
+  { label: "Paid Off (Closed)", value: "Paid Off" },
+  { label: "Overdue", value: "Overdue" },
+];
+
 const DATE_TYPE_OPTIONS = [
   { label: "Disbursal Date", value: "disbursed" },
   { label: "Repayment Due Date", value: "due" },
@@ -392,10 +400,10 @@ export function LoanManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
-  const [disbursedFilter, setDisbursedFilter] = useState<"all" | "today" | "month">("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDateInput, setFromDateInput] = useState("");
+  const [toDateInput, setToDateInput] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
   const [dateType, setDateType] = useState<"disbursed" | "due" | "collected" | "created">("disbursed");
   const [datePreset, setDatePreset] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -406,71 +414,68 @@ export function LoanManagement() {
   const [error, setError] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
+  const handleApplyDateSearch = () => {
+    setAppliedFromDate(fromDateInput);
+    setAppliedToDate(toDateInput);
+    setDatePreset(fromDateInput || toDateInput ? "custom" : "all");
+    setCurrentPage(1);
+  };
+
   const handleDatePreset = (preset: string) => {
     setDatePreset(preset);
     const todayStr = getTodayDateStr();
     if (preset === "all") {
-      setFromDate("");
-      setToDate("");
-      setDateFilter("all");
-      setDisbursedFilter("all");
+      setFromDateInput("");
+      setToDateInput("");
+      setAppliedFromDate("");
+      setAppliedToDate("");
+      setCurrentPage(1);
       return;
     }
+    let from = "";
+    let to = "";
     if (preset === "today") {
-      setFromDate(todayStr);
-      setToDate(todayStr);
-      return;
-    }
-    if (preset === "yesterday") {
+      from = todayStr;
+      to = todayStr;
+    } else if (preset === "yesterday") {
       const d = new Date();
       d.setDate(d.getDate() - 1);
       const yStr = toDateKey(d) || todayStr;
-      setFromDate(yStr);
-      setToDate(yStr);
-      return;
-    }
-    if (preset === "this_week") {
+      from = yStr;
+      to = yStr;
+    } else if (preset === "this_week") {
       const now = new Date();
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
       const monday = new Date(now.setDate(diff));
-      setFromDate(toDateKey(monday) || todayStr);
-      setToDate(todayStr);
-      return;
-    }
-    if (preset === "this_month") {
+      from = toDateKey(monday) || todayStr;
+      to = todayStr;
+    } else if (preset === "this_month") {
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      setFromDate(toDateKey(firstDay) || todayStr);
-      setToDate(todayStr);
-      return;
-    }
-    if (preset === "last_month") {
+      from = toDateKey(firstDay) || todayStr;
+      to = todayStr;
+    } else if (preset === "last_month") {
       const now = new Date();
       const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-      setFromDate(toDateKey(firstDayLastMonth) || todayStr);
-      setToDate(toDateKey(lastDayLastMonth) || todayStr);
-      return;
+      from = toDateKey(firstDayLastMonth) || todayStr;
+      to = toDateKey(lastDayLastMonth) || todayStr;
     }
-  };
-
-  const handleFromDateChange = (val: string) => {
-    setFromDate(val);
-    setDatePreset(val || toDate ? "custom" : "all");
-  };
-
-  const handleToDateChange = (val: string) => {
-    setToDate(val);
-    setDatePreset(val || fromDate ? "custom" : "all");
+    setFromDateInput(from);
+    setToDateInput(to);
+    setAppliedFromDate(from);
+    setAppliedToDate(to);
+    setCurrentPage(1);
   };
 
   const clearDateFilter = () => {
-    setFromDate("");
-    setToDate("");
+    setFromDateInput("");
+    setToDateInput("");
+    setAppliedFromDate("");
+    setAppliedToDate("");
     setDatePreset("all");
-    setDateFilter("all");
-    setDisbursedFilter("all");
+    setCurrentPage(1);
   };
 
   useEffect(() => {
@@ -482,7 +487,7 @@ export function LoanManagement() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter, fromDate, toDate, dateType]);
+  }, [pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType]);
 
   // Bulk upload states
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -559,13 +564,10 @@ export function LoanManagement() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (fromDate) params.set("fromDate", fromDate);
-      if (toDate) params.set("toDate", toDate);
-      if (fromDate || toDate) {
+      if (appliedFromDate) params.set("fromDate", appliedFromDate);
+      if (appliedToDate) params.set("toDate", appliedToDate);
+      if (appliedFromDate || appliedToDate) {
         params.set("dateType", dateType);
-      } else {
-        if (dateFilter !== "all") params.set("dateFilter", dateFilter);
-        if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
       }
       params.set("page", String(currentPage));
       params.set("limit", pageSize);
@@ -592,7 +594,7 @@ export function LoanManagement() {
       }
       throw err;
     }
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter, fromDate, toDate, dateType]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType]);
 
   const { isRefreshing, lastUpdatedAt, refresh } = useSmartPolling(loadLoans, {
     enabled: true,
@@ -606,13 +608,10 @@ export function LoanManagement() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (fromDate) params.set("fromDate", fromDate);
-      if (toDate) params.set("toDate", toDate);
-      if (fromDate || toDate) {
+      if (appliedFromDate) params.set("fromDate", appliedFromDate);
+      if (appliedToDate) params.set("toDate", appliedToDate);
+      if (appliedFromDate || appliedToDate) {
         params.set("dateType", dateType);
-      } else {
-        if (dateFilter !== "all") params.set("dateFilter", dateFilter);
-        if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
       }
       params.set("limit", "5000"); // full export
 
@@ -845,10 +844,10 @@ export function LoanManagement() {
     setSearchTerm("");
     setDebouncedSearch("");
     setStatusFilter("all");
-    setDateFilter("all");
-    setDisbursedFilter("all");
-    setFromDate("");
-    setToDate("");
+    setFromDateInput("");
+    setToDateInput("");
+    setAppliedFromDate("");
+    setAppliedToDate("");
     setDatePreset("all");
     setDateType("disbursed");
     setCurrentPage(1);
@@ -857,10 +856,8 @@ export function LoanManagement() {
   const hasActiveFilters =
     debouncedSearch.trim() !== "" ||
     statusFilter !== "all" ||
-    dateFilter !== "all" ||
-    disbursedFilter !== "all" ||
-    fromDate !== "" ||
-    toDate !== "" ||
+    appliedFromDate !== "" ||
+    appliedToDate !== "" ||
     datePreset !== "all";
 
   return (
@@ -1039,109 +1036,17 @@ export function LoanManagement() {
 
       {/* Filter and Search Panel */}
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        {/* Quick Status & Disbursal Tabs */}
-        <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1">
-            Status:
-          </span>
-          <button
-            type="button"
-            onClick={() => setStatusFilter("all")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              statusFilter === "all"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            }`}
-          >
-            All Loans
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "all" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"}`}>
-              {totals.allLoans}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Active")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              statusFilter === "Active"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/60"
-            }`}
-          >
-            Active
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "Active" ? "bg-white/20 text-white" : "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"}`}>
-              {totals.activeLoans}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Part Payment")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              statusFilter === "Part Payment"
-                ? "bg-amber-600 text-white shadow-sm"
-                : "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-900/60"
-            }`}
-          >
-            Part Payment
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "Part Payment" ? "bg-white/20 text-white" : "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200"}`}>
-              {totals.partPaymentLoans}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Paid Off")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              statusFilter === "Paid Off"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-900/60"
-            }`}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Paid Off
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "Paid Off" ? "bg-white/20 text-white" : "bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200"}`}>
-              {totals.paidOffLoans}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStatusFilter("Overdue")}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              statusFilter === "Overdue"
-                ? "bg-rose-600 text-white shadow-sm"
-                : "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/50 dark:text-rose-300 dark:hover:bg-rose-900/60"
-            }`}
-          >
-            Overdue
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${statusFilter === "Overdue" ? "bg-white/20 text-white" : "bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200"}`}>
-              {totals.overdueLoans}
-            </span>
-          </button>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset Filters
-            </button>
-          )}
-        </div>
-
-        {/* Search Bar */}
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-12 mb-3">
-          <div className="relative md:col-span-12">
+        {/* Top Dropdowns & Search Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 mb-3">
+          {/* Keyword Search */}
+          <div className="relative lg:col-span-4">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              placeholder="Search by customer name, loan ID, phone, PAN number, UTR reference..."
+              placeholder="Search customer, loan ID, phone, PAN..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 pl-9 pr-9 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-blue-900/40"
+              className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 pl-9 pr-9 text-xs font-semibold text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
             {searchTerm && (
               <button
@@ -1153,120 +1058,113 @@ export function LoanManagement() {
               </button>
             )}
           </div>
+
+          {/* Status Dropdown */}
+          <div className="lg:col-span-3">
+            <NiceSelect
+              ariaLabel="Filter by status"
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              className="w-full text-xs font-semibold"
+              options={STATUS_OPTIONS}
+            />
+          </div>
+
+          {/* Date Field Type Dropdown */}
+          <div className="lg:col-span-3">
+            <NiceSelect
+              ariaLabel="Select date field"
+              value={dateType}
+              onValueChange={(val) => setDateType(val as any)}
+              className="w-full text-xs font-semibold"
+              options={DATE_TYPE_OPTIONS}
+            />
+          </div>
+
+          {/* Quick Date Presets Dropdown */}
+          <div className="lg:col-span-2">
+            <NiceSelect
+              ariaLabel="Quick date preset"
+              value={datePreset}
+              onValueChange={handleDatePreset}
+              className="w-full text-xs font-semibold"
+              options={DATE_PRESET_OPTIONS}
+            />
+          </div>
         </div>
 
-        {/* Date Wise Filter Controls */}
-        <div className="rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/90 dark:border-slate-700/60 p-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/60 dark:border-slate-700/50 mb-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                Date Wise Filter:
+        {/* Date Filter Row: Only Date Filter (From Date, To Date & Search Button) stays outside */}
+        <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <span>Date Filter:</span>
+          </div>
+
+          {/* From Date */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">From</span>
+            <input
+              type="date"
+              value={fromDateInput}
+              onChange={(e) => setFromDateInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleApplyDateSearch();
+              }}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </div>
+
+          {/* To Date */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">To</span>
+            <input
+              type="date"
+              value={toDateInput}
+              onChange={(e) => setToDateInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleApplyDateSearch();
+              }}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </div>
+
+          {/* Search Button for Date Filter */}
+          <button
+            type="button"
+            onClick={handleApplyDateSearch}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-blue-700 active:scale-95 transition"
+          >
+            <Search className="h-3.5 w-3.5" />
+            Search
+          </button>
+
+          {/* Reset Filters / Clear */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
+              Reset Filters
+            </button>
+          )}
+
+          {/* Active Range Banner */}
+          {(appliedFromDate || appliedToDate) && (
+            <div className="ml-auto inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+              <span>
+                Active: <strong>{appliedFromDate ? formatDate(appliedFromDate) : "Start"}</strong> to{" "}
+                <strong>{appliedToDate ? formatDate(appliedToDate) : "End"}</strong> (
+                {DATE_TYPE_OPTIONS.find((o) => o.value === dateType)?.label})
               </span>
-            </div>
-
-            {/* Quick Date Range Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {DATE_PRESET_OPTIONS.map((p) => {
-                const isActive = datePreset === p.value;
-                return (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => handleDatePreset(p.value)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                      isActive
-                        ? "bg-blue-600 text-white ring-2 ring-blue-400/40"
-                        : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-            {/* Date Type / Field Selection */}
-            <div className="lg:col-span-4">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                Date Field Type
-              </label>
-              <NiceSelect
-                ariaLabel="Filter date field"
-                value={dateType}
-                onValueChange={(val) => setDateType(val as any)}
-                className="w-full text-xs font-semibold"
-                options={DATE_TYPE_OPTIONS}
-              />
-            </div>
-
-            {/* From Date Picker */}
-            <div className="lg:col-span-3">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                From Date
-              </label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => handleFromDateChange(e.target.value)}
-                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-blue-900/40"
-              />
-            </div>
-
-            {/* To Date Picker */}
-            <div className="lg:col-span-3">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                To Date
-              </label>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => handleToDateChange(e.target.value)}
-                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-blue-900/40"
-              />
-            </div>
-
-            {/* Clear Date Action */}
-            <div className="lg:col-span-2">
-              {fromDate || toDate || datePreset !== "all" ? (
-                <button
-                  type="button"
-                  onClick={clearDateFilter}
-                  className="h-10 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100 hover:border-rose-300 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 transition shadow-sm"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Clear Date
-                </button>
-              ) : (
-                <div className="h-10 rounded-lg border border-dashed border-slate-200 dark:border-slate-700/60 flex items-center justify-center text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                  All Range
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Active Date Banner */}
-          {(fromDate || toDate) && (
-            <div className="mt-3 flex items-center justify-between rounded-lg bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <span>
-                  Filtering by{" "}
-                  <strong className="underline underline-offset-2">
-                    {DATE_TYPE_OPTIONS.find((o) => o.value === dateType)?.label || "Date"}
-                  </strong>
-                  : <strong>{fromDate ? formatDate(fromDate) : "Earliest"}</strong> to{" "}
-                  <strong>{toDate ? formatDate(toDate) : "Latest"}</strong>
-                </span>
-              </div>
               <button
                 type="button"
                 onClick={clearDateFilter}
-                className="text-xs font-bold text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-200 underline"
+                className="hover:text-blue-900 dark:hover:text-blue-100 ml-1"
+                title="Clear date filter"
               >
-                Clear
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
@@ -1287,15 +1185,6 @@ export function LoanManagement() {
           >
             <Wallet className="h-4 w-4" />
             <span>Collection</span>
-            <span
-              className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                viewMode === "collection"
-                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
-                  : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
-              }`}
-            >
-              16 Columns
-            </span>
           </button>
 
           <button
@@ -1309,15 +1198,6 @@ export function LoanManagement() {
           >
             <Banknote className="h-4 w-4" />
             <span>Disbursement</span>
-            <span
-              className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                viewMode === "disbursement"
-                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                  : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
-              }`}
-            >
-              44 Columns
-            </span>
           </button>
         </div>
 
