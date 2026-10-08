@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
@@ -413,12 +413,16 @@ export function LoanManagement() {
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const [searchTrigger, setSearchTrigger] = useState(0);
 
   const handleApplyDateSearch = () => {
-    setAppliedFromDate(fromDateInput);
-    setAppliedToDate(toDateInput);
-    setDatePreset(fromDateInput || toDateInput ? "custom" : "all");
+    const from = toDateKey(fromDateInput) || fromDateInput.trim();
+    const to = toDateKey(toDateInput) || toDateInput.trim();
+    setAppliedFromDate(from);
+    setAppliedToDate(to);
+    setDatePreset(from || to ? "custom" : "all");
     setCurrentPage(1);
+    setSearchTrigger((prev) => prev + 1);
   };
 
   const handleDatePreset = (preset: string) => {
@@ -430,6 +434,7 @@ export function LoanManagement() {
       setAppliedFromDate("");
       setAppliedToDate("");
       setCurrentPage(1);
+      setSearchTrigger((prev) => prev + 1);
       return;
     }
     let from = "";
@@ -467,6 +472,7 @@ export function LoanManagement() {
     setAppliedFromDate(from);
     setAppliedToDate(to);
     setCurrentPage(1);
+    setSearchTrigger((prev) => prev + 1);
   };
 
   const clearDateFilter = () => {
@@ -476,18 +482,16 @@ export function LoanManagement() {
     setAppliedToDate("");
     setDatePreset("all");
     setCurrentPage(1);
+    setSearchTrigger((prev) => prev + 1);
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm.trim());
+      setCurrentPage(1);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType]);
 
   // Bulk upload states
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -600,6 +604,15 @@ export function LoanManagement() {
     enabled: true,
     intervalMs: 60_000,
   });
+
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    refresh();
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType, searchTrigger, refresh]);
 
   // Export CSV (Fetches complete dataset on-demand so viewing the table is always blazing fast)
   const handleExportCsv = async () => {
@@ -851,6 +864,7 @@ export function LoanManagement() {
     setDatePreset("all");
     setDateType("disbursed");
     setCurrentPage(1);
+    setSearchTrigger((prev) => prev + 1);
   };
 
   const hasActiveFilters =
@@ -1013,7 +1027,10 @@ export function LoanManagement() {
 
         {/* Total Collected / Paid Off */}
         <div
-          onClick={() => setStatusFilter(statusFilter === "Paid Off" ? "all" : "Paid Off")}
+          onClick={() => {
+            setStatusFilter(statusFilter === "Paid Off" ? "all" : "Paid Off");
+            setCurrentPage(1);
+          }}
           className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/90 dark:border-emerald-900/60 border-t-4 border-t-emerald-500 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
             statusFilter === "Paid Off" ? "ring-2 ring-emerald-500 shadow-md" : ""
           }`}
@@ -1032,7 +1049,10 @@ export function LoanManagement() {
 
         {/* Overdue Loans */}
         <div
-          onClick={() => setStatusFilter(statusFilter === "Overdue" ? "all" : "Overdue")}
+          onClick={() => {
+            setStatusFilter(statusFilter === "Overdue" ? "all" : "Overdue");
+            setCurrentPage(1);
+          }}
           className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-rose-200/90 dark:border-rose-900/60 border-t-4 border-t-rose-500 border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-white dark:from-rose-950/40 dark:via-slate-900 dark:to-slate-900 p-5 shadow-sm hover:shadow-md transition-all duration-200 ${
             statusFilter === "Overdue" ? "ring-2 ring-rose-500 shadow-md" : ""
           }`}
@@ -1078,7 +1098,10 @@ export function LoanManagement() {
             <NiceSelect
               ariaLabel="Filter by status"
               value={statusFilter}
-              onValueChange={setStatusFilter}
+              onValueChange={(val) => {
+                setStatusFilter(val);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs font-semibold"
               options={STATUS_OPTIONS}
             />
@@ -1089,7 +1112,10 @@ export function LoanManagement() {
             <NiceSelect
               ariaLabel="Select date field"
               value={dateType}
-              onValueChange={(val) => setDateType(val as any)}
+              onValueChange={(val) => {
+                setDateType(val as any);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs font-semibold"
               options={DATE_TYPE_OPTIONS}
             />
@@ -1249,7 +1275,10 @@ export function LoanManagement() {
             <NiceSelect
               ariaLabel="Loan rows per page"
               value={pageSize}
-              onValueChange={setPageSize}
+              onValueChange={(val) => {
+                setPageSize(val);
+                setCurrentPage(1);
+              }}
               className="w-32"
               options={PAGE_SIZE_OPTIONS}
             />

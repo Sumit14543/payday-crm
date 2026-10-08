@@ -46,17 +46,17 @@ function normalizePanString(val) {
   return clean.length >= 10 ? clean.slice(0, 10) : clean;
 }
 
-function normalizeDobString(val) {
+function normalizeDateString(val) {
   if (!val) return '';
   const s = String(val).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (/^(\d{2})[-/](\d{2})[-/](\d{4})$/.test(s)) {
     const parts = s.split(/[-/]/);
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
   if (/^(\d{4})[-/](\d{2})[-/](\d{2})$/.test(s)) {
     const parts = s.split(/[-/]/);
-    return `${parts[0]}-${parts[1]}-${parts[2]}`;
+    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
   }
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
@@ -67,6 +67,8 @@ function normalizeDobString(val) {
   }
   return s;
 }
+
+const normalizeDobString = normalizeDateString;
 
 function extractStateFromAddress(addr) {
   if (!addr) return '';
@@ -853,8 +855,8 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   const parsedLimit = Math.min(Math.max(Number(effectiveLimit) || 50, 1), 5000);
   const offset = (parsedPage - 1) * parsedLimit;
 
-  const cleanFromDate = cleanStr(fromDate);
-  const cleanToDate = cleanStr(toDate);
+  const cleanFromDate = normalizeDateString(fromDate);
+  const cleanToDate = normalizeDateString(toDate);
   const cleanDateType = (cleanStr(dateType) || 'disbursed').toLowerCase();
 
   const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${cleanFromDate}:${cleanToDate}:${cleanDateType}:${parsedPage}:${parsedLimit}`;
@@ -935,13 +937,37 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
       }
     } else {
       // Default: 'disbursed'
-      if (cleanFromDate) {
-        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) >= ?');
-        params.push(cleanFromDate);
-      }
-      if (cleanToDate) {
-        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) <= ?');
-        params.push(cleanToDate);
+      if (cleanFromDate && cleanToDate) {
+        clauses.push(`(
+          (DATE(COALESCE(l.start_date, l.created_at)) >= ? AND DATE(COALESCE(l.start_date, l.created_at)) <= ?)
+          OR EXISTS (
+            SELECT 1 FROM lead_accounting_payments lap
+            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) >= ?
+              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) <= ?
+          )
+        )`);
+        params.push(cleanFromDate, cleanToDate, cleanFromDate, cleanToDate);
+      } else if (cleanFromDate) {
+        clauses.push(`(
+          DATE(COALESCE(l.start_date, l.created_at)) >= ?
+          OR EXISTS (
+            SELECT 1 FROM lead_accounting_payments lap
+            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) >= ?
+          )
+        )`);
+        params.push(cleanFromDate, cleanFromDate);
+      } else if (cleanToDate) {
+        clauses.push(`(
+          DATE(COALESCE(l.start_date, l.created_at)) <= ?
+          OR EXISTS (
+            SELECT 1 FROM lead_accounting_payments lap
+            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) <= ?
+          )
+        )`);
+        params.push(cleanToDate, cleanToDate);
       }
     }
   } else {
@@ -962,11 +988,32 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
 
     if (disbursedFilter !== 'all') {
       if (disbursedFilter === 'today') {
-        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()');
+        clauses.push(`(
+          DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()
+          OR EXISTS (
+            SELECT 1 FROM lead_accounting_payments lap
+            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) = CURDATE()
+          )
+        )`);
       } else if (disbursedFilter === 'yesterday') {
-        clauses.push('DATE(COALESCE(l.start_date, l.created_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)');
+        clauses.push(`(
+          DATE(COALESCE(l.start_date, l.created_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+          OR EXISTS (
+            SELECT 1 FROM lead_accounting_payments lap
+            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+          )
+        )`);
       } else if (disbursedFilter === 'month') {
-        clauses.push("DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+        clauses.push(`(
+          DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
+          OR EXISTS (
+            SELECT 1 FROM lead_accounting_payments lap
+            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+              AND DATE_FORMAT(COALESCE(lap.disbursed_at, lap.paid_at)) = DATE_FORMAT(CURDATE(), '%Y-%m')
+          )
+        )`);
       }
     }
   }
