@@ -1,9 +1,9 @@
 const { query } = require('../config/db');
 const { likeParams } = require('../utils/strings');
 
-// 15-second In-Memory Cache for loans list queries
+// 30-second In-Memory Cache for loans list queries
 const loansListCache = new Map();
-const LOANS_CACHE_TTL_MS = 15 * 1000;
+const LOANS_CACHE_TTL_MS = 30 * 1000;
 
 function invalidateLoansCache() {
   loansListCache.clear();
@@ -49,19 +49,15 @@ function normalizePanString(val) {
 function normalizeDobString(val) {
   if (!val) return '';
   const s = String(val).trim();
-  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD-MM-YYYY or DD/MM/YYYY
   if (/^(\d{2})[-/](\d{2})[-/](\d{4})$/.test(s)) {
     const parts = s.split(/[-/]/);
     return `${parts[2]}-${parts[1]}-${parts[0]}`;
   }
-  // YYYY/MM/DD
   if (/^(\d{4})[-/](\d{2})[-/](\d{2})$/.test(s)) {
     const parts = s.split(/[-/]/);
     return `${parts[0]}-${parts[1]}-${parts[2]}`;
   }
-  // Date parseable
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
     const y = d.getFullYear();
@@ -92,7 +88,6 @@ function extractCityFromAddress(addr) {
   if (!addr) return '';
   const parts = String(addr).split(',').map(p => p.trim()).filter(Boolean);
   if (parts.length >= 3) {
-    // Usually city is the 2nd to last or 3rd to last item before state and pin
     const candidate = parts[parts.length - 2].replace(/\d+/g, '').trim();
     if (candidate && candidate.length < 30) return candidate;
   }
@@ -175,378 +170,668 @@ function getLocalDate(dStr) {
   return new Date(localTime).toISOString().slice(0, 10);
 }
 
-// Batch enrichment function across all related tables
+// Global Fast Aggregate Stats (Runs in ~1-2ms)
+async function getLoanStats() {
+  try {
+    const rows = await query(`
+      SELECT
+        COUNT(*) AS allLoans,
+        SUM(CASE WHEN (status = 'Active' OR status IS NULL) AND balance > 0 THEN 1 ELSE 0 END) AS activeLoans,
+        SUM(CASE WHEN amount_paid > 0 AND balance > 0 THEN 1 ELSE 0 END) AS partPaymentLoans,
+        SUM(CASE WHEN balance <= 0 THEN 1 ELSE 0 END) AS paidOffLoans,
+        SUM(CASE WHEN balance > 0 AND (due_date < CURDATE() OR LOWER(status) = 'overdue' OR LOWER(payment_status) = 'overdue') THEN 1 ELSE 0 END) AS overdueLoans,
+        COALESCE(SUM(balance), 0) AS totalOutstanding,
+        COALESCE(SUM(amount_paid), 0) AS totalCollected,
+        SUM(CASE WHEN DATE(COALESCE(start_date, created_at)) = CURDATE() THEN 1 ELSE 0 END) AS todayDisbursedCount,
+        COALESCE(SUM(CASE WHEN DATE(COALESCE(start_date, created_at)) = CURDATE() THEN principal ELSE 0 END), 0) AS todayDisbursedAmount,
+        SUM(CASE WHEN DATE_FORMAT(COALESCE(start_date, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN 1 ELSE 0 END) AS monthDisbursedCount,
+        COALESCE(SUM(CASE WHEN DATE_FORMAT(COALESCE(start_date, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN principal ELSE 0 END), 0) AS monthDisbursedAmount
+      FROM loans
+    `);
+    const s = rows[0] || {};
+    return {
+      allLoans: Number(s.allLoans || 0),
+      activeLoans: Number(s.activeLoans || 0),
+      partPaymentLoans: Number(s.partPaymentLoans || 0),
+      paidOffLoans: Number(s.paidOffLoans || 0),
+      overdueLoans: Number(s.overdueLoans || 0),
+      totalOutstanding: Number(s.totalOutstanding || 0),
+      totalCollected: Number(s.totalCollected || 0),
+      todayDisbursedCount: Number(s.todayDisbursedCount || 0),
+      todayDisbursedAmount: Number(s.todayDisbursedAmount || 0),
+      monthDisbursedCount: Number(s.monthDisbursedCount || 0),
+      monthDisbursedAmount: Number(s.monthDisbursedAmount || 0),
+    };
+  } catch (err) {
+    console.error('[LoanModel] Error fetching loan stats:', err.message);
+    return null;
+  }
+}
+
+// Ultra-fast parallel batch enrichment for ONLY the current page of loans
 async function enrichLoansBatch(loans) {
   if (!loans || loans.length === 0) return;
 
-  // 1. Initial local extraction from payload columns already selected
+  const loanIds = new Set();
+  const candidateLeadIds = new Set();
+  const candidateAppIds = new Set();
+  const candidatePhones = new Set();
+  const candidateNames = new Set();
+
   loans.forEach(l => {
-    // Composite loan id unpack: "116392247/WAQTMN270/SHANUKU"
-    if (String(l.id || '').includes('/')) {
-      const parts = String(l.id).split('/');
-      if (!l.leadId && parts[0]) l.leadId = parts[0];
-      if (!l.loanNo || l.loanNo === l.id) l.loanNo = parts[1] || l.id;
-      if (!l.customer && parts[2]) l.customer = parts[2];
-      if (!l.customerName && parts[2]) l.customerName = parts[2];
+    const rawId = cleanStr(l.id);
+    if (rawId) {
+      loanIds.add(rawId);
+      const strippedLn = rawId.replace(/^LN/i, '').trim();
+      if (strippedLn) {
+        loanIds.add(strippedLn);
+        candidateAppIds.add(strippedLn);
+      }
+      if (rawId.includes('/')) {
+        const parts = rawId.split('/');
+        if (parts[0]) candidateLeadIds.add(parts[0]);
+        if (parts[1]) candidateAppIds.add(parts[1]);
+        if (parts[2]) candidateNames.add(parts[2].trim().toLowerCase());
+      }
     }
 
-    const payload = parseJsonSafe(l.sourcePayload);
-    const aadhaarRaw = parseJsonSafe(l.aadhaarRawResponse);
-    const cibilRaw = parseJsonSafe(l.cibilRawResponse);
-    const cibilAnalysis = parseJsonSafe(l.cibilAnalysisJson);
-
-    // PAN Number
-    if (!cleanStr(l.panNumber)) {
-      l.panNumber = extractPanFromPayload(payload) ||
-        normalizePanString(cibilRaw?.pan || cibilRaw?.pan_number || cibilRaw?.PAN_Number) ||
-        normalizePanString(cibilAnalysis?.pan || cibilAnalysis?.pan_number || cibilAnalysis?.PAN_Number || cibilAnalysis?.personalDetails?.pan) ||
-        normalizePanString(aadhaarRaw?.pan || aadhaarRaw?.pan_number);
-    } else {
-      l.panNumber = normalizePanString(l.panNumber);
+    const rawCus = cleanStr(l.customerId);
+    if (rawCus) {
+      candidateLeadIds.add(rawCus);
+      const strippedCus = rawCus.replace(/^CUS/i, '').trim();
+      if (strippedCus) candidateLeadIds.add(strippedCus);
     }
 
-    // DOB
-    if (!cleanStr(l.dob)) {
-      l.dob = extractDobFromPayload(payload) ||
-        normalizeDobString(aadhaarRaw?.dob || aadhaarRaw?.dateOfBirth || aadhaarRaw?.poi?.dob) ||
-        normalizeDobString(cibilRaw?.dob || cibilRaw?.dateOfBirth || cibilAnalysis?.personalDetails?.dob);
-    } else {
-      l.dob = normalizeDobString(l.dob);
-    }
+    const p = cleanPhone(l.customerPhone);
+    if (p.length === 10) candidatePhones.add(p);
 
-    // Monthly Income
-    if (!Number(l.monthlyIncome || 0)) {
-      l.monthlyIncome = extractIncomeFromPayload(payload) ||
-        Number(cibilAnalysis?.monthlyIncome || cibilAnalysis?.inhandSalary || 0);
-    } else {
-      l.monthlyIncome = Number(l.monthlyIncome);
-    }
-
-    // Email
-    if (!cleanStr(l.email)) {
-      l.email = cleanStr(payload?.email || payload?.personalDetails?.email || payload?.office_email || cibilAnalysis?.personalDetails?.email);
-    }
-
-    // Mobile
-    if (!cleanStr(l.mobile)) {
-      l.mobile = cleanStr(payload?.mobile || payload?.phone || payload?.personalDetails?.mobile || payload?.borrower?.phone);
-    }
-
-    // Alternative Number
-    if (!cleanStr(l.alternativeNumber)) {
-      l.alternativeNumber = cleanStr(
-        payload?.reference1_mobile ||
-        payload?.reference2_mobile ||
-        payload?.references?.[0]?.mobile ||
-        payload?.primaryReference?.mobile ||
-        payload?.secondaryReference?.mobile
-      );
-    }
-
-    // Gender
-    if (!cleanStr(l.gender)) {
-      l.gender = extractGenderFromPayload(payload) ||
-        extractGenderFromPayload(aadhaarRaw) ||
-        extractGenderFromPayload(cibilRaw);
-    }
-
-    // Address & Location
-    if (!cleanStr(l.address)) {
-      l.address = cleanStr(
-        payload?.address ||
-        payload?.currentAddress ||
-        payload?.permanentAddress ||
-        aadhaarRaw?.address ||
-        aadhaarRaw?.poa?.address
-      );
-    }
-
-    if (!cleanStr(l.city)) {
-      l.city = cleanStr(
-        payload?.city ||
-        aadhaarRaw?.dist ||
-        aadhaarRaw?.vtc ||
-        aadhaarRaw?.city ||
-        extractCityFromAddress(l.address)
-      );
-    }
-
-    if (!cleanStr(l.pincode)) {
-      l.pincode = cleanStr(
-        payload?.pincode ||
-        payload?.pinCode ||
-        aadhaarRaw?.pc ||
-        aadhaarRaw?.pincode ||
-        extractPincodeFromAddress(l.address)
-      );
-    }
-
-    if (!cleanStr(l.stateName) || l.stateName === '-') {
-      l.stateName = cleanStr(
-        payload?.state ||
-        payload?.stateName ||
-        aadhaarRaw?.state ||
-        extractStateFromAddress(l.address) ||
-        'Delhi'
-      );
-    }
-
-    // House Type
-    if (!cleanStr(l.houseType) || l.houseType === 'Owned') {
-      l.houseType = cleanStr(
-        payload?.property_type ||
-        payload?.propertyType ||
-        payload?.houseType ||
-        payload?.residenceType ||
-        'Owned'
-      );
+    if (cleanStr(l.customerName)) {
+      candidateNames.add(l.customerName.trim().toLowerCase());
     }
   });
 
-  // 2. Fallback secondary batch query if any loan is still missing crucial fields
-  const missingLoans = loans.filter(l => (
-    !cleanStr(l.email) ||
-    !cleanStr(l.mobile) ||
-    !cleanStr(l.dob) ||
-    !cleanStr(l.panNumber) ||
-    !Number(l.monthlyIncome || 0)
-  ));
+  const loanIdArr = Array.from(loanIds).filter(Boolean);
+  const leadIdArr = Array.from(candidateLeadIds).filter(Boolean);
+  const appIdArr = Array.from(candidateAppIds).filter(Boolean);
+  const phoneArr = Array.from(candidatePhones).filter(Boolean);
+  const nameArr = Array.from(candidateNames).filter(Boolean);
 
-  if (missingLoans.length > 0) {
-    const candidateLeadIds = new Set();
-    const candidateAppIds = new Set();
-    const candidatePhones = new Set();
-    const candidateNames = new Set();
+  const promises = [];
 
-    missingLoans.forEach(l => {
-      if (cleanStr(l.leadId)) candidateLeadIds.add(String(l.leadId).trim());
-      if (cleanStr(l.customerId)) {
-        const rawCus = String(l.customerId).trim();
-        candidateLeadIds.add(rawCus);
-        const strippedCus = rawCus.replace(/^CUS/i, '').trim();
-        if (strippedCus) candidateLeadIds.add(strippedCus);
-      }
-      if (cleanStr(l.id)) {
-        const rawId = String(l.id).trim();
-        candidateAppIds.add(rawId);
-        const strippedLn = rawId.replace(/^LN/i, '').trim();
-        if (strippedLn) candidateAppIds.add(strippedLn);
-        if (rawId.includes('/')) {
-          const parts = rawId.split('/');
-          if (parts[0]) candidateLeadIds.add(parts[0]);
-          if (parts[1]) candidateAppIds.add(parts[1]);
-        }
-      }
-      if (cleanStr(l.loanNo)) candidateAppIds.add(String(l.loanNo).trim());
-      const p = cleanPhone(l.mobile || l.phone || l.customerPhone);
-      if (p.length === 10) candidatePhones.add(p);
-      if (cleanStr(l.customerName)) candidateNames.add(String(l.customerName).trim().toLowerCase());
-      if (cleanStr(l.customer)) candidateNames.add(String(l.customer).trim().toLowerCase());
-    });
-
-    const leadIdArr = Array.from(candidateLeadIds).filter(Boolean);
-    const appIdArr = Array.from(candidateAppIds).filter(Boolean);
-    const phoneArr = Array.from(candidatePhones).filter(Boolean);
-    const nameArr = Array.from(candidateNames).filter(Boolean);
-
-    const appConds = [];
-    const appParams = [];
-    if (leadIdArr.length) {
-      appConds.push(`id IN (${leadIdArr.map(() => '?').join(',')})`);
-      appParams.push(...leadIdArr);
-      appConds.push(`source_lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
-      appParams.push(...leadIdArr);
-    }
-    if (appIdArr.length) {
-      appConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
-      appParams.push(...appIdArr);
-      appConds.push(`source_application_id IN (${appIdArr.map(() => '?').join(',')})`);
-      appParams.push(...appIdArr);
-    }
-    if (phoneArr.length) {
-      appConds.push(`mobile IN (${phoneArr.map(() => '?').join(',')})`);
-      appParams.push(...phoneArr);
-    }
-    if (nameArr.length) {
-      appConds.push(`LOWER(TRIM(full_name)) IN (${nameArr.map(() => '?').join(',')})`);
-      appParams.push(...nameArr);
-    }
-
-    if (appConds.length) {
-      try {
-        const extraApps = await query(`
-          SELECT 
-            id, application_id, full_name, mobile, email, dob, pan_number, monthly_income,
-            city, pincode, office_address, branch_name, reference1_mobile, reference2_mobile,
-            source_lead_id, source_application_id, source_payload, account_number, ifsc_code, bank_name
-          FROM loan_applications
-          WHERE ${appConds.join(' OR ')}
-          ORDER BY id DESC
-        `, appParams);
-
-        if (extraApps && extraApps.length > 0) {
-          missingLoans.forEach(l => {
-            const strippedCus = String(l.customerId || '').replace(/^CUS/i, '').trim();
-            const p = cleanPhone(l.mobile || l.phone);
-            const lName = String(l.customerName || l.customer || '').trim().toLowerCase();
-
-            // Match against extra applications
-            const matchedApp = extraApps.find(app => (
-              (cleanStr(l.leadId) && (String(app.id) === String(l.leadId) || String(app.source_lead_id) === String(l.leadId))) ||
-              (cleanStr(l.loanNo) && (String(app.application_id) === String(l.loanNo) || String(app.source_application_id) === String(l.loanNo))) ||
-              (strippedCus && (String(app.id) === strippedCus || String(app.source_lead_id) === strippedCus)) ||
-              (p && cleanPhone(app.mobile) === p) ||
-              (lName && String(app.full_name || '').trim().toLowerCase() === lName)
-            ));
-
-            if (matchedApp) {
-              const extraPayload = parseJsonSafe(matchedApp.source_payload);
-              if (!cleanStr(l.panNumber)) {
-                l.panNumber = normalizePanString(matchedApp.pan_number) || extractPanFromPayload(extraPayload);
-              }
-              if (!cleanStr(l.dob)) {
-                l.dob = normalizeDobString(matchedApp.dob) || extractDobFromPayload(extraPayload);
-              }
-              if (!cleanStr(l.email)) {
-                l.email = cleanStr(matchedApp.email) || cleanStr(extraPayload?.email);
-              }
-              if (!cleanStr(l.mobile)) {
-                l.mobile = cleanStr(matchedApp.mobile) || cleanStr(extraPayload?.mobile);
-              }
-              if (!Number(l.monthlyIncome || 0)) {
-                l.monthlyIncome = Number(matchedApp.monthly_income || 0) || extractIncomeFromPayload(extraPayload);
-              }
-              if (!cleanStr(l.city)) {
-                l.city = cleanStr(matchedApp.city) || cleanStr(extraPayload?.city);
-              }
-              if (!cleanStr(l.pincode)) {
-                l.pincode = cleanStr(matchedApp.pincode) || cleanStr(extraPayload?.pincode);
-              }
-              if (!cleanStr(l.alternativeNumber)) {
-                l.alternativeNumber = cleanStr(matchedApp.reference1_mobile) || cleanStr(matchedApp.reference2_mobile);
-              }
-              if (!cleanStr(l.accountNumber)) {
-                l.accountNumber = cleanStr(matchedApp.account_number);
-              }
-              if (!cleanStr(l.ifscCode)) {
-                l.ifscCode = cleanStr(matchedApp.ifsc_code);
-              }
-              if (!cleanStr(l.bankName)) {
-                l.bankName = cleanStr(matchedApp.bank_name);
-              }
-              if (!cleanStr(l.branchName) || l.branchName === 'Head Office') {
-                l.branchName = cleanStr(matchedApp.branch_name) || 'Head Office';
-              }
-            }
-          });
-        }
-      } catch (err) {
-        console.error('[LoanModel] Error in secondary fallback loan_applications query:', err.message);
-      }
-    }
+  // 1. Repayments (Indexed loan_id)
+  if (loanIdArr.length) {
+    const ph = loanIdArr.map(() => '?').join(',');
+    promises.push(
+      query(`
+        SELECT loan_id, amount, received_at, method
+        FROM loan_repayments
+        WHERE status IN ('received', 'success', 'paid', 'settled')
+          AND loan_id IN (${ph})
+        ORDER BY received_at ASC, id ASC
+      `, loanIdArr)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
   }
 
-  // 3. Final normalization of all fields for Collection & Disbursement views
+  // 2. Accounting payments (Indexed loan_id / lead_id / application_id)
+  const lapConds = [];
+  const lapParams = [];
+  if (loanIdArr.length) {
+    lapConds.push(`loan_id IN (${loanIdArr.map(() => '?').join(',')})`);
+    lapParams.push(...loanIdArr);
+  }
+  if (leadIdArr.length) {
+    lapConds.push(`lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
+    lapParams.push(...leadIdArr);
+  }
+  if (appIdArr.length) {
+    lapConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    lapParams.push(...appIdArr);
+  }
+
+  if (lapConds.length) {
+    promises.push(
+      query(`
+        SELECT id, lead_id, application_id, loan_id, amount, method, reference, transfer_type, transaction_id, status, paid_by, disbursed_at, paid_at, account_number, bank_name, ifsc_code
+        FROM lead_accounting_payments
+        WHERE ${lapConds.join(' OR ')}
+        ORDER BY id DESC
+      `, lapParams)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+
+  // 3. Lead sanctions
+  const lsConds = [];
+  const lsParams = [];
+  if (loanIdArr.length) {
+    lsConds.push(`agreement_number IN (${loanIdArr.map(() => '?').join(',')})`);
+    lsParams.push(...loanIdArr);
+  }
+  if (leadIdArr.length) {
+    lsConds.push(`lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
+    lsParams.push(...leadIdArr);
+  }
+  if (appIdArr.length) {
+    lsConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    lsParams.push(...appIdArr);
+  }
+  if (phoneArr.length) {
+    lsConds.push(`borrower_phone IN (${phoneArr.map(() => '?').join(',')})`);
+    lsParams.push(...phoneArr);
+  }
+
+  if (lsConds.length) {
+    promises.push(
+      query(`
+        SELECT id, lead_id, application_id, agreement_number, borrower, borrower_email, borrower_phone, principal_amount, tenure_days, interest_rate, processing_fee, gst_amount, disbursed_amount, due_date, repayment_amount, created_by, agreement_date, account_number, ifsc_code, bank_name, status, cam_sheet_id
+        FROM lead_sanctions
+        WHERE ${lsConds.join(' OR ')}
+        ORDER BY (status = 'sent') DESC, id DESC
+      `, lsParams)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+
+  // 4. Loan applications
+  const laConds = [];
+  const laParams = [];
+  if (leadIdArr.length) {
+    laConds.push(`id IN (${leadIdArr.map(() => '?').join(',')})`);
+    laParams.push(...leadIdArr);
+    laConds.push(`source_lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
+    laParams.push(...leadIdArr);
+  }
+  if (appIdArr.length) {
+    laConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    laParams.push(...appIdArr);
+    laConds.push(`source_application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    laParams.push(...appIdArr);
+  }
+  if (phoneArr.length) {
+    laConds.push(`mobile IN (${phoneArr.map(() => '?').join(',')})`);
+    laParams.push(...phoneArr);
+  }
+  if (nameArr.length) {
+    laConds.push(`LOWER(TRIM(full_name)) IN (${nameArr.map(() => '?').join(',')})`);
+    laParams.push(...nameArr);
+  }
+
+  if (laConds.length) {
+    promises.push(
+      query(`
+        SELECT id, application_id, full_name, mobile, email, dob, pan_number, monthly_income, city, pincode, office_address, branch_name, reference1_mobile, reference2_mobile, source_lead_id, source_application_id, source_payload, account_number, ifsc_code, bank_name, created_at
+        FROM loan_applications
+        WHERE ${laConds.join(' OR ')}
+        ORDER BY id DESC
+      `, laParams)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+
+  // 5. Aadhaar reports
+  const arConds = [];
+  const arParams = [];
+  if (leadIdArr.length) {
+    arConds.push(`lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
+    arParams.push(...leadIdArr);
+  }
+  if (appIdArr.length) {
+    arConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    arParams.push(...appIdArr);
+  }
+  if (phoneArr.length) {
+    arConds.push(`mobile IN (${phoneArr.map(() => '?').join(',')})`);
+    arParams.push(...phoneArr);
+  }
+
+  if (arConds.length) {
+    promises.push(
+      query(`
+        SELECT id, lead_id, application_id, dob, gender, mobile, full_name, address, raw_response
+        FROM aadhaar_reports
+        WHERE ${arConds.join(' OR ')}
+        ORDER BY id DESC
+      `, arParams)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+
+  // 6. CIBIL reports
+  const cibConds = [];
+  const cibParams = [];
+  if (leadIdArr.length) {
+    cibConds.push(`lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
+    cibParams.push(...leadIdArr);
+  }
+  if (appIdArr.length) {
+    cibConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    cibParams.push(...appIdArr);
+  }
+  if (phoneArr.length) {
+    cibConds.push(`mobile IN (${phoneArr.map(() => '?').join(',')})`);
+    cibParams.push(...phoneArr);
+  }
+
+  if (cibConds.length) {
+    promises.push(
+      query(`
+        SELECT id, lead_id, application_id, pan, email, mobile, full_name, raw_response, analysis_json
+        FROM cibil_reports
+        WHERE ${cibConds.join(' OR ')}
+        ORDER BY id DESC
+      `, cibParams)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+
+  // 7. Lead CAM sheets
+  const camConds = [];
+  const camParams = [];
+  if (leadIdArr.length) {
+    camConds.push(`lead_id IN (${leadIdArr.map(() => '?').join(',')})`);
+    camParams.push(...leadIdArr);
+  }
+  if (appIdArr.length) {
+    camConds.push(`application_id IN (${appIdArr.map(() => '?').join(',')})`);
+    camParams.push(...appIdArr);
+  }
+
+  if (camConds.length) {
+    promises.push(
+      query(`
+        SELECT id, lead_id, application_id, inhand_salary, decided_by
+        FROM lead_cam_sheets
+        WHERE ${camConds.join(' OR ')}
+        ORDER BY id DESC
+      `, camParams)
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+
+  // Execute all 7 queries concurrently (under 15-20ms)
+  const [
+    repaymentsResult,
+    lapResult,
+    lsResult,
+    laResult,
+    arResult,
+    cibResult,
+    camResult
+  ] = await Promise.all(promises);
+
+  // In-Memory Hash Maps for O(1) Instant Lookups
+  const repaymentsByLoan = new Map();
+  (repaymentsResult || []).forEach(r => {
+    const k = String(r.loan_id);
+    if (!repaymentsByLoan.has(k)) repaymentsByLoan.set(k, []);
+    repaymentsByLoan.get(k).push(r);
+    const stripped = k.replace(/^LN/i, '');
+    if (stripped && stripped !== k) {
+      if (!repaymentsByLoan.has(stripped)) repaymentsByLoan.set(stripped, []);
+      repaymentsByLoan.get(stripped).push(r);
+    }
+  });
+
+  const lapByLoan = new Map();
+  const lapByLead = new Map();
+  const lapByApp = new Map();
+  (lapResult || []).forEach(p => {
+    if (p.loan_id && !lapByLoan.has(String(p.loan_id))) lapByLoan.set(String(p.loan_id), p);
+    if (p.lead_id && !lapByLead.has(String(p.lead_id))) lapByLead.set(String(p.lead_id), p);
+    if (p.application_id && !lapByApp.has(String(p.application_id))) lapByApp.set(String(p.application_id), p);
+  });
+
+  const lsByAgree = new Map();
+  const lsByLead = new Map();
+  const lsByApp = new Map();
+  const lsByPhone = new Map();
+  (lsResult || []).forEach(s => {
+    if (s.agreement_number && !lsByAgree.has(String(s.agreement_number))) lsByAgree.set(String(s.agreement_number), s);
+    if (s.lead_id && !lsByLead.has(String(s.lead_id))) lsByLead.set(String(s.lead_id), s);
+    if (s.application_id && !lsByApp.has(String(s.application_id))) lsByApp.set(String(s.application_id), s);
+    const p = cleanPhone(s.borrower_phone);
+    if (p && !lsByPhone.has(p)) lsByPhone.set(p, s);
+  });
+
+  const laById = new Map();
+  const laByApp = new Map();
+  const laBySourceLead = new Map();
+  const laBySourceApp = new Map();
+  const laByPhone = new Map();
+  const laByName = new Map();
+  (laResult || []).forEach(a => {
+    if (a.id && !laById.has(String(a.id))) laById.set(String(a.id), a);
+    if (a.application_id && !laByApp.has(String(a.application_id))) laByApp.set(String(a.application_id), a);
+    if (a.source_lead_id && !laBySourceLead.has(String(a.source_lead_id))) laBySourceLead.set(String(a.source_lead_id), a);
+    if (a.source_application_id && !laBySourceApp.has(String(a.source_application_id))) laBySourceApp.set(String(a.source_application_id), a);
+    const p = cleanPhone(a.mobile);
+    if (p && !laByPhone.has(p)) laByPhone.set(p, a);
+    if (a.full_name && !laByName.has(String(a.full_name).trim().toLowerCase())) {
+      laByName.set(String(a.full_name).trim().toLowerCase(), a);
+    }
+  });
+
+  const arByLead = new Map();
+  const arByApp = new Map();
+  const arByPhone = new Map();
+  (arResult || []).forEach(ar => {
+    if (ar.lead_id && !arByLead.has(String(ar.lead_id))) arByLead.set(String(ar.lead_id), ar);
+    if (ar.application_id && !arByApp.has(String(ar.application_id))) arByApp.set(String(ar.application_id), ar);
+    const p = cleanPhone(ar.mobile);
+    if (p && !arByPhone.has(p)) arByPhone.set(p, ar);
+  });
+
+  const cibByLead = new Map();
+  const cibByApp = new Map();
+  const cibByPhone = new Map();
+  (cibResult || []).forEach(cib => {
+    if (cib.lead_id && !cibByLead.has(String(cib.lead_id))) cibByLead.set(String(cib.lead_id), cib);
+    if (cib.application_id && !cibByApp.has(String(cib.application_id))) cibByApp.set(String(cib.application_id), cib);
+    const p = cleanPhone(cib.mobile);
+    if (p && !cibByPhone.has(p)) cibByPhone.set(p, cib);
+  });
+
+  const camByLead = new Map();
+  const camByApp = new Map();
+  (camResult || []).forEach(cam => {
+    if (cam.lead_id && !camByLead.has(String(cam.lead_id))) camByLead.set(String(cam.lead_id), cam);
+    if (cam.application_id && !camByApp.has(String(cam.application_id))) camByApp.set(String(cam.application_id), cam);
+  });
+
+  const today = getLocalDate(new Date().toISOString());
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+
+  // Fast in-memory decoration
   loans.forEach(l => {
+    const rawId = String(l.id || '').trim();
+    const strippedLn = rawId.replace(/^LN/i, '').trim();
+    const strippedCus = String(l.customerId || '').replace(/^CUS/i, '').trim();
+    const phone = cleanPhone(l.customerPhone);
+    const nameLower = String(l.customerName || l.customer || '').trim().toLowerCase();
+
+    let compositeLead = '';
+    let compositeApp = '';
+    let compositeName = '';
+    if (rawId.includes('/')) {
+      const parts = rawId.split('/');
+      compositeLead = parts[0] || '';
+      compositeApp = parts[1] || '';
+      compositeName = parts[2] || '';
+    }
+
+    // Match payment
+    const payment = lapByLoan.get(rawId) ||
+      lapByLoan.get(strippedLn) ||
+      (compositeApp && lapByApp.get(compositeApp)) ||
+      (compositeLead && lapByLead.get(compositeLead)) ||
+      (strippedCus && lapByLead.get(strippedCus)) ||
+      null;
+
+    // Match sanction
+    const sanction = lsByAgree.get(rawId) ||
+      lsByAgree.get(strippedLn) ||
+      (compositeApp && lsByApp.get(compositeApp)) ||
+      (compositeLead && lsByLead.get(compositeLead)) ||
+      (payment?.lead_id && lsByLead.get(String(payment.lead_id))) ||
+      (payment?.application_id && lsByApp.get(String(payment.application_id))) ||
+      (strippedCus && lsByLead.get(strippedCus)) ||
+      (phone && lsByPhone.get(phone)) ||
+      null;
+
+    // Match application
+    const app = (sanction?.lead_id && laById.get(String(sanction.lead_id))) ||
+      (sanction?.application_id && laByApp.get(String(sanction.application_id))) ||
+      (payment?.lead_id && laById.get(String(payment.lead_id))) ||
+      (payment?.application_id && laByApp.get(String(payment.application_id))) ||
+      (compositeLead && (laById.get(compositeLead) || laBySourceLead.get(compositeLead))) ||
+      (compositeApp && (laByApp.get(compositeApp) || laBySourceApp.get(compositeApp))) ||
+      (strippedLn && (laByApp.get(strippedLn) || laById.get(strippedLn))) ||
+      (strippedCus && (laById.get(strippedCus) || laBySourceLead.get(strippedCus))) ||
+      (phone && laByPhone.get(phone)) ||
+      (nameLower && laByName.get(nameLower)) ||
+      null;
+
+    // Match Aadhaar
+    const aadhaar = (app?.id && arByLead.get(String(app.id))) ||
+      (app?.application_id && arByApp.get(String(app.application_id))) ||
+      (sanction?.lead_id && arByLead.get(String(sanction.lead_id))) ||
+      (sanction?.application_id && arByApp.get(String(sanction.application_id))) ||
+      (phone && arByPhone.get(phone)) ||
+      null;
+
+    // Match CIBIL
+    const cibil = (app?.id && cibByLead.get(String(app.id))) ||
+      (app?.application_id && cibByApp.get(String(app.application_id))) ||
+      (sanction?.lead_id && cibByLead.get(String(sanction.lead_id))) ||
+      (sanction?.application_id && cibByApp.get(String(sanction.application_id))) ||
+      (phone && cibByPhone.get(phone)) ||
+      null;
+
+    // Match CAM
+    const cam = (sanction?.lead_id && camByLead.get(String(sanction.lead_id))) ||
+      (sanction?.application_id && camByApp.get(String(sanction.application_id))) ||
+      (app?.id && camByLead.get(String(app.id))) ||
+      (app?.application_id && camByApp.get(String(app.application_id))) ||
+      null;
+
+    // Calculate Repayments & ROI
     const principal = Number(l.principal || 0);
     l.principal = principal;
+    const reps = repaymentsByLoan.get(rawId) || repaymentsByLoan.get(strippedLn) || [];
 
-    // Financial & admin fee calculations
-    const adminFee = Number(l.adminFee || l.processingFee || Math.round(principal * 0.10));
-    const adminFeeGst = Number(l.adminFeeGst || l.gstAmount || Math.round(adminFee * 0.18));
-    const totalAdminFee = Number(l.totalAdminFee || (adminFee + adminFeeGst));
-    const igst = Number(l.igst || adminFeeGst);
-    const cgst = Number(l.cgst || Math.round((adminFeeGst / 2) * 100) / 100);
-    const sgst = Number(l.sgst || Math.round((adminFeeGst / 2) * 100) / 100);
-    const processing = Number(l.processing || adminFee);
-    const disbursedAmount = Number(l.disbursedAmount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
-    const loanRepayAmount = Number(l.loanRepayAmount || l.repaymentAmount || l.totalAmount || Math.round(principal * 1.12));
+    let cumulativePaid = 0;
+    let todayRoi = 0;
+    let monthRoi = 0;
+    let totalRoi = 0;
 
-    l.adminFee = adminFee;
-    l.adminFeeGst = adminFeeGst;
-    l.totalAdminFee = totalAdminFee;
-    l.igst = igst;
-    l.cgst = cgst;
-    l.sgst = sgst;
-    l.processing = processing;
-    l.disbursedAmount = disbursedAmount;
-    l.loanRepayAmount = loanRepayAmount;
-    l.repaymentAmount = loanRepayAmount;
+    reps.forEach(r => {
+      const amount = Number(r.amount || 0);
+      const prevCumulative = cumulativePaid;
+      cumulativePaid += amount;
 
-    // Contact & demographic fallbacks
-    l.leadId = cleanStr(l.leadId) || '-';
-    l.loanNo = cleanStr(l.loanNo) || l.id;
-    l.customerName = cleanStr(l.customerName) || cleanStr(l.customer) || 'Customer';
-    l.customer = l.customerName;
-    l.email = cleanStr(l.email) || '-';
+      const prevRoiRealized = Math.max(0, prevCumulative - principal);
+      const currentRoiRealized = Math.max(0, cumulativePaid - principal);
+      const roiRealizedThisPayment = currentRoiRealized - prevRoiRealized;
+
+      if (roiRealizedThisPayment > 0) {
+        totalRoi += roiRealizedThisPayment;
+        const repDateStr = getLocalDate(r.received_at);
+        if (repDateStr === today) {
+          todayRoi += roiRealizedThisPayment;
+        }
+        if (repDateStr.slice(0, 7) === currentMonthStr) {
+          monthRoi += roiRealizedThisPayment;
+        }
+      }
+    });
+
+    l.todayRoi = todayRoi;
+    l.monthRoi = monthRoi;
+    l.totalRoi = totalRoi;
+    l.amountPaid = reps.length > 0 ? cumulativePaid : Number(l.amountPaid || 0);
+
+    const lastRep = reps.length > 0 ? reps[reps.length - 1] : null;
+    l.collectedAmount = l.amountPaid;
+    l.collectedMode = lastRep?.method || (l.collectedAmount > 0 ? 'Bank Transfer' : '-');
+    l.collectedDate = lastRep?.received_at ? getLocalDate(lastRep.received_at) : (l.startDate || null);
+
+    l.repayments = reps.map(r => ({
+      amount: Number(r.amount || 0),
+      receivedAt: r.received_at,
+      method: r.method,
+    }));
+
+    // Next payment date adjustment
+    const startStr = getLocalDate(l.startDate);
+    const npStr = getLocalDate(l.nextPaymentDate);
+    const dueStr = getLocalDate(l.dueDate);
+    if (!l.nextPaymentDate || npStr === startStr || (Number(l.amountPaid || 0) === 0 && npStr < dueStr)) {
+      l.nextPaymentDate = l.dueDate;
+    }
+
+    // Payload & Raw responses
+    const payload = parseJsonSafe(app?.source_payload);
+    const aadhaarRaw = parseJsonSafe(aadhaar?.raw_response);
+    const cibilRaw = parseJsonSafe(cibil?.raw_response);
+    const cibilAnalysis = parseJsonSafe(cibil?.analysis_json);
+
+    // Demographic & identity fields
+    l.panNumber = normalizePanString(app?.pan_number) ||
+      extractPanFromPayload(payload) ||
+      normalizePanString(cibil?.pan) ||
+      normalizePanString(cibilRaw?.pan || cibilRaw?.pan_number || cibilRaw?.PAN_Number) ||
+      normalizePanString(cibilAnalysis?.pan || cibilAnalysis?.personalDetails?.pan) ||
+      normalizePanString(aadhaarRaw?.pan || aadhaarRaw?.pan_number) ||
+      '-';
+    l.pan = l.panNumber;
+    l.pancard = l.panNumber;
+
+    l.dob = normalizeDobString(app?.dob) ||
+      normalizeDobString(aadhaar?.dob) ||
+      extractDobFromPayload(payload) ||
+      normalizeDobString(aadhaarRaw?.dob || aadhaarRaw?.dateOfBirth || aadhaarRaw?.poi?.dob) ||
+      normalizeDobString(cibilRaw?.dob || cibilAnalysis?.personalDetails?.dob) ||
+      null;
+
+    l.email = cleanStr(l.customerEmail) ||
+      cleanStr(app?.email) ||
+      cleanStr(sanction?.borrower_email) ||
+      cleanStr(cibil?.email) ||
+      cleanStr(payload?.email || payload?.personalDetails?.email || payload?.office_email) ||
+      '-';
     l.customerEmail = l.email;
-    l.mobile = cleanStr(l.mobile) || cleanStr(l.mobileNumber) || '-';
+
+    l.mobile = cleanStr(l.customerPhone) ||
+      cleanStr(app?.mobile) ||
+      cleanStr(sanction?.borrower_phone) ||
+      cleanStr(cibil?.mobile) ||
+      cleanStr(aadhaar?.mobile) ||
+      cleanStr(payload?.mobile || payload?.phone || payload?.personalDetails?.mobile) ||
+      '-';
     l.mobileNumber = l.mobile;
     l.customerPhone = l.mobile;
     l.phone = l.mobile;
-    l.panNumber = cleanStr(l.panNumber) || '-';
-    l.pan = l.panNumber;
-    l.pancard = l.panNumber;
-    l.dob = cleanStr(l.dob) || null;
-    l.monthlyIncome = Number(l.monthlyIncome || 0);
+
+    l.monthlyIncome = Number(
+      app?.monthly_income ||
+      l.customerMonthlyIncome ||
+      extractIncomeFromPayload(payload) ||
+      cam?.inhand_salary ||
+      cibilAnalysis?.monthlyIncome ||
+      0
+    );
     l.incomeAmount = l.monthlyIncome;
 
-    l.gender = cleanStr(l.gender) || '-';
-    l.alternativeNumber = cleanStr(l.alternativeNumber) || '-';
-    l.houseType = cleanStr(l.houseType) || 'Owned';
-    l.address = cleanStr(l.address) || '-';
-    l.city = cleanStr(l.city) || '-';
-    l.cityName = l.city;
-    l.stateName = cleanStr(l.stateName) || '-';
-    l.state = l.stateName;
-    l.pincode = cleanStr(l.pincode) || '-';
-    l.branchName = cleanStr(l.branchName) || 'Main Branch';
+    l.gender = cleanStr(aadhaar?.gender) ||
+      extractGenderFromPayload(payload) ||
+      extractGenderFromPayload(aadhaarRaw) ||
+      '-';
 
-    // Bank & transaction details
+    l.alternativeNumber = cleanStr(app?.reference1_mobile) ||
+      cleanStr(app?.reference2_mobile) ||
+      cleanStr(payload?.reference1_mobile || payload?.reference2_mobile) ||
+      '-';
+
+    l.address = cleanStr(l.customerAddress) ||
+      cleanStr(aadhaar?.address) ||
+      cleanStr(app?.office_address) ||
+      cleanStr(payload?.address || payload?.currentAddress) ||
+      '-';
+
+    l.city = cleanStr(app?.city) ||
+      cleanStr(payload?.city) ||
+      cleanStr(aadhaarRaw?.dist || aadhaarRaw?.city) ||
+      extractCityFromAddress(l.address) ||
+      '-';
+    l.cityName = l.city;
+
+    l.stateName = cleanStr(payload?.state || payload?.stateName) ||
+      cleanStr(aadhaarRaw?.state) ||
+      extractStateFromAddress(l.address) ||
+      'Delhi';
+    l.state = l.stateName;
+
+    l.pincode = cleanStr(app?.pincode) ||
+      cleanStr(payload?.pincode || payload?.pinCode) ||
+      cleanStr(aadhaarRaw?.pc || aadhaarRaw?.pincode) ||
+      extractPincodeFromAddress(l.address) ||
+      '-';
+
+    l.branchName = cleanStr(app?.branch_name) || 'Main Branch';
+
+    l.houseType = cleanStr(
+      payload?.property_type ||
+      payload?.propertyType ||
+      payload?.houseType ||
+      payload?.residenceType ||
+      'Owned'
+    );
+
+    // Administrative & sanction fields
+    l.sanctionedBy = cleanStr(sanction?.created_by) || 'Credit Manager';
+    l.approvedBy = cleanStr(cam?.decided_by || sanction?.created_by) || 'Credit Desk';
+    l.sanctionDate = sanction?.agreement_date ? getLocalDate(sanction.agreement_date) : (l.startDate || null);
+    l.leadInitiatedDate = app?.created_at ? getLocalDate(app.created_at) : (l.createdAt || null);
+
+    // Banking & Payment Info
     l.companyBankAccount = '000705001234';
-    l.accountNumber = cleanStr(l.accountNumber) || '-';
-    l.ifscCode = cleanStr(l.ifscCode) || '-';
-    l.bankName = cleanStr(l.bankName) || '-';
-    l.utrNumber = cleanStr(l.utrNumber) || null;
+    l.accountNumber = cleanStr(payment?.account_number || sanction?.account_number || app?.account_number) || '-';
+    l.ifscCode = cleanStr(payment?.ifsc_code || sanction?.ifsc_code || app?.ifsc_code) || '-';
+    l.bankName = cleanStr(payment?.bank_name || sanction?.bank_name || app?.bank_name) || '-';
+    l.utrNumber = cleanStr(payment?.reference || payment?.transaction_id) || null;
     l.transactionId = l.utrNumber;
     l.disbursementUtr = l.utrNumber;
-    l.disbursementReference = cleanStr(l.disbursementReference) || l.utrNumber || '-';
-    l.modeOfPayment = cleanStr(l.transferType) || 'Bank Transfer';
-    l.disbursementStatus = cleanStr(l.disbursementStatus) || 'Disbursed';
-    l.repeatType = cleanStr(l.repeatType) || 'Fresh';
+    l.disbursementReference = cleanStr(l.utrNumber) || '-';
+    l.modeOfPayment = cleanStr(payment?.transfer_type || payment?.method) || 'Bank Transfer';
+    l.disbursedBy = cleanStr(payment?.paid_by) || 'Accountant';
+    l.disbursementStatus = cleanStr(payment?.status) || 'Disbursed';
+    l.repeatType = Number(l.customerTotalLoans || 0) > 1 ? 'Repeat' : 'Fresh';
 
-    // Dates & personnel
-    l.disbursedDate = l.disbursedDate || l.startDate || null;
+    // Financial calculations
+    const adminFee = Number(sanction?.processing_fee || Math.round(principal * 0.10));
+    const adminFeeGst = Number(sanction?.gst_amount || Math.round(adminFee * 0.18));
+    const totalAdminFee = adminFee + adminFeeGst;
+    l.adminFee = adminFee;
+    l.adminFeeGst = adminFeeGst;
+    l.totalAdminFee = totalAdminFee;
+    l.igst = adminFeeGst;
+    l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
+    l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
+    l.processing = adminFee;
+    l.disbursedAmount = Number(payment?.amount || sanction?.disbursed_amount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
+    l.loanRepayAmount = Number(sanction?.repayment_amount || l.totalAmount || Math.round(principal * 1.12));
+    l.repaymentAmount = l.loanRepayAmount;
+    l.tenure = Number(sanction?.tenure_days || 30);
+    l.roi = Number(sanction?.interest_rate || l.interestRate || 1.0);
+
+    // Dates
+    l.disbursedDate = payment?.disbursed_at ? getLocalDate(payment.disbursed_at) : (payment?.paid_at ? getLocalDate(payment.paid_at) : (sanction?.agreement_date ? getLocalDate(sanction.agreement_date) : (l.startDate || null)));
     l.loanDisbursedDate = l.disbursedDate;
     l.repaymentDate = l.dueDate || null;
-    l.leadInitiatedDate = l.leadInitiatedDate || l.createdAt || null;
-    l.sanctionDate = l.sanctionDate || l.startDate || null;
-    l.sanctionedBy = cleanStr(l.sanctionedBy) || 'Credit Manager';
-    l.approvedBy = cleanStr(l.approvedBy) || 'Credit Desk';
-    l.disbursedBy = cleanStr(l.disbursedBy) || 'Accountant';
-    l.tenure = Number(l.tenure || 30);
-    l.roi = Number(l.interestRate || l.roi || 1.0);
 
-    // Collection specific fields
-    l.collectedAmount = Number(l.amountPaid || 0);
-    l.collectedMode = cleanStr(l.collectedMode) || (l.collectedAmount > 0 ? 'Bank Transfer' : '-');
-    l.collectedDate = l.collectedDate || l.lastPaymentDate || null;
-
-    // Clean up large raw payload strings so network responses stay fast
-    delete l.sourcePayload;
-    delete l.aadhaarRawResponse;
-    delete l.cibilRawResponse;
-    delete l.cibilAnalysisJson;
+    // Names and keys
+    l.leadId = cleanStr(sanction?.lead_id || payment?.lead_id || app?.id || app?.source_lead_id || compositeLead || strippedCus) || '-';
+    l.loanNo = cleanStr(sanction?.agreement_number || app?.application_id || app?.source_application_id || compositeApp || rawId);
+    l.customerName = cleanStr(l.customerName || sanction?.borrower || app?.full_name || compositeName || aadhaar?.full_name) || 'Customer';
+    l.customer = l.customerName;
   });
 }
 
-async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize } = {}) {
+async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all' } = {}) {
   const effectiveLimit = pageSize || limit;
   const parsedPage = Math.max(Number(page) || 1, 1);
   const parsedLimit = Math.min(Math.max(Number(effectiveLimit) || 50, 1), 5000);
   const offset = (parsedPage - 1) * parsedLimit;
 
-  const cacheKey = `${search}:${status}:${parsedPage}:${parsedLimit}`;
+  const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${parsedPage}:${parsedLimit}`;
   const cached = loansListCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < LOANS_CACHE_TTL_MS)) {
     return cached.data;
@@ -556,301 +841,90 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   const params = [];
 
   if (search) {
-    clauses.push('(l.id LIKE ? OR c.name LIKE ? OR l.customer_id LIKE ?)');
-    params.push(...likeParams(search, 3));
+    clauses.push('(l.id LIKE ? OR c.name LIKE ? OR l.customer_id LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)');
+    params.push(...likeParams(search, 5));
   }
 
   if (status !== 'all') {
-    clauses.push('l.status = ?');
-    params.push(status);
+    const sLower = status.toLowerCase();
+    if (sLower === 'active') {
+      clauses.push("((l.status = 'Active' OR l.status IS NULL) AND l.balance > 0)");
+    } else if (sLower === 'paid off') {
+      clauses.push('l.balance <= 0');
+    } else if (sLower === 'part payment' || sLower === 'partial') {
+      clauses.push('(l.amount_paid > 0 AND l.balance > 0)');
+    } else if (sLower === 'overdue') {
+      clauses.push("(l.balance > 0 AND (l.due_date < CURDATE() OR LOWER(l.status) = 'overdue' OR LOWER(l.payment_status) = 'overdue'))");
+    } else {
+      clauses.push('l.status = ?');
+      params.push(status);
+    }
+  }
+
+  if (dateFilter !== 'all') {
+    if (dateFilter === 'today') {
+      clauses.push('l.due_date = CURDATE()');
+    } else if (dateFilter === 'month') {
+      clauses.push("DATE_FORMAT(l.due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+    } else if (dateFilter === 'week') {
+      clauses.push('YEARWEEK(l.due_date, 1) = YEARWEEK(CURDATE(), 1)');
+    } else if (dateFilter === 'overdue') {
+      clauses.push('l.due_date < CURDATE() AND l.balance > 0');
+    }
+  }
+
+  if (disbursedFilter !== 'all') {
+    if (disbursedFilter === 'today') {
+      clauses.push('DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()');
+    } else if (disbursedFilter === 'month') {
+      clauses.push("DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+    }
   }
 
   const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
-  // Calculate total count for server-side pagination
+  // 1. Ultra-fast count and stats queries in parallel
   const countSql = `
     SELECT COUNT(*) AS total
     FROM loans l
     LEFT JOIN customers c ON c.id = l.customer_id
     ${whereClause}
   `;
-  const countRows = await query(countSql, params);
+
+  const [countRows, stats] = await Promise.all([
+    query(countSql, params),
+    getLoanStats(),
+  ]);
   const total = Number(countRows?.[0]?.total || 0);
 
+  // 2. Ultra-fast base query without any scalar or joined correlated subqueries
   const queryParams = [...params, parsedLimit, offset];
-
   const loans = await query(`
     SELECT
       l.id,
-      COALESCE(NULLIF(TRIM(c.name), ''), NULLIF(TRIM(ls.borrower), ''), NULLIF(TRIM(la.full_name), ''), '') AS customer,
       l.customer_id AS customerId,
       l.principal,
       l.interest_rate AS interestRate,
       l.total_amount AS totalAmount,
-      COALESCE(
-        (
-          SELECT SUM(r.amount)
-          FROM loan_repayments r
-          WHERE (r.loan_id = l.id OR r.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
-            AND r.status IN ('received', 'success', 'paid', 'settled')
-        ),
-        0
-      ) AS amountPaid,
+      l.amount_paid AS amountPaid,
       l.balance,
-      DATE_FORMAT(
-        COALESCE(
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(sub.disbursement_date, sub.created_at) FROM lead_sanctions sub WHERE sub.id = ls.id),
-          (SELECT la_sub.created_at FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
-          l.start_date,
-          l.created_at,
-          NULL
-        ),
-        '%Y-%m-%d'
-      ) AS startDate,
-      DATE_FORMAT(
-        COALESCE(
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(sub.disbursement_date, sub.created_at) FROM lead_sanctions sub WHERE sub.id = ls.id),
-          (SELECT la_sub.created_at FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
-          l.start_date,
-          l.created_at,
-          NULL
-        ),
-        '%Y-%m-%d'
-      ) AS disbursedDate,
-      COALESCE(
-        (SELECT NULLIF(TRIM(account_number), '') FROM lead_accounting_payments WHERE (account_number IS NOT NULL AND account_number <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(account_number), '') FROM lead_accounting_payments WHERE (account_number IS NOT NULL AND account_number <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        NULLIF(TRIM(ls.account_number), ''),
-        NULLIF(TRIM(la.account_number), '')
-      ) AS accountNumber,
-      COALESCE(
-        (SELECT NULLIF(TRIM(ifsc_code), '') FROM lead_accounting_payments WHERE (ifsc_code IS NOT NULL AND ifsc_code <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(ifsc_code), '') FROM lead_accounting_payments WHERE (ifsc_code IS NOT NULL AND ifsc_code <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        NULLIF(TRIM(ls.ifsc_code), ''),
-        NULLIF(TRIM(la.ifsc_code), '')
-      ) AS ifscCode,
-      COALESCE(
-        (SELECT NULLIF(TRIM(bank_name), '') FROM lead_accounting_payments WHERE (bank_name IS NOT NULL AND bank_name <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(bank_name), '') FROM lead_accounting_payments WHERE (bank_name IS NOT NULL AND bank_name <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        NULLIF(TRIM(ls.bank_name), ''),
-        NULLIF(TRIM(la.bank_name), '')
-      ) AS bankName,
+      DATE_FORMAT(l.start_date, '%Y-%m-%d') AS startDate,
       DATE_FORMAT(l.due_date, '%Y-%m-%d') AS dueDate,
       l.status,
       l.payment_status AS paymentStatus,
       DATE_FORMAT(l.next_payment_date, '%Y-%m-%d') AS nextPaymentDate,
       l.next_payment_amount AS nextPaymentAmount,
-      l.created_at AS createdAt,
-      l.updated_at AS updatedAt,
-      COALESCE(
-        (
-          SELECT MAX(received_at)
-          FROM loan_repayments r
-          WHERE (r.loan_id = l.id OR r.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
-            AND r.status IN ('received', 'success', 'paid', 'settled')
-        ),
-        (
-          SELECT MAX(created_at)
-          FROM loan_repayments r2
-          WHERE (r2.loan_id = l.id OR r2.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r2.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
-            AND r2.status IN ('received', 'success', 'paid', 'settled')
-        )
-      ) AS lastPaymentDate,
-      COALESCE(
-        (SELECT NULLIF(TRIM(reference), '') FROM lead_accounting_payments WHERE (reference IS NOT NULL AND reference <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(transaction_id), '') FROM lead_accounting_payments WHERE (transaction_id IS NOT NULL AND transaction_id <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(reference), '') FROM lead_accounting_payments WHERE (reference IS NOT NULL AND reference <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(transaction_id), '') FROM lead_accounting_payments WHERE (transaction_id IS NOT NULL AND transaction_id <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1)
-      ) AS utrNumber,
-      COALESCE(
-        (SELECT NULLIF(TRIM(COALESCE(transfer_type, method)), '') FROM lead_accounting_payments WHERE (transfer_type IS NOT NULL OR method IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(COALESCE(transfer_type, method)), '') FROM lead_accounting_payments WHERE (transfer_type IS NOT NULL OR method IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1)
-      ) AS transferType,
-      COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) AS processingFee,
-      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS gstAmount,
-      COALESCE(ls.repayment_amount, ROUND(l.principal * 1.12)) AS repaymentAmount,
-      (COALESCE(ls.repayment_amount, ROUND(l.principal * 1.12)) - l.principal) AS interestAmount,
-      COALESCE(ls.agreement_number, l.id) AS agreementNumber,
-      COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id, la.source_lead_id, '') AS leadId,
-      COALESCE(ls.agreement_number, la.application_id, la.source_application_id, l.id) AS loanNo,
-      COALESCE(NULLIF(TRIM(c.name), ''), NULLIF(TRIM(ls.borrower), ''), NULLIF(TRIM(la.full_name), ''), '') AS customerName,
-      COALESCE(NULLIF(TRIM(c.email), ''), NULLIF(TRIM(la.email), ''), NULLIF(TRIM(ls.borrower_email), ''), NULLIF(TRIM(cib.email), ''), '') AS email,
-      COALESCE(NULLIF(TRIM(c.phone), ''), NULLIF(TRIM(la.mobile), ''), NULLIF(TRIM(ls.borrower_phone), ''), NULLIF(TRIM(cib.mobile), ''), NULLIF(TRIM(ar.mobile), ''), '') AS mobile,
-      COALESCE(NULLIF(TRIM(la.reference1_mobile), ''), NULLIF(TRIM(la.reference2_mobile), ''), '') AS alternativeNumber,
-      COALESCE(NULLIF(TRIM(ar.gender), ''), '') AS gender,
-      COALESCE(DATE_FORMAT(la.dob, '%Y-%m-%d'), NULLIF(TRIM(ar.dob), ''), '') AS dob,
-      COALESCE(NULLIF(TRIM(la.pan_number), ''), NULLIF(TRIM(cib.pan), ''), '') AS panNumber,
-      COALESCE(la.monthly_income, c.monthly_income, 0) AS monthlyIncome,
-      COALESCE(NULLIF(TRIM(c.address), ''), NULLIF(TRIM(ar.address), ''), NULLIF(TRIM(la.office_address), ''), '') AS address,
-      COALESCE(NULLIF(TRIM(la.pincode), ''), '') AS pincode,
-      COALESCE(NULLIF(TRIM(la.city), ''), '') AS city,
-      COALESCE(NULLIF(TRIM(la.branch_name), ''), 'Head Office') AS branchName,
-      COALESCE(lap.amount, ls.disbursed_amount, l.principal - COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) - COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18))) AS disbursedAmount,
-      COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) AS adminFee,
-      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS adminFeeGst,
-      (COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) + COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18))) AS totalAdminFee,
-      ROUND(COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) / 2, 2) AS cgst,
-      ROUND(COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) / 2, 2) AS sgst,
-      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS igst,
-      COALESCE(ls.tenure_days, DATEDIFF(l.due_date, l.start_date), 30) AS tenure,
-      COALESCE(ls.created_by, 'Credit Manager') AS sanctionedBy,
-      COALESCE(cam.decided_by, ls.created_by, 'Credit Desk') AS approvedBy,
-      DATE_FORMAT(COALESCE(ls.agreement_date, ls.created_at), '%Y-%m-%d') AS sanctionDate,
-      DATE_FORMAT(la.created_at, '%Y-%m-%d') AS leadInitiatedDate,
-      COALESCE(
-        (SELECT paid_by FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        'Accountant'
-      ) AS disbursedBy,
-      IF(c.total_loans > 1, 'Repeat', 'Fresh') AS repeatType,
-      COALESCE(
-        (SELECT status FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        'Disbursed'
-      ) AS disbursementStatus,
-      COALESCE(
-        (SELECT reference FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT transaction_id FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        ''
-      ) AS disbursementReference,
-      la.source_payload AS sourcePayload,
-      ar.raw_response AS aadhaarRawResponse,
-      cib.raw_response AS cibilRawResponse,
-      cib.analysis_json AS cibilAnalysisJson
+      DATE_FORMAT(l.created_at, '%Y-%m-%d') AS createdAt,
+      DATE_FORMAT(l.updated_at, '%Y-%m-%d') AS updatedAt,
+      c.name AS customerName,
+      c.name AS customer,
+      c.email AS customerEmail,
+      c.phone AS customerPhone,
+      c.address AS customerAddress,
+      c.monthly_income AS customerMonthlyIncome,
+      c.total_loans AS customerTotalLoans
     FROM loans l
     LEFT JOIN customers c ON c.id = l.customer_id
-    LEFT JOIN loan_repayment_schedule rs ON rs.installment_number = 1 AND (
-      rs.loan_id = l.id
-      OR rs.loan_id = TRIM(LEADING 'LN' FROM l.id)
-      OR CONCAT('LN', rs.loan_id) = l.id
-      OR (l.id LIKE '%/%' AND rs.loan_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-      OR (l.id LIKE '%/%' AND rs.loan_id = SUBSTRING_INDEX(l.id, '/', 1))
-    )
-    LEFT JOIN (
-      SELECT 
-        loan_id, 
-        MAX(lead_id) AS lead_id, 
-        MAX(application_id) AS application_id,
-        MAX(amount) AS amount,
-        MAX(account_number) AS account_number,
-        MAX(ifsc_code) AS ifsc_code,
-        MAX(bank_name) AS bank_name,
-        MAX(reference) AS reference,
-        MAX(transaction_id) AS transaction_id,
-        MAX(transfer_type) AS transfer_type,
-        MAX(method) AS method,
-        MAX(paid_by) AS paid_by,
-        MAX(status) AS status,
-        MAX(disbursed_at) AS disbursed_at,
-        MAX(paid_at) AS paid_at
-      FROM lead_accounting_payments
-      WHERE loan_id IS NOT NULL AND loan_id <> ''
-      GROUP BY loan_id
-    ) lap ON (
-      lap.loan_id = l.id 
-      OR lap.loan_id = TRIM(LEADING 'LN' FROM l.id)
-      OR CONCAT('LN', lap.loan_id) = l.id
-      OR (l.id LIKE '%/%' AND lap.loan_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-      OR (l.id LIKE '%/%' AND lap.loan_id = SUBSTRING_INDEX(l.id, '/', 1))
-    )
-    LEFT JOIN lead_sanctions ls ON ls.id = (
-      SELECT sub.id 
-      FROM lead_sanctions sub
-      WHERE (sub.status = 'sent' OR sub.status IS NOT NULL)
-        AND (
-          sub.agreement_number = l.id
-          OR sub.agreement_number = TRIM(LEADING 'LN' FROM l.id)
-          OR CONCAT('LN', sub.agreement_number) = l.id
-          OR (l.id LIKE '%/%' AND sub.agreement_number = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-          OR (l.id LIKE '%/%' AND sub.lead_id = SUBSTRING_INDEX(l.id, '/', 1))
-          OR (rs.lead_id IS NOT NULL AND sub.lead_id = rs.lead_id)
-          OR (rs.application_id IS NOT NULL AND sub.application_id = rs.application_id)
-          OR (lap.lead_id IS NOT NULL AND sub.lead_id = lap.lead_id)
-          OR (lap.application_id IS NOT NULL AND sub.application_id = lap.application_id)
-          OR (l.customer_id IS NOT NULL AND sub.lead_id = TRIM(LEADING 'CUS' FROM l.customer_id))
-          OR (l.customer_id IS NOT NULL AND sub.lead_id = l.customer_id)
-          OR (c.phone IS NOT NULL AND c.phone <> '' AND sub.borrower_phone = c.phone)
-          OR (c.email IS NOT NULL AND c.email <> '' AND sub.borrower_email = c.email)
-        )
-      ORDER BY 
-        (sub.agreement_number = TRIM(LEADING 'LN' FROM l.id)) DESC,
-        (sub.agreement_number = l.id) DESC,
-        (sub.status = 'sent') DESC,
-        sub.created_at DESC,
-        sub.id DESC
-      LIMIT 1
-    )
-    LEFT JOIN loan_applications la ON la.id = (
-      SELECT sub_la.id FROM loan_applications sub_la
-      WHERE 
-         (sub_la.application_id IS NOT NULL AND sub_la.application_id <> '' AND (
-            sub_la.application_id = rs.application_id
-            OR sub_la.application_id = lap.application_id
-            OR sub_la.application_id = ls.application_id
-            OR sub_la.application_id = l.id
-            OR sub_la.application_id = TRIM(LEADING 'LN' FROM l.id)
-            OR (l.id LIKE '%/%' AND sub_la.application_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-            OR sub_la.application_id = l.customer_id
-            OR sub_la.application_id = TRIM(LEADING 'CUS' FROM l.customer_id)
-         ))
-         OR (sub_la.id IS NOT NULL AND (
-            sub_la.id = rs.lead_id
-            OR sub_la.id = lap.lead_id
-            OR sub_la.id = ls.lead_id
-            OR sub_la.id = TRIM(LEADING 'CUS' FROM l.customer_id)
-            OR sub_la.id = l.customer_id
-            OR (l.id LIKE '%/%' AND sub_la.id = SUBSTRING_INDEX(l.id, '/', 1))
-            OR sub_la.id = TRIM(LEADING 'LN' FROM l.id)
-         ))
-         OR (sub_la.source_lead_id IS NOT NULL AND sub_la.source_lead_id <> '' AND (
-            sub_la.source_lead_id = rs.lead_id
-            OR sub_la.source_lead_id = lap.lead_id
-            OR sub_la.source_lead_id = ls.lead_id
-            OR sub_la.source_lead_id = TRIM(LEADING 'CUS' FROM l.customer_id)
-            OR sub_la.source_lead_id = l.customer_id
-            OR (l.id LIKE '%/%' AND sub_la.source_lead_id = SUBSTRING_INDEX(l.id, '/', 1))
-         ))
-         OR (sub_la.source_application_id IS NOT NULL AND sub_la.source_application_id <> '' AND (
-            sub_la.source_application_id = rs.application_id
-            OR sub_la.source_application_id = lap.application_id
-            OR sub_la.source_application_id = ls.application_id
-            OR sub_la.source_application_id = TRIM(LEADING 'LN' FROM l.id)
-            OR (l.id LIKE '%/%' AND sub_la.source_application_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-         ))
-         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_la.mobile = c.phone)
-         OR (c.email IS NOT NULL AND c.email <> '' AND sub_la.email = c.email)
-      ORDER BY 
-         (sub_la.application_id = ls.application_id) DESC,
-         (sub_la.id = ls.lead_id) DESC,
-         sub_la.id DESC
-      LIMIT 1
-    )
-    LEFT JOIN lead_cam_sheets cam ON cam.id = (
-      SELECT sub_cam.id FROM lead_cam_sheets sub_cam
-      WHERE (ls.cam_sheet_id IS NOT NULL AND sub_cam.id = ls.cam_sheet_id)
-         OR (sub_cam.application_id IS NOT NULL AND sub_cam.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id, la.application_id))
-         OR (sub_cam.lead_id IS NOT NULL AND sub_cam.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id) AS CHAR))
-      ORDER BY sub_cam.id DESC LIMIT 1
-    )
-    LEFT JOIN aadhaar_reports ar ON ar.id = (
-      SELECT sub_ar.id FROM aadhaar_reports sub_ar
-      WHERE (sub_ar.application_id IS NOT NULL AND sub_ar.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id, la.application_id))
-         OR (sub_ar.lead_id IS NOT NULL AND sub_ar.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id) AS CHAR))
-         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_ar.mobile = c.phone)
-         OR (la.mobile IS NOT NULL AND la.mobile <> '' AND sub_ar.mobile = la.mobile)
-      ORDER BY sub_ar.id DESC LIMIT 1
-    )
-    LEFT JOIN cibil_reports cib ON cib.id = (
-      SELECT sub_cib.id FROM cibil_reports sub_cib
-      WHERE (sub_cib.application_id IS NOT NULL AND sub_cib.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id, la.application_id))
-         OR (sub_cib.lead_id IS NOT NULL AND sub_cib.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id) AS CHAR))
-         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_cib.mobile = c.phone)
-         OR (la.mobile IS NOT NULL AND la.mobile <> '' AND sub_cib.mobile = la.mobile)
-         OR (la.pan_number IS NOT NULL AND la.pan_number <> '' AND sub_cib.pan = la.pan_number)
-      ORDER BY sub_cib.id DESC LIMIT 1
-    )
     ${whereClause}
     ORDER BY COALESCE(l.start_date, l.created_at) DESC, l.id DESC
     LIMIT ? OFFSET ?
@@ -863,92 +937,18 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
     emptyResult.page = parsedPage;
     emptyResult.limit = parsedLimit;
     emptyResult.totalPages = Math.ceil(total / parsedLimit);
+    emptyResult.stats = stats;
     return emptyResult;
   }
 
-  // Fetch repayments ONLY for the current paginated loans
-  const loanIds = loans.map((l) => l.id).filter(Boolean);
-  const loanIdPlaceholders = loanIds.map(() => '?').join(',');
-  const repayments = loanIds.length
-    ? await query(`
-        SELECT loan_id, amount, received_at, method 
-        FROM loan_repayments 
-        WHERE status IN ('received', 'success', 'paid', 'settled') AND loan_id IN (${loanIdPlaceholders})
-        ORDER BY loan_id, received_at ASC, id ASC
-      `, loanIds)
-    : [];
-
-  const repaymentsByLoan = {};
-  repayments.forEach(r => {
-    if (!repaymentsByLoan[r.loan_id]) {
-      repaymentsByLoan[r.loan_id] = [];
-    }
-    repaymentsByLoan[r.loan_id].push(r);
-  });
-
-  const today = getLocalDate(new Date().toISOString());
-  const currentMonthStr = new Date().toISOString().slice(0, 7);
-
-  loans.forEach(l => {
-    const principal = Number(l.principal || 0);
-    const reps = repaymentsByLoan[l.id] || [];
-    
-    let cumulativePaid = 0;
-    let todayRoi = 0;
-    let monthRoi = 0;
-    let totalRoi = 0;
-    
-    reps.forEach(r => {
-      const amount = Number(r.amount || 0);
-      const prevCumulative = cumulativePaid;
-      cumulativePaid += amount;
-      
-      const prevRoiRealized = Math.max(0, prevCumulative - principal);
-      const currentRoiRealized = Math.max(0, cumulativePaid - principal);
-      const roiRealizedThisPayment = currentRoiRealized - prevRoiRealized;
-      
-      if (roiRealizedThisPayment > 0) {
-        totalRoi += roiRealizedThisPayment;
-        const repDateStr = getLocalDate(r.received_at);
-        if (repDateStr === today) {
-          todayRoi += roiRealizedThisPayment;
-        }
-        if (repDateStr.slice(0, 7) === currentMonthStr) {
-          monthRoi += roiRealizedThisPayment;
-        }
-      }
-    });
-    
-    const startStr = getLocalDate(l.startDate);
-    const npStr = getLocalDate(l.nextPaymentDate);
-    const dueStr = getLocalDate(l.dueDate);
-    if (!l.nextPaymentDate || npStr === startStr || (Number(l.amountPaid || 0) === 0 && npStr < dueStr)) {
-      l.nextPaymentDate = l.dueDate;
-    }
-
-    l.todayRoi = todayRoi;
-    l.monthRoi = monthRoi;
-    l.totalRoi = totalRoi;
-
-    const lastRep = reps.length > 0 ? reps[reps.length - 1] : null;
-    l.collectedAmount = Number(l.amountPaid || 0);
-    l.collectedMode = lastRep?.method || null;
-    l.collectedDate = lastRep?.received_at ? getLocalDate(lastRep.received_at) : (l.lastPaymentDate || null);
-
-    l.repayments = reps.map(r => ({
-      amount: Number(r.amount || 0),
-      receivedAt: r.received_at,
-      method: r.method,
-    }));
-  });
-
-  // Comprehensive multi-source fallback enrichment for all missing fields
+  // 3. Fast parallel batch enrichment for ONLY the current page
   await enrichLoansBatch(loans);
 
   loans.total = total;
   loans.page = parsedPage;
   loans.limit = parsedLimit;
   loans.totalPages = Math.ceil(total / parsedLimit);
+  loans.stats = stats;
 
   loansListCache.set(cacheKey, { data: loans, timestamp: Date.now() });
   return loans;
@@ -958,278 +958,29 @@ async function findById(id) {
   const rows = await query(`
     SELECT
       l.id,
-      COALESCE(NULLIF(TRIM(c.name), ''), NULLIF(TRIM(ls.borrower), ''), NULLIF(TRIM(la.full_name), ''), '') AS customer,
       l.customer_id AS customerId,
       l.principal,
       l.interest_rate AS interestRate,
       l.total_amount AS totalAmount,
-      COALESCE(
-        (
-          SELECT SUM(r.amount)
-          FROM loan_repayments r
-          WHERE (r.loan_id = l.id OR r.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
-            AND r.status IN ('received', 'success', 'paid', 'settled')
-        ),
-        0
-      ) AS amountPaid,
+      l.amount_paid AS amountPaid,
       l.balance,
-      DATE_FORMAT(
-        COALESCE(
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(sub.disbursement_date, sub.created_at) FROM lead_sanctions sub WHERE sub.id = ls.id),
-          (SELECT la_sub.created_at FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
-          l.start_date,
-          l.created_at,
-          NULL
-        ),
-        '%Y-%m-%d'
-      ) AS startDate,
-      DATE_FORMAT(
-        COALESCE(
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(disbursed_at, paid_at) FROM lead_accounting_payments WHERE (disbursed_at IS NOT NULL OR paid_at IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-          (SELECT COALESCE(sub.disbursement_date, sub.created_at) FROM lead_sanctions sub WHERE sub.id = ls.id),
-          (SELECT la_sub.created_at FROM loan_applications la_sub WHERE la_sub.application_id = rs.application_id OR la_sub.id = rs.lead_id LIMIT 1),
-          l.start_date,
-          l.created_at,
-          NULL
-        ),
-        '%Y-%m-%d'
-      ) AS disbursedDate,
-      COALESCE(
-        (SELECT NULLIF(TRIM(account_number), '') FROM lead_accounting_payments WHERE (account_number IS NOT NULL AND account_number <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(account_number), '') FROM lead_accounting_payments WHERE (account_number IS NOT NULL AND account_number <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        NULLIF(TRIM(ls.account_number), ''),
-        NULLIF(TRIM(la.account_number), '')
-      ) AS accountNumber,
-      COALESCE(
-        (SELECT NULLIF(TRIM(ifsc_code), '') FROM lead_accounting_payments WHERE (ifsc_code IS NOT NULL AND ifsc_code <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(ifsc_code), '') FROM lead_accounting_payments WHERE (ifsc_code IS NOT NULL AND ifsc_code <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        NULLIF(TRIM(ls.ifsc_code), ''),
-        NULLIF(TRIM(la.ifsc_code), '')
-      ) AS ifscCode,
-      COALESCE(
-        (SELECT NULLIF(TRIM(bank_name), '') FROM lead_accounting_payments WHERE (bank_name IS NOT NULL AND bank_name <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(bank_name), '') FROM lead_accounting_payments WHERE (bank_name IS NOT NULL AND bank_name <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        NULLIF(TRIM(ls.bank_name), ''),
-        NULLIF(TRIM(la.bank_name), '')
-      ) AS bankName,
+      DATE_FORMAT(l.start_date, '%Y-%m-%d') AS startDate,
       DATE_FORMAT(l.due_date, '%Y-%m-%d') AS dueDate,
       l.status,
       l.payment_status AS paymentStatus,
       DATE_FORMAT(l.next_payment_date, '%Y-%m-%d') AS nextPaymentDate,
       l.next_payment_amount AS nextPaymentAmount,
+      DATE_FORMAT(l.created_at, '%Y-%m-%d') AS createdAt,
+      DATE_FORMAT(l.updated_at, '%Y-%m-%d') AS updatedAt,
+      c.name AS customerName,
+      c.name AS customer,
       c.email AS customerEmail,
       c.phone AS customerPhone,
-      c.credit_score AS customerCreditScore,
-      l.created_at AS createdAt,
-      l.updated_at AS updatedAt,
-      COALESCE(
-        (
-          SELECT MAX(received_at)
-          FROM loan_repayments r
-          WHERE (r.loan_id = l.id OR r.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
-            AND r.status IN ('received', 'success', 'paid', 'settled')
-        ),
-        (
-          SELECT MAX(created_at)
-          FROM loan_repayments r2
-          WHERE (r2.loan_id = l.id OR r2.loan_id = TRIM(LEADING 'LN' FROM l.id) OR r2.loan_id = CONCAT('LN', TRIM(LEADING 'LN' FROM l.id)))
-            AND r2.status IN ('received', 'success', 'paid', 'settled')
-        )
-      ) AS lastPaymentDate,
-      COALESCE(
-        (SELECT NULLIF(TRIM(reference), '') FROM lead_accounting_payments WHERE (reference IS NOT NULL AND reference <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(transaction_id), '') FROM lead_accounting_payments WHERE (transaction_id IS NOT NULL AND transaction_id <> '') AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(reference), '') FROM lead_accounting_payments WHERE (reference IS NOT NULL AND reference <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(transaction_id), '') FROM lead_accounting_payments WHERE (transaction_id IS NOT NULL AND transaction_id <> '') AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1)
-      ) AS utrNumber,
-      COALESCE(
-        (SELECT NULLIF(TRIM(COALESCE(transfer_type, method)), '') FROM lead_accounting_payments WHERE (transfer_type IS NOT NULL OR method IS NOT NULL) AND (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT NULLIF(TRIM(COALESCE(transfer_type, method)), '') FROM lead_accounting_payments WHERE (transfer_type IS NOT NULL OR method IS NOT NULL) AND (rs.lead_id IS NOT NULL AND lead_id = rs.lead_id) ORDER BY id DESC LIMIT 1)
-      ) AS transferType,
-      COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) AS processingFee,
-      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS gstAmount,
-      COALESCE(ls.repayment_amount, ROUND(l.principal * 1.12)) AS repaymentAmount,
-      (COALESCE(ls.repayment_amount, ROUND(l.principal * 1.12)) - l.principal) AS interestAmount,
-      COALESCE(ls.agreement_number, l.id) AS agreementNumber,
-      COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id, la.source_lead_id, '') AS leadId,
-      COALESCE(ls.agreement_number, la.application_id, la.source_application_id, l.id) AS loanNo,
-      COALESCE(NULLIF(TRIM(c.name), ''), NULLIF(TRIM(ls.borrower), ''), NULLIF(TRIM(la.full_name), ''), '') AS customerName,
-      COALESCE(NULLIF(TRIM(c.email), ''), NULLIF(TRIM(la.email), ''), NULLIF(TRIM(ls.borrower_email), ''), NULLIF(TRIM(cib.email), ''), '') AS email,
-      COALESCE(NULLIF(TRIM(c.phone), ''), NULLIF(TRIM(la.mobile), ''), NULLIF(TRIM(ls.borrower_phone), ''), NULLIF(TRIM(cib.mobile), ''), NULLIF(TRIM(ar.mobile), ''), '') AS mobile,
-      COALESCE(NULLIF(TRIM(la.reference1_mobile), ''), NULLIF(TRIM(la.reference2_mobile), ''), '') AS alternativeNumber,
-      COALESCE(NULLIF(TRIM(ar.gender), ''), '') AS gender,
-      COALESCE(DATE_FORMAT(la.dob, '%Y-%m-%d'), NULLIF(TRIM(ar.dob), ''), '') AS dob,
-      COALESCE(NULLIF(TRIM(la.pan_number), ''), NULLIF(TRIM(cib.pan), ''), '') AS panNumber,
-      COALESCE(la.monthly_income, c.monthly_income, 0) AS monthlyIncome,
-      COALESCE(NULLIF(TRIM(c.address), ''), NULLIF(TRIM(ar.address), ''), NULLIF(TRIM(la.office_address), ''), '') AS address,
-      COALESCE(NULLIF(TRIM(la.pincode), ''), '') AS pincode,
-      COALESCE(NULLIF(TRIM(la.city), ''), '') AS city,
-      COALESCE(NULLIF(TRIM(la.branch_name), ''), 'Head Office') AS branchName,
-      COALESCE(lap.amount, ls.disbursed_amount, l.principal - COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) - COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18))) AS disbursedAmount,
-      COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) AS adminFee,
-      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS adminFeeGst,
-      (COALESCE(ls.processing_fee, ROUND(l.principal * 0.10)) + COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18))) AS totalAdminFee,
-      ROUND(COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) / 2, 2) AS cgst,
-      ROUND(COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) / 2, 2) AS sgst,
-      COALESCE(ls.gst_amount, ROUND(l.principal * 0.10 * 0.18)) AS igst,
-      COALESCE(ls.tenure_days, DATEDIFF(l.due_date, l.start_date), 30) AS tenure,
-      COALESCE(ls.created_by, 'Credit Manager') AS sanctionedBy,
-      COALESCE(cam.decided_by, ls.created_by, 'Credit Desk') AS approvedBy,
-      DATE_FORMAT(COALESCE(ls.agreement_date, ls.created_at), '%Y-%m-%d') AS sanctionDate,
-      DATE_FORMAT(la.created_at, '%Y-%m-%d') AS leadInitiatedDate,
-      COALESCE(
-        (SELECT paid_by FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        'Accountant'
-      ) AS disbursedBy,
-      IF(c.total_loans > 1, 'Repeat', 'Fresh') AS repeatType,
-      COALESCE(
-        (SELECT status FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        'Disbursed'
-      ) AS disbursementStatus,
-      COALESCE(
-        (SELECT reference FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        (SELECT transaction_id FROM lead_accounting_payments WHERE (loan_id = l.id OR loan_id = TRIM(LEADING 'LN' FROM l.id)) ORDER BY id DESC LIMIT 1),
-        ''
-      ) AS disbursementReference,
-      la.source_payload AS sourcePayload,
-      ar.raw_response AS aadhaarRawResponse,
-      cib.raw_response AS cibilRawResponse,
-      cib.analysis_json AS cibilAnalysisJson
+      c.address AS customerAddress,
+      c.monthly_income AS customerMonthlyIncome,
+      c.total_loans AS customerTotalLoans
     FROM loans l
     LEFT JOIN customers c ON c.id = l.customer_id
-    LEFT JOIN loan_repayment_schedule rs ON rs.installment_number = 1 AND (
-      rs.loan_id = l.id
-      OR rs.loan_id = TRIM(LEADING 'LN' FROM l.id)
-      OR CONCAT('LN', rs.loan_id) = l.id
-      OR (l.id LIKE '%/%' AND rs.loan_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-      OR (l.id LIKE '%/%' AND rs.loan_id = SUBSTRING_INDEX(l.id, '/', 1))
-    )
-    LEFT JOIN (
-      SELECT 
-        loan_id, 
-        MAX(lead_id) AS lead_id, 
-        MAX(application_id) AS application_id,
-        MAX(amount) AS amount,
-        MAX(account_number) AS account_number,
-        MAX(ifsc_code) AS ifsc_code,
-        MAX(bank_name) AS bank_name,
-        MAX(reference) AS reference,
-        MAX(transaction_id) AS transaction_id,
-        MAX(transfer_type) AS transfer_type,
-        MAX(method) AS method,
-        MAX(paid_by) AS paid_by,
-        MAX(status) AS status,
-        MAX(disbursed_at) AS disbursed_at,
-        MAX(paid_at) AS paid_at
-      FROM lead_accounting_payments
-      WHERE loan_id IS NOT NULL AND loan_id <> ''
-      GROUP BY loan_id
-    ) lap ON (
-      lap.loan_id = l.id 
-      OR lap.loan_id = TRIM(LEADING 'LN' FROM l.id)
-      OR CONCAT('LN', lap.loan_id) = l.id
-      OR (l.id LIKE '%/%' AND lap.loan_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-      OR (l.id LIKE '%/%' AND lap.loan_id = SUBSTRING_INDEX(l.id, '/', 1))
-    )
-    LEFT JOIN lead_sanctions ls ON ls.id = (
-      SELECT sub.id 
-      FROM lead_sanctions sub
-      WHERE (sub.status = 'sent' OR sub.status IS NOT NULL)
-        AND (
-          sub.agreement_number = l.id
-          OR sub.agreement_number = TRIM(LEADING 'LN' FROM l.id)
-          OR CONCAT('LN', sub.agreement_number) = l.id
-          OR (l.id LIKE '%/%' AND sub.agreement_number = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-          OR (l.id LIKE '%/%' AND sub.lead_id = SUBSTRING_INDEX(l.id, '/', 1))
-          OR (rs.lead_id IS NOT NULL AND sub.lead_id = rs.lead_id)
-          OR (rs.application_id IS NOT NULL AND sub.application_id = rs.application_id)
-          OR (lap.lead_id IS NOT NULL AND sub.lead_id = lap.lead_id)
-          OR (lap.application_id IS NOT NULL AND sub.application_id = lap.application_id)
-          OR (l.customer_id IS NOT NULL AND sub.lead_id = TRIM(LEADING 'CUS' FROM l.customer_id))
-          OR (l.customer_id IS NOT NULL AND sub.lead_id = l.customer_id)
-          OR (c.phone IS NOT NULL AND c.phone <> '' AND sub.borrower_phone = c.phone)
-          OR (c.email IS NOT NULL AND c.email <> '' AND sub.borrower_email = c.email)
-        )
-      ORDER BY 
-        (sub.agreement_number = TRIM(LEADING 'LN' FROM l.id)) DESC,
-        (sub.agreement_number = l.id) DESC,
-        (sub.status = 'sent') DESC,
-        sub.created_at DESC,
-        sub.id DESC
-      LIMIT 1
-    )
-    LEFT JOIN loan_applications la ON la.id = (
-      SELECT sub_la.id FROM loan_applications sub_la
-      WHERE 
-         (sub_la.application_id IS NOT NULL AND sub_la.application_id <> '' AND (
-            sub_la.application_id = rs.application_id
-            OR sub_la.application_id = lap.application_id
-            OR sub_la.application_id = ls.application_id
-            OR sub_la.application_id = l.id
-            OR sub_la.application_id = TRIM(LEADING 'LN' FROM l.id)
-            OR (l.id LIKE '%/%' AND sub_la.application_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-            OR sub_la.application_id = l.customer_id
-            OR sub_la.application_id = TRIM(LEADING 'CUS' FROM l.customer_id)
-         ))
-         OR (sub_la.id IS NOT NULL AND (
-            sub_la.id = rs.lead_id
-            OR sub_la.id = lap.lead_id
-            OR sub_la.id = ls.lead_id
-            OR sub_la.id = TRIM(LEADING 'CUS' FROM l.customer_id)
-            OR sub_la.id = l.customer_id
-            OR (l.id LIKE '%/%' AND sub_la.id = SUBSTRING_INDEX(l.id, '/', 1))
-            OR sub_la.id = TRIM(LEADING 'LN' FROM l.id)
-         ))
-         OR (sub_la.source_lead_id IS NOT NULL AND sub_la.source_lead_id <> '' AND (
-            sub_la.source_lead_id = rs.lead_id
-            OR sub_la.source_lead_id = lap.lead_id
-            OR sub_la.source_lead_id = ls.lead_id
-            OR sub_la.source_lead_id = TRIM(LEADING 'CUS' FROM l.customer_id)
-            OR sub_la.source_lead_id = l.customer_id
-            OR (l.id LIKE '%/%' AND sub_la.source_lead_id = SUBSTRING_INDEX(l.id, '/', 1))
-         ))
-         OR (sub_la.source_application_id IS NOT NULL AND sub_la.source_application_id <> '' AND (
-            sub_la.source_application_id = rs.application_id
-            OR sub_la.source_application_id = lap.application_id
-            OR sub_la.source_application_id = ls.application_id
-            OR sub_la.source_application_id = TRIM(LEADING 'LN' FROM l.id)
-            OR (l.id LIKE '%/%' AND sub_la.source_application_id = SUBSTRING_INDEX(SUBSTRING_INDEX(l.id, '/', 2), '/', -1))
-         ))
-         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_la.mobile = c.phone)
-         OR (c.email IS NOT NULL AND c.email <> '' AND sub_la.email = c.email)
-      ORDER BY 
-         (sub_la.application_id = ls.application_id) DESC,
-         (sub_la.id = ls.lead_id) DESC,
-         sub_la.id DESC
-      LIMIT 1
-    )
-    LEFT JOIN lead_cam_sheets cam ON cam.id = (
-      SELECT sub_cam.id FROM lead_cam_sheets sub_cam
-      WHERE (ls.cam_sheet_id IS NOT NULL AND sub_cam.id = ls.cam_sheet_id)
-         OR (sub_cam.application_id IS NOT NULL AND sub_cam.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id, la.application_id))
-         OR (sub_cam.lead_id IS NOT NULL AND sub_cam.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id) AS CHAR))
-      ORDER BY sub_cam.id DESC LIMIT 1
-    )
-    LEFT JOIN aadhaar_reports ar ON ar.id = (
-      SELECT sub_ar.id FROM aadhaar_reports sub_ar
-      WHERE (sub_ar.application_id IS NOT NULL AND sub_ar.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id, la.application_id))
-         OR (sub_ar.lead_id IS NOT NULL AND sub_ar.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id) AS CHAR))
-         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_ar.mobile = c.phone)
-         OR (la.mobile IS NOT NULL AND la.mobile <> '' AND sub_ar.mobile = la.mobile)
-      ORDER BY sub_ar.id DESC LIMIT 1
-    )
-    LEFT JOIN cibil_reports cib ON cib.id = (
-      SELECT sub_cib.id FROM cibil_reports sub_cib
-      WHERE (sub_cib.application_id IS NOT NULL AND sub_cib.application_id = COALESCE(rs.application_id, lap.application_id, ls.application_id, la.application_id))
-         OR (sub_cib.lead_id IS NOT NULL AND sub_cib.lead_id = CAST(COALESCE(rs.lead_id, lap.lead_id, ls.lead_id, la.id) AS CHAR))
-         OR (c.phone IS NOT NULL AND c.phone <> '' AND sub_cib.mobile = c.phone)
-         OR (la.mobile IS NOT NULL AND la.mobile <> '' AND sub_cib.mobile = la.mobile)
-         OR (la.pan_number IS NOT NULL AND la.pan_number <> '' AND sub_cib.pan = la.pan_number)
-      ORDER BY sub_cib.id DESC LIMIT 1
-    )
     WHERE l.id = ?
     LIMIT 1
   `, [id]);
@@ -1237,67 +988,8 @@ async function findById(id) {
   if (!rows.length) return null;
   const l = rows[0];
 
-  const repayments = await query(`
-    SELECT amount, received_at, method
-    FROM loan_repayments 
-    WHERE loan_id = ? AND status IN ('received', 'success', 'paid', 'settled')
-    ORDER BY received_at ASC, id ASC
-  `, [id]);
-
-  const principal = Number(l.principal || 0);
-  let cumulativePaid = 0;
-  let todayRoi = 0;
-  let monthRoi = 0;
-  let totalRoi = 0;
-
-  const today = getLocalDate(new Date().toISOString());
-  const currentMonthStr = new Date().toISOString().slice(0, 7);
-
-  repayments.forEach(r => {
-    const amount = Number(r.amount || 0);
-    const prevCumulative = cumulativePaid;
-    cumulativePaid += amount;
-    
-    const prevRoiRealized = Math.max(0, prevCumulative - principal);
-    const currentRoiRealized = Math.max(0, cumulativePaid - principal);
-    const roiRealizedThisPayment = currentRoiRealized - prevRoiRealized;
-    
-    if (roiRealizedThisPayment > 0) {
-      totalRoi += roiRealizedThisPayment;
-      const repDateStr = getLocalDate(r.received_at);
-      if (repDateStr === today) {
-        todayRoi += roiRealizedThisPayment;
-      }
-      if (repDateStr.slice(0, 7) === currentMonthStr) {
-        monthRoi += roiRealizedThisPayment;
-      }
-    }
-  });
-
-  const startStr = getLocalDate(l.startDate);
-  const npStr = getLocalDate(l.nextPaymentDate);
-  const dueStr = getLocalDate(l.dueDate);
-  if (!l.nextPaymentDate || npStr === startStr || (Number(l.amountPaid || 0) === 0 && npStr < dueStr)) {
-    l.nextPaymentDate = l.dueDate;
-  }
-
-  l.todayRoi = todayRoi;
-  l.monthRoi = monthRoi;
-  l.totalRoi = totalRoi;
-  l.repayments = repayments.map(r => ({
-    amount: Number(r.amount || 0),
-    receivedAt: r.received_at,
-    method: r.method,
-  }));
-
-  const lastRep = repayments.length > 0 ? repayments[repayments.length - 1] : null;
-  l.collectedAmount = Number(l.amountPaid || 0);
-  l.collectedMode = lastRep?.method || null;
-  l.collectedDate = lastRep?.received_at ? getLocalDate(lastRep.received_at) : (l.lastPaymentDate || null);
-
   await enrichLoansBatch([l]);
-
   return l;
 }
 
-module.exports = { findAll, findById, invalidateLoansCache };
+module.exports = { findAll, findById, invalidateLoansCache, getLoanStats };

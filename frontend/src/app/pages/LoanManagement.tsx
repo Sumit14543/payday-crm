@@ -364,13 +364,28 @@ export function LoanManagement() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [viewMode, setViewMode] = useState<"collection" | "disbursement">("collection");
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [disbursedFilter, setDisbursedFilter] = useState<"all" | "today" | "month">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("15");
+  const [totalCount, setTotalCount] = useState(0);
+  const [apiStats, setApiStats] = useState<any>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter]);
 
   // Bulk upload states
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -445,12 +460,28 @@ export function LoanManagement() {
   const loadLoans = useCallback(async (signal: AbortSignal) => {
     try {
       const params = new URLSearchParams();
-      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      params.set("limit", "1000"); // Load full portfolio
+      if (dateFilter !== "all") params.set("dateFilter", dateFilter);
+      if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
+      params.set("page", String(currentPage));
+      params.set("limit", pageSize);
+
       const url = `/loans${params.toString() ? `?${params.toString()}` : ""}`;
       const data = await apiGet<Loan[]>(url, signal);
       setLoans(data);
+
+      const pagination = (data as any)?.pagination;
+      if (pagination && typeof pagination.total === "number") {
+        setTotalCount(pagination.total);
+      } else {
+        setTotalCount(data.length);
+      }
+
+      const st = (data as any)?.stats;
+      if (st) {
+        setApiStats(st);
+      }
       setError(null);
     } catch (err) {
       if (!signal.aborted) {
@@ -458,292 +489,202 @@ export function LoanManagement() {
       }
       throw err;
     }
-  }, [searchTerm, statusFilter]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, dateFilter, disbursedFilter]);
 
   const { isRefreshing, lastUpdatedAt, refresh } = useSmartPolling(loadLoans, {
     enabled: true,
     intervalMs: 60_000,
   });
 
-  // Export CSV
-  const handleExportCsv = () => {
-    if (!filteredLoans.length) {
-      alert("No loans available to export with current filters.");
-      return;
-    }
+  // Export CSV (Fetches complete dataset on-demand so viewing the table is always blazing fast)
+  const handleExportCsv = async () => {
+    try {
+      setIsExporting(true);
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (dateFilter !== "all") params.set("dateFilter", dateFilter);
+      if (disbursedFilter !== "all") params.set("disbursedFilter", disbursedFilter);
+      params.set("limit", "5000"); // full export
 
-    if (viewMode === "collection") {
-      const headers = [
-        "Name",
-        "Email",
-        "Mobile",
-        "DOB",
-        "PAN No.",
-        "Loan Amount",
-        "Repayment Amount",
-        "Income Amount",
-        "Disbursed Date",
-        "Repay Date",
-        "LOAN TENURE",
-        "ROI",
-        "Collected Amount",
-        "Collected Mode",
-        "Collected Date",
-      ];
+      const exportData = await apiGet<Loan[]>(`/loans?${params.toString()}`);
+      if (!exportData || !exportData.length) {
+        alert("No loans available to export with current filters.");
+        return;
+      }
 
-      const rows = filteredLoans.map((raw) => {
-        const l = parseLoanRow(raw);
-        return [
-          `"${(l.customerName || "").replace(/"/g, '""')}"`,
-          `"${(l.email || "").replace(/"/g, '""')}"`,
-          `"${l.mobile || l.mobileNumber || ""}"`,
-          `"${toDateKey(l.dob) || ""}"`,
-          `"${(l.panNumber || "").replace(/"/g, '""')}"`,
-          l.principal || 0,
-          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
-          l.monthlyIncome || 0,
-          `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
-          `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
-          `"${l.tenure || 30} Days"`,
-          `"${l.roi || l.interestRate || 0}%"`,
-          l.amountPaid || l.collectedAmount || 0,
-          `"${(l.collectedMode || (Number(l.amountPaid || 0) > 0 ? "Bank Transfer" : "-")).replace(/"/g, '""')}"`,
-          `"${toDateKey(l.collectedDate || l.lastPaymentDate) || ""}"`,
+      if (viewMode === "collection") {
+        const headers = [
+          "Name",
+          "Email",
+          "Mobile",
+          "DOB",
+          "PAN No.",
+          "Loan Amount",
+          "Repayment Amount",
+          "Income Amount",
+          "Disbursed Date",
+          "Repay Date",
+          "LOAN TENURE",
+          "ROI",
+          "Collected Amount",
+          "Collected Mode",
+          "Collected Date",
         ];
-      });
 
-      const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `loan_collection_export_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } else {
-      // Disbursement mode
-      const headers = [
-        "LeadID",
-        "State Name",
-        "City Name",
-        "Branch Name",
-        "Customer ID",
-        "Pancard",
-        "Loan No.",
-        "Customer Name",
-        "Mobile Number",
-        "Gender",
-        "DOB",
-        "Alternative Number",
-        "Email",
-        "Loan Amount",
-        "Disbursed Amount",
-        "Admin Fee",
-        "Admin Fee GST",
-        "Total Admin Fee",
-        "IGST",
-        "CGST",
-        "SGST",
-        "Processing",
-        "Tenure",
-        "ROI(%)",
-        "Loan Repay Amount",
-        "Disbursement Date",
-        "Repayment Date",
-        "Mode Of Payment",
-        "Company Bank Account Number",
-        "Customer Bank Account Number",
-        "Customer Bank Name",
-        "Customer Bank IFSC",
-        "Refrence No Of Disbursement",
-        "Disbursement Status",
-        "Repeat Type",
-        "Lead Initiated Date",
-        "Sanctioned By",
-        "Approved By",
-        "Sanction Date",
-        "Loan Disbursed By",
-        "Loan Disbursed Date",
-        "House Type",
-        "Address",
-        "Pin Code",
-      ];
+        const rows = exportData.map((raw) => {
+          const l = parseLoanRow(raw);
+          return [
+            `"${(l.customerName || "").replace(/"/g, '""')}"`,
+            `"${(l.email || "").replace(/"/g, '""')}"`,
+            `"${l.mobile || l.mobileNumber || ""}"`,
+            `"${toDateKey(l.dob) || ""}"`,
+            `"${(l.panNumber || "").replace(/"/g, '""')}"`,
+            l.principal || 0,
+            l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+            l.monthlyIncome || 0,
+            `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
+            `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
+            `"${l.tenure || 30} Days"`,
+            `"${l.roi || l.interestRate || 0}%"`,
+            l.amountPaid || l.collectedAmount || 0,
+            `"${(l.collectedMode || (Number(l.amountPaid || 0) > 0 ? "Bank Transfer" : "-")).replace(/"/g, '""')}"`,
+            `"${toDateKey(l.collectedDate || l.lastPaymentDate) || ""}"`,
+          ];
+        });
 
-      const rows = filteredLoans.map((raw) => {
-        const l = parseLoanRow(raw);
-        return [
-          `"${(l.leadId || "").replace(/"/g, '""')}"`,
-          `"${(l.stateName || "-").replace(/"/g, '""')}"`,
-          `"${(l.cityName || "-").replace(/"/g, '""')}"`,
-          `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
-          `"${(l.customerId || "").replace(/"/g, '""')}"`,
-          `"${(l.panNumber || "").replace(/"/g, '""')}"`,
-          `"${(l.loanNo || "").replace(/"/g, '""')}"`,
-          `"${(l.customerName || "").replace(/"/g, '""')}"`,
-          `"${l.mobile || l.mobileNumber || ""}"`,
-          `"${(l.gender || "-").replace(/"/g, '""')}"`,
-          `"${toDateKey(l.dob) || ""}"`,
-          `"${(l.alternativeNumber || "-").replace(/"/g, '""')}"`,
-          `"${(l.email || "").replace(/"/g, '""')}"`,
-          l.principal || 0,
-          l.disbursedAmount || l.principal || 0,
-          l.adminFee || l.processing || 0,
-          l.adminFeeGst || 0,
-          l.totalAdminFee || 0,
-          l.igst || 0,
-          l.cgst || 0,
-          l.sgst || 0,
-          l.processing || l.adminFee || 0,
-          `"${l.tenure || 30} Days"`,
-          `"${l.roi || l.interestRate || 0}%"`,
-          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
-          `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
-          `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
-          `"${(l.modeOfPayment || "Bank Transfer").replace(/"/g, '""')}"`,
-          `"${(l.companyBankAccount || "000705001234").replace(/"/g, '""')}"`,
-          l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
-          `"${(l.bankName || "").replace(/"/g, '""')}"`,
-          `"${(l.ifscCode || "").replace(/"/g, '""')}"`,
-          `"${(l.disbursementReference || l.utrNumber || "").replace(/"/g, '""')}"`,
-          `"${(l.disbursementStatus || "Disbursed").replace(/"/g, '""')}"`,
-          `"${(l.repeatType || "Fresh").replace(/"/g, '""')}"`,
-          `"${toDateKey(l.leadInitiatedDate || l.createdAt) || ""}"`,
-          `"${(l.sanctionedBy || "Credit Manager").replace(/"/g, '""')}"`,
-          `"${(l.approvedBy || "Credit Desk").replace(/"/g, '""')}"`,
-          `"${toDateKey(l.sanctionDate || l.startDate) || ""}"`,
-          `"${(l.disbursedBy || "Accountant").replace(/"/g, '""')}"`,
-          `"${toDateKey(l.loanDisbursedDate || l.disbursedDate || l.startDate) || ""}"`,
-          `"${(l.houseType || "Owned").replace(/"/g, '""')}"`,
-          `"${(l.address || "").replace(/"/g, '""')}"`,
-          `"${(l.pincode || "").replace(/"/g, '""')}"`,
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `loan_collection_export_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        // Disbursement mode
+        const headers = [
+          "LeadID",
+          "State Name",
+          "City Name",
+          "Branch Name",
+          "Customer ID",
+          "Pancard",
+          "Loan No.",
+          "Customer Name",
+          "Mobile Number",
+          "Gender",
+          "DOB",
+          "Alternative Number",
+          "Email",
+          "Loan Amount",
+          "Disbursed Amount",
+          "Admin Fee",
+          "Admin Fee GST",
+          "Total Admin Fee",
+          "IGST",
+          "CGST",
+          "SGST",
+          "Processing",
+          "Tenure",
+          "ROI(%)",
+          "Loan Repay Amount",
+          "Disbursement Date",
+          "Repayment Date",
+          "Mode Of Payment",
+          "Company Bank Account Number",
+          "Customer Bank Account Number",
+          "Customer Bank Name",
+          "Customer Bank IFSC",
+          "Refrence No Of Disbursement",
+          "Disbursement Status",
+          "Repeat Type",
+          "Lead Initiated Date",
+          "Sanctioned By",
+          "Approved By",
+          "Sanction Date",
+          "Loan Disbursed By",
+          "Loan Disbursed Date",
+          "House Type",
+          "Address",
+          "Pin Code",
         ];
-      });
 
-      const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `loan_disbursement_export_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+        const rows = exportData.map((raw) => {
+          const l = parseLoanRow(raw);
+          return [
+            `"${(l.leadId || "").replace(/"/g, '""')}"`,
+            `"${(l.stateName || "-").replace(/"/g, '""')}"`,
+            `"${(l.cityName || "-").replace(/"/g, '""')}"`,
+            `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
+            `"${(l.customerId || "").replace(/"/g, '""')}"`,
+            `"${(l.panNumber || "").replace(/"/g, '""')}"`,
+            `"${(l.loanNo || "").replace(/"/g, '""')}"`,
+            `"${(l.customerName || "").replace(/"/g, '""')}"`,
+            `"${l.mobile || l.mobileNumber || ""}"`,
+            `"${(l.gender || "-").replace(/"/g, '""')}"`,
+            `"${toDateKey(l.dob) || ""}"`,
+            `"${(l.alternativeNumber || "-").replace(/"/g, '""')}"`,
+            `"${(l.email || "").replace(/"/g, '""')}"`,
+            l.principal || 0,
+            l.disbursedAmount || l.principal || 0,
+            l.adminFee || l.processing || 0,
+            l.adminFeeGst || 0,
+            l.totalAdminFee || 0,
+            l.igst || 0,
+            l.cgst || 0,
+            l.sgst || 0,
+            l.processing || l.adminFee || 0,
+            `"${l.tenure || 30} Days"`,
+            `"${l.roi || l.interestRate || 0}%"`,
+            l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+            `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
+            `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
+            `"${(l.modeOfPayment || "Bank Transfer").replace(/"/g, '""')}"`,
+            `"${(l.companyBankAccount || "000705001234").replace(/"/g, '""')}"`,
+            l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
+            `"${(l.bankName || "").replace(/"/g, '""')}"`,
+            `"${(l.ifscCode || "").replace(/"/g, '""')}"`,
+            `"${(l.disbursementReference || l.utrNumber || "").replace(/"/g, '""')}"`,
+            `"${(l.disbursementStatus || "Disbursed").replace(/"/g, '""')}"`,
+            `"${(l.repeatType || "Fresh").replace(/"/g, '""')}"`,
+            `"${toDateKey(l.leadInitiatedDate || l.createdAt) || ""}"`,
+            `"${(l.sanctionedBy || "Credit Manager").replace(/"/g, '""')}"`,
+            `"${(l.approvedBy || "Credit Desk").replace(/"/g, '""')}"`,
+            `"${toDateKey(l.sanctionDate || l.startDate) || ""}"`,
+            `"${(l.disbursedBy || "Accountant").replace(/"/g, '""')}"`,
+            `"${toDateKey(l.loanDisbursedDate || l.disbursedDate || l.startDate) || ""}"`,
+            `"${(l.houseType || "Owned").replace(/"/g, '""')}"`,
+            `"${(l.address || "").replace(/"/g, '""')}"`,
+            `"${(l.pincode || "").replace(/"/g, '""')}"`,
+          ];
+        });
+
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `loan_disbursement_export_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to export loans CSV.");
+    } finally {
+      setIsExporting(false);
     }
   };
 
-  // Filtered Loans
-  const filteredLoans = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    const now = new Date();
-    const todayKey = toDateKey(now) || "";
-    const currentMonthKey = todayKey.slice(0, 7);
-
-    // Compute start and end of week (Monday to Sunday) in IST
-    const dayOfWeek = now.getDay();
-    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diffToMonday);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-
-    const startOfWeekKey = toDateKey(monday) || "";
-    const endOfWeekKey = toDateKey(sunday) || "";
-
-    return loans.filter((raw) => {
-      const loan = parseLoanRow(raw);
-      const dueKey = toDateKey(loan.repaymentDate || loan.dueDate) || "";
-      const disbursalKey = toDateKey(loan.disbursedDate || loan.startDate) || "";
-      const formattedDue = formatDate(loan.repaymentDate || loan.dueDate).toLowerCase();
-      const formattedDisbursed = formatDate(loan.disbursedDate || loan.startDate).toLowerCase();
-      const formattedPaymentDate = formatDate(loan.collectedDate || loan.lastPaymentDate).toLowerCase();
-
-      const matchesSearch =
-        !query ||
-        loan.id.toLowerCase().includes(query) ||
-        loan.loanNo.toLowerCase().includes(query) ||
-        loan.leadId.toLowerCase().includes(query) ||
-        loan.customerId.toLowerCase().includes(query) ||
-        loan.customerName.toLowerCase().includes(query) ||
-        loan.email.toLowerCase().includes(query) ||
-        loan.mobile.toLowerCase().includes(query) ||
-        loan.panNumber.toLowerCase().includes(query) ||
-        loan.cityName.toLowerCase().includes(query) ||
-        loan.stateName.toLowerCase().includes(query) ||
-        (loan.accountNumber || "").toLowerCase().includes(query) ||
-        (loan.bankName || "").toLowerCase().includes(query) ||
-        (loan.utrNumber || "").toLowerCase().includes(query) ||
-        (loan.disbursementReference || "").toLowerCase().includes(query) ||
-        (loan.status || "").toLowerCase().includes(query) ||
-        (loan.paymentStatus || "").toLowerCase().includes(query) ||
-        dueKey.includes(query) ||
-        formattedDue.includes(query) ||
-        disbursalKey.includes(query) ||
-        formattedDisbursed.includes(query) ||
-        (loan.dueDate || "").toLowerCase().includes(query) ||
-        (loan.startDate || "").toLowerCase().includes(query) ||
-        (loan.disbursedDate || "").toLowerCase().includes(query) ||
-        (loan.lastPaymentDate || "").toLowerCase().includes(query) ||
-        formattedPaymentDate.includes(query) ||
-        String(loan.principal || "").includes(query) ||
-        String(loan.totalAmount || "").includes(query) ||
-        String(loan.loanRepayAmount || "").includes(query) ||
-        String(loan.balance || "").includes(query);
-
-      // Part Payment loan: paid something, but balance > 0
-      const isPartPaymentLoan = Number(loan.amountPaid || 0) > 0 && Number(loan.balance || 0) > 0;
-      // Paid Off loan: balance MUST be <= 0 (cannot be paid off if balance > 0)
-      const isPaidOffLoan = Number(loan.balance || 0) <= 0;
-
-      let matchesStatus = true;
-      if (statusFilter !== "all") {
-        const sf = statusFilter.toLowerCase();
-        if (sf === "paid off") {
-          matchesStatus = isPaidOffLoan;
-        } else if (sf === "part payment" || sf === "partial") {
-          matchesStatus = isPartPaymentLoan;
-        } else if (sf === "active") {
-          matchesStatus = (loan.status || "").toLowerCase() === "active" && !isPaidOffLoan;
-        } else if (sf === "overdue") {
-          matchesStatus =
-            ((loan.status || "").toLowerCase() === "overdue" ||
-              (loan.paymentStatus || "").toLowerCase() === "overdue" ||
-              (dueKey ? dueKey < todayKey : false)) &&
-            !isPaidOffLoan;
-        } else {
-          matchesStatus = (loan.status || "").toLowerCase() === sf;
-        }
-      }
-
-      let matchesDate = true;
-      if (dateFilter !== "all" && loan.dueDate) {
-        if (!dueKey) {
-          matchesDate = false;
-        } else if (dateFilter === "today") {
-          matchesDate = dueKey === todayKey;
-        } else if (dateFilter === "month") {
-          matchesDate = dueKey.slice(0, 7) === currentMonthKey;
-        } else if (dateFilter === "week") {
-          matchesDate = dueKey >= startOfWeekKey && dueKey <= endOfWeekKey;
-        } else if (dateFilter === "overdue") {
-          matchesDate = dueKey < todayKey && !isPaidOffLoan;
-        }
-      }
-
-      let matchesDisbursed = true;
-      if (disbursedFilter === "today") {
-        matchesDisbursed = disbursalKey === todayKey;
-      } else if (disbursedFilter === "month") {
-        matchesDisbursed = disbursalKey ? disbursalKey.slice(0, 7) === currentMonthKey : false;
-      }
-
-      return matchesSearch && matchesStatus && matchesDate && matchesDisbursed;
-    });
-  }, [loans, searchTerm, statusFilter, dateFilter, disbursedFilter]);
-
   const totals = useMemo(() => {
+    if (apiStats) {
+      return apiStats;
+    }
+
     const todayKey = toDateKey(new Date()) || "";
     const currentMonthKey = todayKey.slice(0, 7);
 
@@ -758,7 +699,7 @@ export function LoanManagement() {
     });
 
     return {
-      allLoans: loans.length,
+      allLoans: totalCount || loans.length,
       activeLoans: loans.filter((loan) => (loan.status === "Active" || !loan.status) && Number(loan.balance || 0) > 0).length,
       partPaymentLoans: loans.filter((loan) => Number(loan.amountPaid || 0) > 0 && Number(loan.balance || 0) > 0).length,
       paidOffLoans: loans.filter((loan) => Number(loan.balance || 0) <= 0).length,
@@ -778,19 +719,20 @@ export function LoanManagement() {
       monthDisbursedCount: monthDisbursedLoans.length,
       monthDisbursedAmount: monthDisbursedLoans.reduce((sum, loan) => sum + Number(loan.principal || 0), 0),
     };
-  }, [loans]);
+  }, [loans, totalCount, apiStats]);
 
   const rowsPerPage = Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(filteredLoans.length / rowsPerPage));
+  const totalPages = Math.max(1, Math.ceil(totalCount / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
-  const startIndex = filteredLoans.length ? (safePage - 1) * rowsPerPage : 0;
-  const endIndex = Math.min(startIndex + rowsPerPage, filteredLoans.length);
-  const visibleLoans = filteredLoans.slice(startIndex, endIndex);
+  const startIndex = totalCount ? (safePage - 1) * rowsPerPage : 0;
+  const endIndex = Math.min(startIndex + loans.length, totalCount);
+  const visibleLoans = loans;
 
   const showInitialLoading = isRefreshing && !lastUpdatedAt && loans.length === 0;
 
   const resetFilters = () => {
     setSearchTerm("");
+    setDebouncedSearch("");
     setStatusFilter("all");
     setDateFilter("all");
     setDisbursedFilter("all");
@@ -798,11 +740,7 @@ export function LoanManagement() {
   };
 
   const hasActiveFilters =
-    searchTerm.trim() !== "" || statusFilter !== "all" || dateFilter !== "all" || disbursedFilter !== "all";
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [pageSize, searchTerm, statusFilter, dateFilter, disbursedFilter]);
+    debouncedSearch.trim() !== "" || statusFilter !== "all" || dateFilter !== "all" || disbursedFilter !== "all";
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
@@ -1179,10 +1117,10 @@ export function LoanManagement() {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-            {filteredLoans.length ? (
+            {totalCount ? (
               <span>
                 Showing <strong className="text-slate-900 dark:text-white">{startIndex + 1}-{endIndex}</strong> of{" "}
-                <strong className="text-slate-900 dark:text-white">{filteredLoans.length}</strong> loans
+                <strong className="text-slate-900 dark:text-white">{totalCount}</strong> loans
               </span>
             ) : (
               "No matching loans found"
@@ -1192,12 +1130,12 @@ export function LoanManagement() {
             <button
               type="button"
               onClick={handleExportCsv}
-              disabled={!filteredLoans.length}
+              disabled={!totalCount || isExporting}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 shadow-sm transition"
               title={`Export current table to ${viewMode === "collection" ? "Collection" : "Disbursement"} CSV`}
             >
-              <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              Export {viewMode === "collection" ? "Collection" : "Disbursement"} CSV
+              {isExporting ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" /> : <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+              {isExporting ? "Exporting..." : `Export ${viewMode === "collection" ? "Collection" : "Disbursement"} CSV`}
             </button>
             <NiceSelect
               ariaLabel="Loan rows per page"
@@ -1207,7 +1145,7 @@ export function LoanManagement() {
               options={PAGE_SIZE_OPTIONS}
             />
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {loans.length} total in system
+              {totals.allLoans} total in system
             </span>
           </div>
         </div>
@@ -1245,7 +1183,7 @@ export function LoanManagement() {
                     Loading loan portfolio...
                   </td>
                 </tr>
-              ) : filteredLoans.length ? (
+              ) : visibleLoans.length ? (
                 visibleLoans.map((rawLoan) => {
                   const loan = parseLoanRow(rawLoan);
 
@@ -1605,7 +1543,7 @@ export function LoanManagement() {
         </div>
 
         {/* Pagination bar */}
-        {filteredLoans.length > rowsPerPage && (
+        {totalCount > rowsPerPage && (
           <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
             <span>
               Page {safePage} of {totalPages}

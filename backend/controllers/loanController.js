@@ -17,6 +17,7 @@ async function listLoans(req, res) {
       total: loans.total !== undefined ? loans.total : loans.length,
       totalPages: loans.totalPages || 1,
     },
+    stats: loans.stats,
     message: 'OK',
   });
 }

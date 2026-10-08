@@ -298,6 +298,14 @@ async function readApiResponse<T>(response: Response, path: string): Promise<T> 
         configurable: true,
       });
     }
+    if (payload.stats && Array.isArray(payload.data)) {
+      Object.defineProperty(payload.data, 'stats', {
+        value: payload.stats,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      });
+    }
     return payload.data as T;
   }
 
