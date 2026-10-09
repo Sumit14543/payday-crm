@@ -1489,7 +1489,8 @@ async function listCreditApplications(filters = {}) {
       if (n1) aaMap.set(n1, aa);
     }
     if (aa.tracking_id) {
-      const n2 = extractNum(aa.tracking_id);
+      const match = String(aa.tracking_id).match(/^AA_(?:TRK|TRACK)_([0-9]+)_/i);
+      const n2 = match ? match[1] : '';
       if (n2) aaMap.set(n2, aa);
     }
   });

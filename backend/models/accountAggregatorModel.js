@@ -35,8 +35,8 @@ async function findLatestSessionByApplicationId(applicationId, secondaryId) {
   let whereClause = `application_id IN (${placeholders})`;
 
   if (rawNum) {
-    whereClause += ` OR tracking_id LIKE ?`;
-    params.push(`%_${rawNum}_%`);
+    whereClause += ` OR tracking_id LIKE ? ESCAPE '\\\\' OR tracking_id LIKE ? ESCAPE '\\\\'`;
+    params.push(`AA\\_TRK\\_${rawNum}\\_%`, `AA\\_TRACK\\_${rawNum}\\_%`);
   }
 
   const rows = await query(`
@@ -127,9 +127,9 @@ async function saveAnalytics({ applicationId, trackingId, referenceId, analysisI
   // Check if an analytics record already exists for this lead / trackingId
   const existing = await query(`
     SELECT id FROM lead_account_aggregator_analytics
-    WHERE tracking_id = ? OR application_id = ? ${rawNum ? 'OR tracking_id LIKE ?' : ''}
+    WHERE tracking_id = ? OR application_id = ? ${rawNum ? "OR tracking_id LIKE ? ESCAPE '\\\\' OR tracking_id LIKE ? ESCAPE '\\\\'" : ''}
     ORDER BY id DESC LIMIT 1
-  `, rawNum ? [trkStr, appStr, `%_${rawNum}_%`] : [trkStr, appStr]);
+  `, rawNum ? [trkStr, appStr, `AA\\_TRK\\_${rawNum}\\_%`, `AA\\_TRACK\\_${rawNum}\\_%`] : [trkStr, appStr]);
 
   if (existing && existing[0]) {
     // Update existing row on refresh to prevent duplicate table entries
@@ -205,8 +205,8 @@ async function findLatestAnalyticsByApplicationId(applicationId, secondaryId) {
   let whereClause = `application_id IN (${placeholders})`;
 
   if (rawNum) {
-    whereClause += ` OR tracking_id LIKE ?`;
-    params.push(`%_${rawNum}_%`);
+    whereClause += ` OR tracking_id LIKE ? ESCAPE '\\\\' OR tracking_id LIKE ? ESCAPE '\\\\'`;
+    params.push(`AA\\_TRK\\_${rawNum}\\_%`, `AA\\_TRACK\\_${rawNum}\\_%`);
   }
 
   const rows = await query(`
@@ -266,8 +266,8 @@ async function resetSession(applicationId, secondaryId) {
   let whereClause = `application_id IN (${placeholders})`;
 
   if (rawNum) {
-    whereClause += ` OR tracking_id LIKE ?`;
-    params.push(`%_${rawNum}_%`);
+    whereClause += ` OR tracking_id LIKE ? ESCAPE '\\\\' OR tracking_id LIKE ? ESCAPE '\\\\'`;
+    params.push(`AA\\_TRK\\_${rawNum}\\_%`, `AA\\_TRACK\\_${rawNum}\\_%`);
   }
 
   await query(`DELETE FROM lead_account_aggregator_sessions WHERE ${whereClause}`, params);
