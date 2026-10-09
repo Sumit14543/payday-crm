@@ -155,7 +155,13 @@ export function Login() {
       const domain = branding.slug === "waqtfinance" ? "waqtfinance.com" : `${branding.slug}.com`;
       setEmail(domain === "waqtfinance.com" ? "support@waqtfinance.com" : "productadmin@paydaycrm.com");
     } else if (nextRole === "credit-manager") {
-      setEmail("shrutisingh@waqtmoney.in");
+      const isTestingEnv =
+        typeof window !== "undefined" &&
+        (window.location.hostname.includes("testing") ||
+         window.location.hostname === "localhost" ||
+         window.location.hostname === "127.0.0.1" ||
+         Boolean(import.meta.env.VITE_API_URL && String(import.meta.env.VITE_API_URL).includes("testing")));
+      setEmail(isTestingEnv ? "test.credit@waqtmoney.in" : "shrutisingh@waqtmoney.in");
     } else {
       const domain = branding.slug === "waqtfinance" ? "waqtfinance.com" : `${branding.slug}.com`;
       const defaultEmailPrefix = nextRole === "collection" ? "prakash" : nextRole;
@@ -232,7 +238,18 @@ export function Login() {
       return;
     }
 
-    if (role === "credit-manager" && cleanEmail !== "shrutisingh@waqtmoney.in") {
+    const isTestingEnvironment =
+      typeof window !== "undefined" &&
+      (window.location.hostname.includes("testing") ||
+       window.location.hostname === "localhost" ||
+       window.location.hostname === "127.0.0.1" ||
+       Boolean(import.meta.env.VITE_API_URL && String(import.meta.env.VITE_API_URL).includes("testing")));
+
+    const isAuthorizedCreditEmail =
+      cleanEmail === "shrutisingh@waqtmoney.in" ||
+      (isTestingEnvironment && cleanEmail === "test.credit@waqtmoney.in");
+
+    if (role === "credit-manager" && !isAuthorizedCreditEmail) {
       setError("Access Denied: Only authorized Credit Manager account (shrutisingh@waqtmoney.in) is permitted for Credit Panel.");
       return;
     }

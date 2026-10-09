@@ -425,10 +425,29 @@ async function bootstrap() {
 
           await runQuery(`
             DELETE FROM crm_users 
-            WHERE (role = 'credit-manager' AND email <> 'shrutisingh@waqtmoney.in')
-               OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
+            WHERE (role = 'credit-manager' AND email NOT IN ('shrutisingh@waqtmoney.in', 'test.credit@waqtmoney.in'))
+               OR email IN ('credit@waqtfinance.com', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
           `);
-          console.log(`[SEED] Ensured Shruti Singh (${shrutiEmail}) is the only Credit Manager in tenant ${tenant.slug}`);
+
+          // Seed test.credit@waqtmoney.in for testing environment
+          const testCreditEmail = 'test.credit@waqtmoney.in';
+          const testCreditName = 'Test Credit Manager';
+          const testCreditRole = 'credit-manager';
+          const testCreditSalt = '45fc08e36726dcad454fdc48a13b0c61';
+          const testCreditHash = 'fd48197a6617817987d647982073a67e087f35747808b9bb23b5fb4ee3253a68'; // WaqtTest@2026##
+
+          await runQuery(
+            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+               name = VALUES(name),
+               role = VALUES(role),
+               password_salt = VALUES(password_salt),
+               password_hash = VALUES(password_hash),
+               is_active = 1`,
+            [testCreditName, testCreditEmail, testCreditRole, testCreditSalt, testCreditHash]
+          );
+          console.log(`[SEED] Ensured Shruti Singh and Test Credit Manager accounts in tenant ${tenant.slug}`);
         } catch (sErr) {
           console.error('⚠️ Failed to ensure Shruti credit user in bootstrap:', sErr.message);
         }

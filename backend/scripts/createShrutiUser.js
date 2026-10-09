@@ -24,14 +24,28 @@ async function main() {
     [salt, hashShruti]
   );
 
-  // 2. Delete any non-Shruti credit manager accounts
+  // 2. Delete any unauthorized credit manager accounts
   await query(`
     DELETE FROM crm_users 
-    WHERE (role = 'credit-manager' AND email <> 'shrutisingh@waqtmoney.in')
-       OR email IN ('credit@waqtfinance.com', 'test.credit@waqtmoney.in', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
+    WHERE (role = 'credit-manager' AND email NOT IN ('shrutisingh@waqtmoney.in', 'test.credit@waqtmoney.in'))
+       OR email IN ('credit@waqtfinance.com', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
   `);
 
-  console.log('✅ Shruti credentials set for shrutisingh@waqtmoney.in and legacy credit manager accounts purged successfully.');
+  // 3. Ensure test.credit@waqtmoney.in exists for testing
+  const passTest = 'WaqtTest@2026##';
+  const hashTest = crypto.pbkdf2Sync(passTest, salt, 120000, 32, 'sha256').toString('hex');
+  await query(
+    `INSERT INTO crm_users (email, name, role, password_salt, password_hash, is_active)
+     VALUES ('test.credit@waqtmoney.in', 'Test Credit Manager', 'credit-manager', ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       name = 'Test Credit Manager',
+       password_salt = VALUES(password_salt),
+       password_hash = VALUES(password_hash),
+       is_active = 1`,
+    [salt, hashTest]
+  );
+
+  console.log('✅ Shruti and Test Credit Manager credentials set, and legacy accounts purged successfully.');
   process.exit(0);
 }
 
