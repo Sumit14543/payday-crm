@@ -6976,38 +6976,14 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {Boolean(aaAnalytics) && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadAaCsv(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-emerald-600 transition shadow-xs cursor-pointer"
-                                  title="Download statement in CSV / Excel format"
-                                >
-                                  <Download className="h-3.5 w-3.5 text-emerald-600" />
-                                  <span>Download CSV</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadAaPdf(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition shadow-xs cursor-pointer"
-                                  title="Download / Print statement report as PDF"
-                                >
-                                  <Printer className="h-3.5 w-3.5 text-indigo-600" />
-                                  <span>Download PDF</span>
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setShowAaStatementModal(false)}
-                              className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-600 cursor-pointer"
-                              aria-label="Close modal"
-                            >
-                              <X className="h-5 w-5" />
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowAaStatementModal(false)}
+                            className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-600 cursor-pointer"
+                            aria-label="Close modal"
+                          >
+                            <X className="h-5 w-5" />
+                          </button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -7180,37 +7156,15 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                           )}
                         </div>
 
-                        <div className="border-t border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50 dark:bg-slate-950 flex flex-wrap items-center justify-between gap-3">
+                        <div className="border-t border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
                           <span className="text-xs text-slate-500">Secured via CRIF Orchestrator FIU Webservice</span>
-                          <div className="flex items-center gap-2">
-                            {Boolean(aaAnalytics) && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadAaCsv(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-3.5 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-emerald-600 transition shadow-xs cursor-pointer"
-                                >
-                                  <Download className="h-4 w-4 text-emerald-600" />
-                                  <span>Download CSV</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadAaPdf(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 px-3.5 py-2 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900 transition shadow-xs cursor-pointer"
-                                >
-                                  <Printer className="h-4 w-4 text-indigo-600" />
-                                  <span>Download PDF</span>
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setShowAaStatementModal(false)}
-                              className="rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 text-xs font-bold hover:bg-slate-800 dark:hover:bg-slate-100 cursor-pointer"
-                            >
-                              Close Statement
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowAaStatementModal(false)}
+                            className="rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 text-xs font-bold hover:bg-slate-800 dark:hover:bg-slate-100 cursor-pointer"
+                          >
+                            Close Statement
+                          </button>
                         </div>
                       </>
                     );
