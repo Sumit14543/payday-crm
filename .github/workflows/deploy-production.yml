@@ -120,13 +120,24 @@ jobs:
               npm install --production || true
             fi
 
-            echo "Restarting Passenger and background Node app on port 8081..."
-            curl -s http://127.0.0.1:8083/api/health/restart || true
-            pkill -u $USER node || pkill -9 -u $USER node || killall -9 node || true
+            echo "Restarting background Node app on port 8081..."
+            fuser -k 8081/tcp || npx --yes kill-port 8081 || true
             mkdir -p tmp
             touch tmp/restart.txt || true
             [ ! -f index.js ] || touch index.js || true
             [ ! -f app.js ] || touch app.js || true
             [ ! -f passenger_wsgi.py ] || touch passenger_wsgi.py || true
-            PORT=8081 nohup node index.js > node_production.log 2>&1 &
+            PORT=8081 nohup node index.js </dev/null > node_production.log 2>&1 &
             sleep 3
+
+            echo "Checking and keeping testing backend active on port 8083..."
+            if ! (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -q ":8083 "; then
+              echo "Testing backend on port 8083 was not running. Starting it now..."
+              if [ -d /home/waqtmoney/public_html/testing-api ]; then
+                cd /home/waqtmoney/public_html/testing-api
+                PORT=8083 nohup node index.js </dev/null > node_testing.log 2>&1 &
+                cd /home/waqtmoney/public_html/payday-api
+              fi
+            else
+              echo "Testing backend on port 8083 is already active."
+            fi

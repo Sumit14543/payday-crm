@@ -209,7 +209,7 @@ jobs:
             fuser -k 8083/tcp || npx --yes kill-port 8083 || true
 
             echo "Starting testing background Node app on port 8083..."
-            nohup PORT=8083 node index.js > node_testing.log 2>&1 &
+            PORT=8083 nohup node index.js </dev/null > node_testing.log 2>&1 &
             sleep 3
 
             echo "Deployment completed successfully."
