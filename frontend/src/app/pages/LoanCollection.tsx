@@ -2885,23 +2885,6 @@ if (isLogPaymentPage) {
                     >
                       Add Comment +
                     </button>
-                    {selectedReportCase && (selectedReportCase.status === "Paid Off" || selectedReportCase.status === "Closed" || selectedReportCase.emiStatus === "Paid" || Number(selectedReportCase.outstanding || 0) <= 0) && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await apiPost(`/collections/${encodeURIComponent(selectedReportCase.id)}/reopen`, {});
-                            setLogSuccess(`Loan case ${selectedReportCase.loanId} reopened successfully! Balance recalculated.`);
-                            fetchData(true);
-                          } catch (err: any) {
-                            alert(err?.message || "Failed to reopen loan case.");
-                          }
-                        }}
-                        className="rounded-lg bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-amber-700 transition"
-                      >
-                        🔓 Reopen Loan Case
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
