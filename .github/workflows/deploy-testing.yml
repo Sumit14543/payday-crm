@@ -205,6 +205,10 @@ jobs:
             echo "Ensuring Shruti credit manager credentials in database..."
             node scripts/createShrutiUser.js || true
 
+            echo "Ensuring role test users and dummy data for testing..."
+            node scripts/createRoleTestUsers.js || true
+            node scripts/seedTestingDummyData.js || true
+
             echo "Killing stale process on port 8083..."
             fuser -k 8083/tcp || npx --yes kill-port 8083 || true
 
