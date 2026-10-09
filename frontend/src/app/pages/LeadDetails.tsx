@@ -33,6 +33,8 @@ import {
   Building2,
   Send,
   RotateCcw,
+  Printer,
+  FileSpreadsheet,
 } from "lucide-react";
 
 import { apiDelete, apiGet, apiGetBlob, apiPatch, apiPost, apiPostForm, resolveBackendUploadBaseUrl, resolveBackendUploadUrl } from "../lib/api";
@@ -2033,6 +2035,419 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       toast.success("Account Aggregator session reset to Not Initiated");
     } catch (err: any) {
       toast.error(err.message || "Failed to reset AA session");
+    }
+  };
+
+  const handleDownloadAaCsv = (
+    account: any,
+    transactions: any[],
+    analyticsInfo: { credits: number; debits: number; cashFlow: any; aaAnalytics: any }
+  ) => {
+    if (!lead) return;
+    try {
+      const bankName = account?.bankName || lead.bankName || "Bank";
+      const maskedAcc = account?.maskedAccNumber || (lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : "XXXX");
+      const accType = account?.accountType || "SAVINGS";
+      const ifsc = account?.ifscCode || lead.ifscCode || "N/A";
+      const leadName = lead.name || "Customer";
+      const leadIdVal = lead.id || "";
+      const nowStr = new Date().toLocaleString("en-IN");
+
+      const rows: string[][] = [
+        ["WAQT FINANCE - BANK ACCOUNT STATEMENT & CASH FLOW ANALYSIS REPORT"],
+        ["Verified by CRIF Finvu Account Aggregator (RBI Regulated)"],
+        [""],
+        ["=== APPLICANT & BANK ACCOUNT DETAILS ==="],
+        ["Applicant Name", leadName],
+        ["Lead ID", leadIdVal],
+        ["Mobile Number", lead.mobile || lead.phone || "N/A"],
+        ["PAN Number", lead.pan || "N/A"],
+        ["Bank Name", bankName],
+        ["Account Number", maskedAcc],
+        ["Account Type", accType],
+        ["IFSC Code", ifsc],
+        ["Consent / Sync Status", account?.status || "ACTIVE"],
+        ["Report Exported On", nowStr],
+        [""],
+        ["=== FINANCIAL & UNDERWRITING SUMMARY ==="],
+        ["Average Monthly Credits (INR)", String(analyticsInfo.credits || 0)],
+        ["Average Monthly Debits (INR)", String(analyticsInfo.debits || 0)],
+        [
+          "Salary Verification",
+          analyticsInfo.aaAnalytics?.salaryDetected
+            ? `Detected (₹${analyticsInfo.aaAnalytics.avgSalary || 0}/mo)`
+            : "Not Detected",
+        ],
+        ["Detected Employer", analyticsInfo.cashFlow?.detectedEmployer || "N/A"],
+        [
+          "CRIF Underwriting Score",
+          analyticsInfo.aaAnalytics?.riskScore || analyticsInfo.cashFlow?.riskIndicatorScore || "LOW_RISK",
+        ],
+        ["NACH / Cheque Bounces", String(analyticsInfo.aaAnalytics?.bouncesCount || 0)],
+        ["Total Transaction Records", String(transactions.length)],
+        [""],
+        ["=== BANK STATEMENT TRANSACTION LEDGER ==="],
+        ["Date", "Transaction Narration", "Type", "Amount (INR)", "Ending Balance (INR)"],
+      ];
+
+      transactions.forEach((tx) => {
+        rows.push([
+          tx.date || "",
+          tx.narration || "",
+          tx.type || "",
+          tx.amount !== undefined ? String(tx.amount) : "0",
+          tx.balance !== undefined ? String(tx.balance) : "",
+        ]);
+      });
+
+      const csvContent =
+        "\uFEFF" +
+        rows
+          .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+          .join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeBank = bankName.replace(/[^a-zA-Z0-9]/g, "_");
+      link.href = url;
+      link.download = `AA_Statement_${leadIdVal}_${safeBank}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Bank statement CSV downloaded successfully");
+    } catch (err: any) {
+      console.error("Failed to export AA CSV:", err);
+      toast.error("Failed to export statement CSV: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleDownloadAaPdf = (
+    account: any,
+    transactions: any[],
+    analyticsInfo: { credits: number; debits: number; cashFlow: any; aaAnalytics: any }
+  ) => {
+    if (!lead) return;
+    try {
+      const bankName = account?.bankName || lead.bankName || "Bank";
+      const maskedAcc = account?.maskedAccNumber || (lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : "XXXX");
+      const accType = account?.accountType || "SAVINGS";
+      const ifsc = account?.ifscCode || lead.ifscCode || "N/A";
+      const leadName = lead.name || "Customer";
+      const leadIdVal = lead.id || "";
+      const printDate = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+
+      const printWindow = window.open("", "_blank", "width=1000,height=900");
+      if (!printWindow) {
+        toast.error("Pop-up blocked. Please allow pop-ups for this site to print/save the statement as PDF.");
+        return;
+      }
+
+      const rowsHtml = transactions
+        .map((tx, idx) => {
+          const isCredit = tx.type === "CREDIT";
+          const typeStyle = isCredit
+            ? "background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;"
+            : "background-color: #fff1f2; color: #9f1239; border: 1px solid #fecdd3;";
+          const amtStyle = isCredit ? "color: #059669; font-weight: 700;" : "color: #1e293b; font-weight: 600;";
+          const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+          const formattedAmt = Number(tx.amount || 0).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          const formattedBal =
+            tx.balance !== undefined && tx.balance !== null && tx.balance !== ""
+              ? "₹" + Number(tx.balance || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              : "-";
+
+          return `
+            <tr style="background-color: ${bg};">
+              <td style="padding: 7px 10px; font-family: monospace; font-size: 11px; color: #475569; white-space: nowrap; border-bottom: 1px solid #e2e8f0;">${tx.date || "-"}</td>
+              <td style="padding: 7px 10px; font-size: 11px; color: #0f172a; border-bottom: 1px solid #e2e8f0; word-break: break-word;">${tx.narration || "-"}</td>
+              <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: center;">
+                <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; ${typeStyle}">${tx.type}</span>
+              </td>
+              <td style="padding: 7px 10px; font-size: 11px; text-align: right; border-bottom: 1px solid #e2e8f0; ${amtStyle}">₹${formattedAmt}</td>
+              <td style="padding: 7px 10px; font-family: monospace; font-size: 11px; text-align: right; color: #475569; border-bottom: 1px solid #e2e8f0;">${formattedBal}</td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      const creditsFormatted = Number(analyticsInfo.credits || 0).toLocaleString("en-IN");
+      const debitsFormatted = Number(analyticsInfo.debits || 0).toLocaleString("en-IN");
+      const salaryText = analyticsInfo.aaAnalytics?.salaryDetected
+        ? `Detected (₹${Number(analyticsInfo.aaAnalytics.avgSalary || 0).toLocaleString("en-IN")}/mo)`
+        : "Not Detected";
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Bank Statement - ${leadName} (${leadIdVal})</title>
+          <style>
+            @page {
+              size: A4;
+              margin: 12mm 10mm;
+            }
+            * { box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              color: #0f172a;
+              margin: 0;
+              padding: 24px;
+              background: #ffffff;
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            .no-print-bar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              background: #0f172a;
+              color: #ffffff;
+              padding: 12px 20px;
+              border-radius: 10px;
+              margin-bottom: 24px;
+              box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            }
+            .no-print-bar button {
+              cursor: pointer;
+              border: none;
+              padding: 8px 16px;
+              border-radius: 6px;
+              font-weight: 700;
+              font-size: 13px;
+              transition: all 0.2s;
+            }
+            .btn-primary { background: #4f46e5; color: #ffffff; margin-right: 8px; }
+            .btn-primary:hover { background: #4338ca; }
+            .btn-secondary { background: #334155; color: #ffffff; }
+            .btn-secondary:hover { background: #475569; }
+            .header-box {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              padding-bottom: 16px;
+              border-bottom: 2px solid #e2e8f0;
+              margin-bottom: 16px;
+            }
+            .brand-title {
+              font-size: 20px;
+              font-weight: 800;
+              color: #1e1b4b;
+              letter-spacing: -0.5px;
+              margin: 0 0 4px 0;
+            }
+            .brand-subtitle {
+              font-size: 12px;
+              color: #64748b;
+              margin: 0;
+            }
+            .badge-verified {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              background: #ecfdf5;
+              color: #047857;
+              border: 1px solid #a7f3d0;
+              padding: 5px 12px;
+              border-radius: 20px;
+              font-size: 11px;
+              font-weight: 700;
+            }
+            .grid-2 {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 16px;
+              margin-bottom: 16px;
+            }
+            .card {
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 12px 14px;
+              background: #f8fafc;
+            }
+            .card-title {
+              font-size: 10px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #64748b;
+              margin-bottom: 8px;
+            }
+            .info-table { width: 100%; border-collapse: collapse; }
+            .info-table td { padding: 3px 0; font-size: 11.5px; }
+            .info-label { color: #64748b; width: 40%; }
+            .info-val { color: #0f172a; font-weight: 600; }
+            .metrics-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 12px;
+              margin-bottom: 20px;
+            }
+            .metric-box {
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 10px;
+              background: #ffffff;
+            }
+            .metric-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748b; }
+            .metric-val { font-size: 15px; font-weight: 800; margin-top: 4px; }
+            .ledger-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 8px;
+            }
+            .ledger-title {
+              font-size: 12px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #334155;
+            }
+            table.ledger-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 11px;
+              border: 1px solid #cbd5e1;
+            }
+            table.ledger-table th {
+              background: #f1f5f9;
+              color: #334155;
+              font-weight: 700;
+              padding: 8px 10px;
+              text-align: left;
+              border-bottom: 2px solid #cbd5e1;
+            }
+            .footer-box {
+              margin-top: 24px;
+              padding-top: 12px;
+              border-top: 1px solid #e2e8f0;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 10px;
+              color: #94a3b8;
+            }
+            @media print {
+              .no-print-bar { display: none !important; }
+              body { padding: 0; }
+              .card { background: #ffffff !important; }
+              table.ledger-table th { background: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="no-print-bar">
+            <div>
+              <strong>Bank Statement & Cash Flow Report</strong>
+              <span style="font-size: 11px; opacity: 0.8; margin-left: 8px;">Click "Print / Save PDF" to download as PDF</span>
+            </div>
+            <div>
+              <button class="btn-primary" onclick="window.print()">🖨️ Print / Save as PDF</button>
+              <button class="btn-secondary" onclick="window.close()">✕ Close</button>
+            </div>
+          </div>
+
+          <div class="header-box">
+            <div>
+              <h1 class="brand-title">WAQT FINANCE</h1>
+              <p class="brand-subtitle">Bank Account Statement & Cash-Flow Analysis Report</p>
+            </div>
+            <div style="text-align: right;">
+              <div class="badge-verified">✓ Finvu CRIF Account Aggregator Verified</div>
+              <p style="margin: 6px 0 0 0; font-size: 10px; color: #64748b;">Report Date: ${printDate}</p>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">Applicant Details</div>
+              <table class="info-table">
+                <tr><td class="info-label">Name:</td><td class="info-val">${leadName}</td></tr>
+                <tr><td class="info-label">Lead ID:</td><td class="info-val" style="font-family: monospace;">${leadIdVal}</td></tr>
+                <tr><td class="info-label">Mobile:</td><td class="info-val">${lead.mobile || lead.phone || "N/A"}</td></tr>
+                <tr><td class="info-label">PAN:</td><td class="info-val">${lead.pan || "N/A"}</td></tr>
+              </table>
+            </div>
+            <div class="card">
+              <div class="card-title">Bank Account Details</div>
+              <table class="info-table">
+                <tr><td class="info-label">Bank:</td><td class="info-val">${bankName}</td></tr>
+                <tr><td class="info-label">Account No:</td><td class="info-val" style="font-family: monospace;">${maskedAcc}</td></tr>
+                <tr><td class="info-label">Type:</td><td class="info-val">${accType}</td></tr>
+                <tr><td class="info-label">IFSC Code:</td><td class="info-val" style="font-family: monospace;">${ifsc}</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric-box" style="border-left: 3px solid #059669;">
+              <div class="metric-label">Avg Monthly Credits</div>
+              <div class="metric-val" style="color: #059669;">₹${creditsFormatted}</div>
+            </div>
+            <div class="metric-box" style="border-left: 3px solid #e11d48;">
+              <div class="metric-label">Avg Monthly Debits</div>
+              <div class="metric-val" style="color: #e11d48;">₹${debitsFormatted}</div>
+            </div>
+            <div class="metric-box" style="border-left: 3px solid #4f46e5;">
+              <div class="metric-label">Salary Detection</div>
+              <div class="metric-val" style="color: #4f46e5; font-size: 12px;">${salaryText}</div>
+              <div style="font-size: 9.5px; color: #64748b; margin-top: 2px;">Employer: ${analyticsInfo.cashFlow?.detectedEmployer || "N/A"}</div>
+            </div>
+            <div class="metric-box" style="border-left: 3px solid #0284c7;">
+              <div class="metric-label">Underwriting Risk</div>
+              <div class="metric-val" style="color: #0284c7; font-size: 13px;">${analyticsInfo.aaAnalytics?.riskScore || analyticsInfo.cashFlow?.riskIndicatorScore || "LOW_RISK"}</div>
+              <div style="font-size: 9.5px; color: #64748b; margin-top: 2px;">Bounces: ${analyticsInfo.aaAnalytics?.bouncesCount || 0} NACH/Cheque</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="ledger-header">
+              <span class="ledger-title">Bank Statement Transaction Ledger (${transactions.length} Records)</span>
+            </div>
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">Date</th>
+                  <th>Transaction Narration</th>
+                  <th style="width: 70px; text-align: center;">Type</th>
+                  <th style="width: 110px; text-align: right;">Amount (₹)</th>
+                  <th style="width: 120px; text-align: right;">Ending Balance (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">No transaction records available.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="footer-box">
+            <span>Secured & verified via CRIF Orchestrator FIU Webservice • Confidential Financial Record</span>
+            <span>Waqt Finance Credit Panel</span>
+          </div>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 400);
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      toast.success("Opening statement PDF / print preview...");
+    } catch (err: any) {
+      console.error("Failed to generate AA PDF:", err);
+      toast.error("Failed to generate PDF: " + (err.message || "Unknown error"));
     }
   };
   const [isEditingOfficialEmail, setIsEditingOfficialEmail] = useState(false);
@@ -6310,14 +6725,24 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
                 <div className="flex flex-col gap-2">
                   {(activeAnalytics || ["COMPLETED", "ACTIVE", "APPROVED", "SUCCESS"].includes(String(aaSession?.status || "").toUpperCase())) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAaStatementModal(true)}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-sm"
-                    >
-                      <FileText className="h-4 w-4" />
-                      View Full Bank Statement & Transactions
-                    </button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAaStatementModal(true)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-sm cursor-pointer"
+                      >
+                        <FileText className="h-4 w-4" />
+                        View Statement & Ledger
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAaStatementModal(true)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition shadow-sm cursor-pointer"
+                      >
+                        <Download className="h-4 w-4 text-indigo-600" />
+                        Download Statement
+                      </button>
+                    </div>
                   )}
 
                   <button
@@ -6381,320 +6806,393 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
             {showAaStatementModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
                 <div className="w-full max-w-4xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50 dark:bg-slate-950">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600">
-                        <Building2 className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                          Bank Account Statement & Cash-Flow Analysis
-                        </h3>
-                        <p className="text-xs text-slate-500">
-                          Verified by CRIF Finvu Account Aggregator • {lead.name} ({lead.id})
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowAaStatementModal(false)}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-600"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
+                  {(() => {
+                    const rawFi = aaAnalytics?.rawAnalyticsJson?.rawFiData || aaAnalytics?.analytics?.rawFiData || aaAnalytics?.rawFiData || aaAnalytics?.rawAnalyticsJson || {};
 
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {!aaAnalytics ? (
-                      <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
-                        <div className="h-14 w-14 rounded-full bg-indigo-100 dark:bg-indigo-950/60 border border-indigo-300 dark:border-indigo-700 flex items-center justify-center text-indigo-600">
-                          <RefreshCw className="h-7 w-7 animate-spin" />
-                        </div>
-                        <div className="max-w-md space-y-2">
-                          <h4 className="text-base font-bold text-slate-900 dark:text-white">
-                            Bank Statement Processing in Progress
-                          </h4>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                            Customer consent has been submitted successfully. CRIF Orchestrator is currently fetching and analyzing bank transactions from the bank's FIP server.
-                          </p>
-                          <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 dark:bg-indigo-950/30 p-3 text-xs text-indigo-900 dark:text-indigo-200">
-                            💡 <strong>Next Step:</strong> Please close this popup, wait <strong>15–30 seconds</strong>, and click <strong>"Refresh AA Status & Analytics"</strong> on the Lead page to load the completed bank statement.
-                          </div>
-                        </div>
-                      </div>
-                    ) : (() => {
-                      const rawFi = aaAnalytics?.rawAnalyticsJson?.rawFiData || aaAnalytics?.analytics?.rawFiData || aaAnalytics?.rawFiData || aaAnalytics?.rawAnalyticsJson || {};
+                    // Extract list of all linked bank accounts from rawFi
+                    const accountsList = (() => {
+                      const list: any[] = [];
+                      if (rawFi && typeof rawFi === "object") {
+                        Object.keys(rawFi).forEach((k) => {
+                          const item = rawFi[k];
+                          if (item && typeof item === "object" && (item.accountId || item.data || item.Summary || item.summary)) {
+                            const dataObj = item.data || item;
+                            const summary = dataObj.Summary || dataObj.summary || {};
+                            const ifsc = summary.ifsc || dataObj.ifscCode || item.ifscCode || summary.ifscCode || "";
+                            
+                            let bankName = item.bankName || dataObj.bankName || summary.bankName || item.fipName || dataObj.fipName || summary.fipName || "";
 
-                      // Extract list of all linked bank accounts from rawFi
-                      const accountsList = (() => {
-                        const list: any[] = [];
-                        if (rawFi && typeof rawFi === "object") {
-                          Object.keys(rawFi).forEach((k) => {
-                            const item = rawFi[k];
-                            if (item && typeof item === "object" && (item.accountId || item.data || item.Summary || item.summary)) {
-                              const dataObj = item.data || item;
-                              const summary = dataObj.Summary || dataObj.summary || {};
-                              const ifsc = summary.ifsc || dataObj.ifscCode || item.ifscCode || summary.ifscCode || "";
-                              
-                              let bankName = item.bankName || dataObj.bankName || summary.bankName || item.fipName || dataObj.fipName || summary.fipName || "";
-
-                              if (!bankName && ifsc) {
-                                const ifscUpper = ifsc.toUpperCase();
-                                if (ifscUpper.startsWith("UBIN") || ifscUpper.includes("UNION")) bankName = "Union Bank of India";
-                                else if (ifscUpper.startsWith("UTIB") || ifscUpper.includes("AXIS")) bankName = "Axis Bank";
-                                else if (ifscUpper.startsWith("SBIN") || ifscUpper.includes("SBI")) bankName = "State Bank of India";
-                                else if (ifscUpper.startsWith("HDFC")) bankName = "HDFC Bank";
-                                else if (ifscUpper.startsWith("ICIC")) bankName = "ICICI Bank";
-                                else if (ifscUpper.startsWith("PUNB")) bankName = "Punjab National Bank";
-                                else if (ifscUpper.startsWith("BARB")) bankName = "Bank of Baroda";
-                                else if (ifscUpper.startsWith("CNRB")) bankName = "Canara Bank";
-                                else if (ifscUpper.startsWith("KKBK")) bankName = "Kotak Mahindra Bank";
-                                else if (ifscUpper.startsWith("IDFB")) bankName = "IDFC FIRST Bank";
-                                else if (ifscUpper.startsWith("YESB")) bankName = "Yes Bank";
-                                else if (ifscUpper.startsWith("INDB")) bankName = "IndusInd Bank";
-                              }
-
-                              if (!bankName) {
-                                bankName = aaSession?.fipName || lead.bankName || "Bank Account";
-                              }
-
-                              const rawMasked = summary.maskedAccNumber || dataObj.maskedAccNumber || item.maskedAccNumber || summary.accountNumber || dataObj.accountNumber || item.accountNumber || "";
-                              const masked = rawMasked
-                                ? (rawMasked.length > 4 ? rawMasked : `XXXX${rawMasked}`)
-                                : (lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : "XXXX");
-                              const status = item.status || (dataObj.Transactions ? "ACTIVE" : "PENDING");
-                              const balance = summary.currentBalance !== undefined ? Number(summary.currentBalance) : (dataObj.balance || 0);
-
-                              list.push({
-                                key: k,
-                                bankName,
-                                maskedAccNumber: masked,
-                                ifscCode: ifsc,
-                                accountType: summary.accountSubType || summary.accountType || "SAVINGS",
-                                status,
-                                balance,
-                                dataObj,
-                              });
+                            if (!bankName && ifsc) {
+                              const ifscUpper = ifsc.toUpperCase();
+                              if (ifscUpper.startsWith("UBIN") || ifscUpper.includes("UNION")) bankName = "Union Bank of India";
+                              else if (ifscUpper.startsWith("UTIB") || ifscUpper.includes("AXIS")) bankName = "Axis Bank";
+                              else if (ifscUpper.startsWith("SBIN") || ifscUpper.includes("SBI")) bankName = "State Bank of India";
+                              else if (ifscUpper.startsWith("HDFC")) bankName = "HDFC Bank";
+                              else if (ifscUpper.startsWith("ICIC")) bankName = "ICICI Bank";
+                              else if (ifscUpper.startsWith("PUNB")) bankName = "Punjab National Bank";
+                              else if (ifscUpper.startsWith("BARB")) bankName = "Bank of Baroda";
+                              else if (ifscUpper.startsWith("CNRB")) bankName = "Canara Bank";
+                              else if (ifscUpper.startsWith("KKBK")) bankName = "Kotak Mahindra Bank";
+                              else if (ifscUpper.startsWith("IDFB")) bankName = "IDFC FIRST Bank";
+                              else if (ifscUpper.startsWith("YESB")) bankName = "Yes Bank";
+                              else if (ifscUpper.startsWith("INDB")) bankName = "IndusInd Bank";
                             }
-                          });
+
+                            if (!bankName) {
+                              bankName = aaSession?.fipName || lead.bankName || "Bank Account";
+                            }
+
+                            const rawMasked = summary.maskedAccNumber || dataObj.maskedAccNumber || item.maskedAccNumber || summary.accountNumber || dataObj.accountNumber || item.accountNumber || "";
+                            const masked = rawMasked
+                              ? (rawMasked.length > 4 ? rawMasked : `XXXX${rawMasked}`)
+                              : (lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : "XXXX");
+                            const status = item.status || (dataObj.Transactions ? "ACTIVE" : "PENDING");
+                            const balance = summary.currentBalance !== undefined ? Number(summary.currentBalance) : (dataObj.balance || 0);
+
+                            list.push({
+                              key: k,
+                              bankName,
+                              maskedAccNumber: masked,
+                              ifscCode: ifsc,
+                              accountType: summary.accountSubType || summary.accountType || "SAVINGS",
+                              status,
+                              balance,
+                              dataObj,
+                            });
+                          }
+                        });
+                      }
+
+                      if (list.length === 0) {
+                        list.push({
+                          key: "0",
+                          bankName: aaSession?.fipName || lead.bankName || "Bank Account",
+                          maskedAccNumber: lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : (aaAnalytics?.accountNumberMasked || "XXXX"),
+                          ifscCode: lead.ifscCode || "",
+                          accountType: "SAVINGS",
+                          status: "ACTIVE",
+                          balance: 0,
+                          dataObj: rawFi,
+                        });
+                      }
+
+                      return list;
+                    })();
+
+                    const activeAccount = accountsList[selectedAaAccountIndex] || accountsList[0];
+                    const targetDataObj = activeAccount?.dataObj || rawFi;
+
+                    // Universal recursive CRIF transaction array finder (supports Transactions.Transaction & all CRIF schemas)
+                    const extractTransactions = (dataObj: any): any[] => {
+                      if (!dataObj) return [];
+
+                      const findTxnArray = (obj: any, depth = 0): any[] | null => {
+                        if (!obj || typeof obj !== "object" || depth > 6) return null;
+                        
+                        if (Array.isArray(obj) && obj.length > 0 && (obj[0].txnId || obj[0].amount || obj[0].narration || obj[0].transactionTimestamp || obj[0].type)) {
+                          return obj;
                         }
 
-                        if (list.length === 0) {
-                          list.push({
-                            key: "0",
-                            bankName: aaSession?.fipName || lead.bankName || "Bank Account",
-                            maskedAccNumber: lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : (aaAnalytics?.accountNumberMasked || "XXXX"),
-                            ifscCode: lead.ifscCode || "",
-                            accountType: "SAVINGS",
-                            status: "ACTIVE",
-                            balance: 0,
-                            dataObj: rawFi,
-                          });
-                        }
-
-                        return list;
-                      })();
-
-                      const activeAccount = accountsList[selectedAaAccountIndex] || accountsList[0];
-                      const targetDataObj = activeAccount.dataObj || rawFi;
-
-                      // Universal recursive CRIF transaction array finder (supports Transactions.Transaction & all CRIF schemas)
-                      const extractTransactions = (dataObj: any): any[] => {
-                        if (!dataObj) return [];
-
-                        const findTxnArray = (obj: any, depth = 0): any[] | null => {
-                          if (!obj || typeof obj !== "object" || depth > 6) return null;
-                          
-                          if (Array.isArray(obj) && obj.length > 0 && (obj[0].txnId || obj[0].amount || obj[0].narration || obj[0].transactionTimestamp || obj[0].type)) {
-                            return obj;
-                          }
-
-                          for (const key of Object.keys(obj)) {
-                            const lower = key.toLowerCase();
-                            if (lower === "transactions" || lower === "transaction" || lower === "txn" || lower === "txns") {
-                              const val = obj[key];
-                              if (Array.isArray(val) && val.length > 0) return val;
-                              if (val && typeof val === "object") {
-                                const inner = findTxnArray(val, depth + 1);
-                                if (inner) return inner;
-                              }
-                            }
-                          }
-
-                          for (const key of Object.keys(obj)) {
+                        for (const key of Object.keys(obj)) {
+                          const lower = key.toLowerCase();
+                          if (lower === "transactions" || lower === "transaction" || lower === "txn" || lower === "txns") {
                             const val = obj[key];
-                            if (val && typeof val === "object" && !Array.isArray(val)) {
+                            if (Array.isArray(val) && val.length > 0) return val;
+                            if (val && typeof val === "object") {
                               const inner = findTxnArray(val, depth + 1);
                               if (inner) return inner;
                             }
                           }
+                        }
 
-                          return null;
-                        };
+                        for (const key of Object.keys(obj)) {
+                          const val = obj[key];
+                          if (val && typeof val === "object" && !Array.isArray(val)) {
+                            const inner = findTxnArray(val, depth + 1);
+                            if (inner) return inner;
+                          }
+                        }
 
-                        const list = findTxnArray(dataObj) || [];
-
-                        return list.map((tx: any) => ({
-                          date: String(tx.transactionTimestamp || tx.valueDate || tx.date || tx.txnDate || "").replace("T", " ").slice(0, 16),
-                          narration: tx.narration || tx.description || tx.summary || "Bank Transaction",
-                          type: String(tx.type || tx.txnType || "DEBIT").toUpperCase(),
-                          amount: Number(tx.amount || tx.txnAmount || 0),
-                          balance: tx.transactionalBalance !== undefined ? tx.transactionalBalance : tx.balance,
-                        }));
+                        return null;
                       };
 
-                      const transactionsList = extractTransactions(targetDataObj);
+                      const list = findTxnArray(dataObj) || [];
 
-                      // Calculate live credits & debits from transactionsList if summary is 0
-                      const calcCredits = transactionsList.filter(t => t.type === "CREDIT").reduce((acc, t) => acc + t.amount, 0);
-                      const calcDebits = transactionsList.filter(t => t.type === "DEBIT").reduce((acc, t) => acc + t.amount, 0);
+                      return list.map((tx: any) => ({
+                        date: String(tx.transactionTimestamp || tx.valueDate || tx.date || tx.txnDate || "").replace("T", " ").slice(0, 16),
+                        narration: tx.narration || tx.description || tx.summary || "Bank Transaction",
+                        type: String(tx.type || tx.txnType || "DEBIT").toUpperCase(),
+                        amount: Number(tx.amount || tx.txnAmount || 0),
+                        balance: tx.transactionalBalance !== undefined ? tx.transactionalBalance : tx.balance,
+                      }));
+                    };
 
-                      const accountDetails = targetDataObj.accountDetails || {};
-                      const cashFlow = aaAnalytics?.cashFlowSummary || aaAnalytics?.analytics?.cashFlowSummary || {};
-                      const credits = (aaAnalytics?.avgMonthlyCredits || cashFlow?.averageMonthlyCredits) || (calcCredits > 0 ? Math.round(calcCredits / 6) : 0);
-                      const debits = (aaAnalytics?.avgMonthlyDebits || cashFlow?.averageMonthlyDebits) || (calcDebits > 0 ? Math.round(calcDebits / 6) : 0);
+                    const transactionsList = extractTransactions(targetDataObj);
 
-                      return (
-                        <>
-                          {/* Multi-Bank Account Selector Tabs */}
-                          {accountsList.length > 1 && (
-                            <div className="mb-4 border-b border-slate-200 dark:border-slate-800 pb-3">
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">
-                                Linked Bank Accounts ({accountsList.length}):
-                              </span>
-                              <div className="flex flex-wrap gap-2">
-                                {accountsList.map((acc, idx) => (
-                                  <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={() => setSelectedAaAccountIndex(idx)}
-                                    className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                                      selectedAaAccountIndex === idx
-                                        ? "bg-indigo-600 text-white shadow-md ring-2 ring-indigo-300 dark:ring-indigo-800"
-                                        : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                                    }`}
-                                  >
-                                    <Building2 className="h-4 w-4" />
-                                    <span>{acc.bankName} ({acc.maskedAccNumber})</span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-extrabold ${
-                                      acc.status === "ACTIVE" || acc.status === "READY"
-                                        ? "bg-emerald-500/20 text-emerald-300"
-                                        : "bg-amber-500/20 text-amber-300"
-                                    }`}>
-                                      {acc.status}
-                                    </span>
-                                  </button>
-                                ))}
+                    // Calculate live credits & debits from transactionsList if summary is 0
+                    const calcCredits = transactionsList.filter(t => t.type === "CREDIT").reduce((acc, t) => acc + t.amount, 0);
+                    const calcDebits = transactionsList.filter(t => t.type === "DEBIT").reduce((acc, t) => acc + t.amount, 0);
+
+                    const accountDetails = targetDataObj?.accountDetails || {};
+                    const cashFlow = aaAnalytics?.cashFlowSummary || aaAnalytics?.analytics?.cashFlowSummary || {};
+                    const credits = (aaAnalytics?.avgMonthlyCredits || cashFlow?.averageMonthlyCredits) || (calcCredits > 0 ? Math.round(calcCredits / 6) : 0);
+                    const debits = (aaAnalytics?.avgMonthlyDebits || cashFlow?.averageMonthlyDebits) || (calcDebits > 0 ? Math.round(calcDebits / 6) : 0);
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50 dark:bg-slate-950">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600">
+                              <Building2 className="h-6 w-6" />
+                            </div>
+                            <div>
+                              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                                Bank Account Statement & Cash-Flow Analysis
+                              </h3>
+                              <p className="text-xs text-slate-500">
+                                Verified by CRIF Finvu Account Aggregator • {lead.name} ({lead.id})
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {Boolean(aaAnalytics) && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAaCsv(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-emerald-600 transition shadow-xs cursor-pointer"
+                                  title="Download statement in CSV / Excel format"
+                                >
+                                  <Download className="h-3.5 w-3.5 text-emerald-600" />
+                                  <span>Download CSV</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAaPdf(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition shadow-xs cursor-pointer"
+                                  title="Download / Print statement report as PDF"
+                                >
+                                  <Printer className="h-3.5 w-3.5 text-indigo-600" />
+                                  <span>Download PDF</span>
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setShowAaStatementModal(false)}
+                              className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-600 cursor-pointer"
+                              aria-label="Close modal"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                          {!aaAnalytics ? (
+                            <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
+                              <div className="h-14 w-14 rounded-full bg-indigo-100 dark:bg-indigo-950/60 border border-indigo-300 dark:border-indigo-700 flex items-center justify-center text-indigo-600">
+                                <RefreshCw className="h-7 w-7 animate-spin" />
+                              </div>
+                              <div className="max-w-md space-y-2">
+                                <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                                  Bank Statement Processing in Progress
+                                </h4>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                                  Customer consent has been submitted successfully. CRIF Orchestrator is currently fetching and analyzing bank transactions from the bank's FIP server.
+                                </p>
+                                <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 dark:bg-indigo-950/30 p-3 text-xs text-indigo-900 dark:text-indigo-200">
+                                  💡 <strong>Next Step:</strong> Please close this popup, wait <strong>15–30 seconds</strong>, and click <strong>"Refresh AA Status & Analytics"</strong> on the Lead page to load the completed bank statement.
+                                </div>
                               </div>
                             </div>
-                          )}
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4">
-                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Account Details</span>
-                              <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{activeAccount.bankName}</p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400">Account No: <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{activeAccount.maskedAccNumber}</span></p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400">Type: <span className="font-semibold text-slate-800 dark:text-slate-200">{activeAccount.accountType}</span></p>
-                            </div>
-
-                            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4">
-                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly Cash Flow</span>
-                              <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">Avg Credits: <span className="font-bold text-emerald-600">{formatCurrency(credits)}</span></p>
-                              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Avg Debits: <span className="font-bold text-rose-600">{formatCurrency(debits)}</span></p>
-                            </div>
-
-                            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-4">
-                              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Salary Verification</span>
-                              <p className="mt-2 text-sm font-bold text-emerald-900 dark:text-emerald-200">
-                                {aaAnalytics?.salaryDetected ? `Detected: ${formatCurrency(aaAnalytics.avgSalary || 0)}/mo` : "Not Detected"}
-                              </p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400">Employer: <span className="font-semibold text-slate-800 dark:text-slate-200">{cashFlow?.detectedEmployer || "N/A"}</span></p>
-                            </div>
-
-                            <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
-                              <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">CRIF Underwriting Score</span>
-                              <p className="mt-2 text-sm font-extrabold text-indigo-900 dark:text-indigo-200">{aaAnalytics?.riskScore || cashFlow?.riskIndicatorScore || "LOW_RISK"}</p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400">Bounces: <span className="font-bold text-emerald-600">{aaAnalytics?.bouncesCount || 0} NACH/Cheque</span></p>
-                            </div>
-                          </div>
-
-                          <div>
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center justify-between">
-                              <span>Bank Statement Transaction Ledger ({transactionsList.length} Records)</span>
-                            </h4>
-                            <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[400px] overflow-y-auto">
-                              <table className="w-full text-left text-xs">
-                                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0">
-                                  <tr>
-                                    <th className="px-4 py-3">Date</th>
-                                    <th className="px-4 py-3">Transaction Narration</th>
-                                    <th className="px-4 py-3">Type</th>
-                                    <th className="px-4 py-3 text-right">Amount (₹)</th>
-                                    <th className="px-4 py-3 text-right">Ending Balance (₹)</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                                  {transactionsList.map((tx: any, idx: number) => (
-                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                      <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">{tx.date}</td>
-                                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100 max-w-[280px] truncate" title={tx.narration}>{tx.narration}</td>
-                                      <td className="px-4 py-3 whitespace-nowrap">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                          tx.type === 'CREDIT' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                          ) : (
+                            <>
+                              {/* Multi-Bank Account Selector Tabs */}
+                              {accountsList.length > 1 && (
+                                <div className="mb-4 border-b border-slate-200 dark:border-slate-800 pb-3">
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">
+                                    Linked Bank Accounts ({accountsList.length}):
+                                  </span>
+                                  <div className="flex flex-wrap gap-2">
+                                    {accountsList.map((acc, idx) => (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => setSelectedAaAccountIndex(idx)}
+                                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition cursor-pointer ${
+                                          selectedAaAccountIndex === idx
+                                            ? "bg-indigo-600 text-white shadow-md ring-2 ring-indigo-300 dark:ring-indigo-800"
+                                            : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                                        }`}
+                                      >
+                                        <Building2 className="h-4 w-4" />
+                                        <span>{acc.bankName} ({acc.maskedAccNumber})</span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-extrabold ${
+                                          acc.status === "ACTIVE" || acc.status === "READY"
+                                            ? "bg-emerald-500/20 text-emerald-300"
+                                            : "bg-amber-500/20 text-amber-300"
                                         }`}>
-                                          {tx.type}
+                                          {acc.status}
                                         </span>
-                                      </td>
-                                      <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${tx.type === 'CREDIT' ? 'text-emerald-600' : 'text-slate-800 dark:text-slate-200'}`}>
-                                        {formatCurrency(tx.amount)}
-                                      </td>
-                                      <td className="px-4 py-3 text-right font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                                        {tx.balance !== undefined ? formatCurrency(tx.balance) : "-"}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
 
-                          {transactionsList.length === 0 && (
-                            <div className={`rounded-xl border p-3.5 text-xs space-y-1 ${
-                              activeAccount.status === "DENIED" || activeAccount.status === "REJECTED"
-                                ? "border-amber-200 bg-amber-50/80 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200"
-                                : "border-blue-200 bg-blue-50/80 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200"
-                            }`}>
-                              <p className="font-bold flex items-center gap-1.5">
-                                {activeAccount.status === "DENIED" || activeAccount.status === "REJECTED" ? "⚠️ FIP Consent Status: DENIED / REJECTED" : "ℹ️ Bank FIP Data Sync Notice"}
-                              </p>
-                              <p className="leading-relaxed">
-                                {activeAccount.status === "DENIED" || activeAccount.status === "REJECTED" ? (
-                                  <>
-                                    Consent for <strong>{activeAccount.bankName} ({activeAccount.maskedAccNumber})</strong> was denied or rejected during verification by the customer/FIP. No transaction records were delivered for this specific bank account.
-                                  </>
-                                ) : (
-                                  <>
-                                    Consent status for <strong>{activeAccount.bankName} ({activeAccount.maskedAccNumber})</strong> has been verified successfully. Real-time transaction records will update automatically as soon as the financial institution completes the data sync.
-                                  </>
-                                )}
-                              </p>
-                            </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4">
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Account Details</span>
+                                  <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{activeAccount.bankName}</p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400">Account No: <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{activeAccount.maskedAccNumber}</span></p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400">Type: <span className="font-semibold text-slate-800 dark:text-slate-200">{activeAccount.accountType}</span></p>
+                                </div>
+
+                                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4">
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly Cash Flow</span>
+                                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">Avg Credits: <span className="font-bold text-emerald-600">{formatCurrency(credits)}</span></p>
+                                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Avg Debits: <span className="font-bold text-rose-600">{formatCurrency(debits)}</span></p>
+                                </div>
+
+                                <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-4">
+                                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Salary Verification</span>
+                                  <p className="mt-2 text-sm font-bold text-emerald-900 dark:text-emerald-200">
+                                    {aaAnalytics?.salaryDetected ? `Detected: ${formatCurrency(aaAnalytics.avgSalary || 0)}/mo` : "Not Detected"}
+                                  </p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400">Employer: <span className="font-semibold text-slate-800 dark:text-slate-200">{cashFlow?.detectedEmployer || "N/A"}</span></p>
+                                </div>
+
+                                <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
+                                  <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">CRIF Underwriting Score</span>
+                                  <p className="mt-2 text-sm font-extrabold text-indigo-900 dark:text-indigo-200">{aaAnalytics?.riskScore || cashFlow?.riskIndicatorScore || "LOW_RISK"}</p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400">Bounces: <span className="font-bold text-emerald-600">{aaAnalytics?.bouncesCount || 0} NACH/Cheque</span></p>
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                    Bank Statement Transaction Ledger ({transactionsList.length} Records)
+                                  </h4>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDownloadAaCsv(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-emerald-600 shadow-xs transition cursor-pointer"
+                                      title="Export transactions table as CSV"
+                                    >
+                                      <Download className="h-3 w-3 text-emerald-600" />
+                                      Export CSV
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDownloadAaPdf(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition shadow-xs cursor-pointer"
+                                      title="Print or save statement ledger as PDF"
+                                    >
+                                      <Printer className="h-3 w-3 text-indigo-600" />
+                                      Print / PDF
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[400px] overflow-y-auto">
+                                  <table className="w-full text-left text-xs">
+                                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0">
+                                      <tr>
+                                        <th className="px-4 py-3">Date</th>
+                                        <th className="px-4 py-3">Transaction Narration</th>
+                                        <th className="px-4 py-3">Type</th>
+                                        <th className="px-4 py-3 text-right">Amount (₹)</th>
+                                        <th className="px-4 py-3 text-right">Ending Balance (₹)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                                      {transactionsList.map((tx: any, idx: number) => (
+                                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                          <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">{tx.date}</td>
+                                          <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100 max-w-[280px] truncate" title={tx.narration}>{tx.narration}</td>
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                              tx.type === 'CREDIT' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                            }`}>
+                                              {tx.type}
+                                            </span>
+                                          </td>
+                                          <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${tx.type === 'CREDIT' ? 'text-emerald-600' : 'text-slate-800 dark:text-slate-200'}`}>
+                                            {formatCurrency(tx.amount)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                            {tx.balance !== undefined ? formatCurrency(tx.balance) : "-"}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+
+                              {transactionsList.length === 0 && (
+                                <div className={`rounded-xl border p-3.5 text-xs space-y-1 ${
+                                  activeAccount.status === "DENIED" || activeAccount.status === "REJECTED"
+                                    ? "border-amber-200 bg-amber-50/80 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200"
+                                    : "border-blue-200 bg-blue-50/80 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200"
+                                }`}>
+                                  <p className="font-bold flex items-center gap-1.5">
+                                    {activeAccount.status === "DENIED" || activeAccount.status === "REJECTED" ? "⚠️ FIP Consent Status: DENIED / REJECTED" : "ℹ️ Bank FIP Data Sync Notice"}
+                                  </p>
+                                  <p className="leading-relaxed">
+                                    {activeAccount.status === "DENIED" || activeAccount.status === "REJECTED" ? (
+                                      <>
+                                        Consent for <strong>{activeAccount.bankName} ({activeAccount.maskedAccNumber})</strong> was denied or rejected during verification by the customer/FIP. No transaction records were delivered for this specific bank account.
+                                      </>
+                                    ) : (
+                                      <>
+                                        Consent status for <strong>{activeAccount.bankName} ({activeAccount.maskedAccNumber})</strong> has been verified successfully. Real-time transaction records will update automatically as soon as the financial institution completes the data sync.
+                                      </>
+                                    )}
+                                  </p>
+                                </div>
+                              )}
+                            </>
                           )}
-                        </>
-                      );
-                    })()}
-                  </div>
+                        </div>
 
-                  <div className="border-t border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
-                    <span className="text-xs text-slate-500">Secured via CRIF Orchestrator FIU Webservice</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowAaStatementModal(false)}
-                      className="rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 text-xs font-bold hover:bg-slate-800 dark:hover:bg-slate-100"
-                    >
-                      Close Statement
-                    </button>
-                  </div>
+                        <div className="border-t border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50 dark:bg-slate-950 flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-xs text-slate-500">Secured via CRIF Orchestrator FIU Webservice</span>
+                          <div className="flex items-center gap-2">
+                            {Boolean(aaAnalytics) && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAaCsv(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-3.5 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-emerald-600 transition shadow-xs cursor-pointer"
+                                >
+                                  <Download className="h-4 w-4 text-emerald-600" />
+                                  <span>Download CSV</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAaPdf(activeAccount, transactionsList, { credits, debits, cashFlow, aaAnalytics })}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 px-3.5 py-2 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900 transition shadow-xs cursor-pointer"
+                                >
+                                  <Printer className="h-4 w-4 text-indigo-600" />
+                                  <span>Download PDF</span>
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setShowAaStatementModal(false)}
+                              className="rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 text-xs font-bold hover:bg-slate-800 dark:hover:bg-slate-100 cursor-pointer"
+                            >
+                              Close Statement
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
