@@ -1905,6 +1905,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
   const [aaSession, setAaSession] = useState<any>(null);
   const [aaAnalytics, setAaAnalytics] = useState<any>(null);
+  const [isAaLoading, setIsAaLoading] = useState(true);
   const [isAaGenerating, setIsAaGenerating] = useState(false);
   const [isAaSendingWa, setIsAaSendingWa] = useState(false);
   const [isAaRefreshing, setIsAaRefreshing] = useState(false);
@@ -1966,8 +1967,9 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     }
   };
 
-  const loadAaStatus = useCallback(async () => {
+  const loadAaStatus = useCallback(async (isInitial = false) => {
     if (!leadId) return;
+    if (isInitial) setIsAaLoading(true);
     try {
       const res = await apiGet<any>(`/account-aggregator/leads/${encodeURIComponent(leadId)}/status`);
       const payload = res?.data || res;
@@ -1981,11 +1983,13 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       }
     } catch (err: any) {
       console.error("Error loading AA status:", err);
+    } finally {
+      setIsAaLoading(false);
     }
   }, [leadId]);
 
   useEffect(() => {
-    loadAaStatus();
+    loadAaStatus(true);
   }, [loadAaStatus]);
 
   useEffect(() => {
@@ -6689,124 +6693,133 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                       </h3>
                       <p className="text-xs text-gray-500 mt-0.5">Finvu AA / CRIF Orchestrator bank cash-flow consent</p>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      isAaActive
-                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                        : aaSession?.status === "PENDING"
-                        ? "bg-amber-100 text-amber-800 border border-amber-300 animate-pulse"
-                        : "bg-slate-100 text-slate-700 border border-slate-300"
-                    }`}>
-                      {isAaActive ? "ACTIVE" : aaSession?.status || "Not Initiated"}
-                    </span>
+                    {isAaLoading ? (
+                      <span className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1.5">
+                        <RefreshCw className="h-3 w-3 animate-spin text-slate-400" />
+                        Checking...
+                      </span>
+                    ) : (
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        isAaActive
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : aaSession?.status === "PENDING"
+                          ? "bg-amber-100 text-amber-800 border border-amber-300 animate-pulse"
+                          : "bg-slate-100 text-slate-700 border border-slate-300"
+                      }`}>
+                        {isAaActive ? "ACTIVE" : aaSession?.status || "Not Initiated"}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Only show Consent Link Generated box if AA is NOT active */}
-                  {!isAaActive && aaSession?.redirectionUrl && (
-                    <div className="mb-3 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-xs">
-                      <span className="font-semibold text-indigo-900">Consent Link Generated:</span>
-                      <div className="mt-1 flex items-center gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={aaSession.redirectionUrl}
-                          className="w-full rounded border border-indigo-200 bg-white px-2 py-1 text-xs text-indigo-950 font-mono"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(aaSession.redirectionUrl);
-                            toast.success("AA Link copied to clipboard");
-                          }}
-                          className="shrink-0 rounded bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
-                        >
-                          Copy
-                        </button>
+                  {isAaLoading ? (
+                    <div className="py-8 flex flex-col items-center justify-center gap-2.5 text-center">
+                      <div className="h-9 w-9 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                        <RefreshCw className="h-4 w-4 animate-spin text-indigo-600" />
                       </div>
+                      <p className="text-xs font-medium text-slate-500">Checking Account Aggregator status...</p>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      {/* Only show Consent Link Generated box if AA is NOT active */}
+                      {!isAaActive && aaSession?.redirectionUrl && (
+                        <div className="mb-3 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-xs">
+                          <span className="font-semibold text-indigo-900">Consent Link Generated:</span>
+                          <div className="mt-1 flex items-center gap-2">
+                            <input
+                              type="text"
+                              readOnly
+                              value={aaSession.redirectionUrl}
+                              className="w-full rounded border border-indigo-200 bg-white px-2 py-1 text-xs text-indigo-950 font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(aaSession.redirectionUrl);
+                                toast.success("AA Link copied to clipboard");
+                              }}
+                              className="shrink-0 rounded bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
-                  <div className="flex flex-col gap-2">
-                    {/* View Statement button shown when ACTIVE */}
-                    {isAaActive && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAaStatementModal(true)}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-sm cursor-pointer"
-                      >
-                        <FileText className="h-4 w-4" />
-                        View Full Bank Statement & Transactions
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setIsAaRefreshing(true);
-                        await loadAaStatus();
-                        setIsAaRefreshing(false);
-                        toast.success("Account Aggregator status updated");
-                      }}
-                      disabled={isAaRefreshing}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50 cursor-pointer"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 text-indigo-600 ${isAaRefreshing || aaSession?.status === "PENDING" ? "animate-spin" : ""}`} />
-                      {aaSession?.status === "PENDING" ? "Checking CRIF Status (Auto-Syncing)..." : "Refresh AA Status & Analytics"}
-                    </button>
-
-                    {/* All link generation and WhatsApp dispatch buttons hidden when ACTIVE */}
-                    {!isAaActive && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleGenerateAaUrl}
-                          disabled={isAaGenerating}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-200 disabled:opacity-50 cursor-pointer"
-                        >
-                          <Building2 className="h-4 w-4 text-slate-600" />
-                          {isAaGenerating ? "Generating Flow URL..." : aaSession ? "Re-generate / Resend AA Link" : "Initiate Account Aggregator"}
-                        </button>
-
-                        {aaSession && (
-                          <p className="text-[11px] text-slate-500 italic text-center px-1">
-                            ℹ️ Link already exists. Click "Re-generate" only if customer needs a new link.
-                          </p>
-                        )}
-
-                        {aaSession?.redirectionUrl && (
+                      <div className="flex flex-col gap-2">
+                        {/* View Statement button shown when ACTIVE */}
+                        {isAaActive && (
                           <button
                             type="button"
-                            onClick={handleSendAaWhatsApp}
-                            disabled={isAaSendingWa}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 cursor-pointer"
+                            onClick={() => setShowAaStatementModal(true)}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-sm cursor-pointer"
                           >
-                            <Send className="h-3.5 w-3.5 text-emerald-600" />
-                            {isAaSendingWa ? "Sending WhatsApp & Email..." : "Send Consent Link on WhatsApp & Email"}
+                            <FileText className="h-4 w-4" />
+                            View Full Bank Statement & Transactions
                           </button>
                         )}
-                      </>
-                    )}
 
-                    {aaSession && (
-                      <button
-                        type="button"
-                        onClick={handleResetAaSession}
-                        className={
-                          isAaActive
-                            ? "text-[11px] text-slate-400 hover:text-rose-600 transition text-center mt-1 py-1 cursor-pointer"
-                            : "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-xs mt-1 cursor-pointer"
-                        }
-                      >
-                        {isAaActive ? (
-                          "Reset AA Session"
-                        ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsAaRefreshing(true);
+                            await loadAaStatus();
+                            setIsAaRefreshing(false);
+                            toast.success("Account Aggregator status updated");
+                          }}
+                          disabled={isAaRefreshing}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50 cursor-pointer"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 text-indigo-600 ${isAaRefreshing || aaSession?.status === "PENDING" ? "animate-spin" : ""}`} />
+                          {aaSession?.status === "PENDING" ? "Checking CRIF Status (Auto-Syncing)..." : "Refresh AA Status & Analytics"}
+                        </button>
+
+                        {/* All link generation, WhatsApp dispatch, and reset buttons hidden when ACTIVE */}
+                        {!isAaActive && (
                           <>
-                            <RotateCcw className="h-3.5 w-3.5 text-rose-600" />
-                            Reset AA Session (Fresh Start)
+                            <button
+                              type="button"
+                              onClick={handleGenerateAaUrl}
+                              disabled={isAaGenerating}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-200 disabled:opacity-50 cursor-pointer"
+                            >
+                              <Building2 className="h-4 w-4 text-slate-600" />
+                              {isAaGenerating ? "Generating Flow URL..." : aaSession ? "Re-generate / Resend AA Link" : "Initiate Account Aggregator"}
+                            </button>
+
+                            {aaSession && (
+                              <p className="text-[11px] text-slate-500 italic text-center px-1">
+                                ℹ️ Link already exists. Click "Re-generate" only if customer needs a new link.
+                              </p>
+                            )}
+
+                            {aaSession?.redirectionUrl && (
+                              <button
+                                type="button"
+                                onClick={handleSendAaWhatsApp}
+                                disabled={isAaSendingWa}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 cursor-pointer"
+                              >
+                                <Send className="h-3.5 w-3.5 text-emerald-600" />
+                                {isAaSendingWa ? "Sending WhatsApp & Email..." : "Send Consent Link on WhatsApp & Email"}
+                              </button>
+                            )}
+
+                            {/* Reset session ONLY when NOT active */}
+                            {aaSession && (
+                              <button
+                                type="button"
+                                onClick={handleResetAaSession}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-xs mt-1 cursor-pointer"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 text-rose-600" />
+                                Reset AA Session (Fresh Start)
+                              </button>
+                            )}
                           </>
                         )}
-                      </button>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })()}
