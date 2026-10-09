@@ -555,7 +555,11 @@ export function CreditManagerPanel() {
             <div className="w-full flex items-center justify-between pb-3 text-white">
               <div className="flex items-center gap-2">
                 <Building className="h-4.5 w-4.5 text-emerald-400" />
-                <span className="text-sm font-bold text-slate-100">Shruti Singh — Senior Credit Manager (WaqtMoney)</span>
+                <span className="text-sm font-bold text-slate-100">
+                  {typeof window !== "undefined" && window.location.hostname.includes("testing")
+                    ? "Test Credit Manager — Testing Panel"
+                    : "Shruti Singh — Senior Credit Manager (WaqtMoney)"}
+                </span>
               </div>
               <button
                 type="button"
@@ -568,28 +572,50 @@ export function CreditManagerPanel() {
 
             {/* Photo Box */}
             <div className="relative overflow-hidden rounded-3xl border-2 border-emerald-500/50 shadow-2xl bg-slate-900 max-h-[75vh] flex items-center justify-center">
-              <img
-                src="/shruti-avatar.jpg"
-                alt="Shruti Credit Manager Full View"
-                className="max-h-[70vh] w-auto object-contain rounded-2xl p-1"
-              />
+              {typeof window !== "undefined" && window.location.hostname.includes("testing") ? (
+                <div className="p-16 text-center text-slate-400">
+                  <UserCircle className="h-24 w-24 mx-auto text-indigo-400 mb-2" />
+                  <p className="text-base font-bold text-slate-200">Testing Sandbox Account</p>
+                </div>
+              ) : (
+                <img
+                  src="/shruti-avatar.jpg"
+                  alt="Shruti Credit Manager Full View"
+                  className="max-h-[70vh] w-auto object-contain rounded-2xl p-1"
+                />
+              )}
             </div>
 
             {/* Bottom Info Bar */}
             <div className="mt-4 flex flex-col items-center gap-2 text-center text-white">
               <div className="flex items-center gap-2 flex-wrap justify-center">
                 <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-1 text-xs font-bold text-emerald-400">
-                  Senior Credit Manager • WaqtMoney
+                  {typeof window !== "undefined" && window.location.hostname.includes("testing")
+                    ? "Credit Manager • Testing Sandbox"
+                    : "Senior Credit Manager • WaqtMoney"}
                 </span>
                 <span className="rounded-full bg-slate-800 border border-slate-700 px-3.5 py-1 text-xs font-bold text-slate-300">
-                  1+ Years Experience
+                  {typeof window !== "undefined" && window.location.hostname.includes("testing")
+                    ? "Sandbox Environment"
+                    : "1+ Years Experience"}
                 </span>
                 <span className="rounded-full bg-amber-400/10 border border-amber-400/30 px-3.5 py-1 text-xs font-bold text-amber-400">
                   ⭐ 4.9 Rating
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Official Credit Panel ID: <span className="text-slate-200 font-semibold">shrutisingh@waqtmoney.in</span> • Contact: <span className="text-slate-200 font-semibold">+91 9217086608</span>
+                Official Credit Panel ID:{" "}
+                <span className="text-slate-200 font-semibold">
+                  {typeof window !== "undefined" && window.location.hostname.includes("testing")
+                    ? "test.credit@waqtmoney.in"
+                    : "shrutisingh@waqtmoney.in"}
+                </span>{" "}
+                • Contact:{" "}
+                <span className="text-slate-200 font-semibold">
+                  {typeof window !== "undefined" && window.location.hostname.includes("testing")
+                    ? "Sandbox Mode"
+                    : "+91 9217086608"}
+                </span>
               </p>
               <button
                 type="button"

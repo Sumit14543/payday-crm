@@ -150,7 +150,21 @@ export function Layout() {
   const searchContainerRef = useRef<HTMLLabelElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const role = activeRole || user?.role;
-  const isShrutiUser = role === "credit-manager" || user?.role === "credit-manager" || String(user?.email || "").toLowerCase().includes("shruti");
+  const isTestingDomain =
+    typeof window !== "undefined" &&
+    (window.location.hostname.includes("testing") ||
+     window.location.hostname === "localhost" ||
+     window.location.hostname === "127.0.0.1" ||
+     Boolean(import.meta.env.VITE_API_URL && String(import.meta.env.VITE_API_URL).includes("testing")));
+  const isTestCreditUser =
+    String(user?.email || "").toLowerCase().includes("test.credit") ||
+    (String(user?.email || "").toLowerCase().startsWith("test.") && role === "credit-manager") ||
+    (isTestingDomain && role === "credit-manager" && !String(user?.email || "").toLowerCase().includes("shruti"));
+  const isShrutiUser =
+    !isTestCreditUser &&
+    !isTestingDomain &&
+    (String(user?.email || "").toLowerCase().includes("shruti") ||
+     (role === "credit-manager" && !String(user?.email || "").toLowerCase().includes("test")));
   const isNandiniUser = user?.email?.toLowerCase() === "nandini@waqtmoney.in" || user?.name?.toLowerCase().includes("nandini") || user?.name?.toLowerCase().includes("nandni");
   const isHimanshuUser = user?.email?.toLowerCase() === "himanshukumar@waqtfinance.com" || user?.name?.toLowerCase().includes("himanshu");
   const isKanhaiyaUser = user?.email?.toLowerCase() === "kanhiayakumar@waqtfinance.com" || user?.name?.toLowerCase().includes("kanhiya") || user?.name?.toLowerCase().includes("kanhaiya");
@@ -671,6 +685,8 @@ export function Layout() {
                     <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover scale-105" />
                   ) : user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                     <img src="/collection-agent-profile.jpg" alt="Prakash Profile" className="h-full w-full object-cover scale-105" />
+                  ) : isTestCreditUser ? (
+                    <UserCircle className="h-7 w-7 text-indigo-400" />
                   ) : isShrutiUser ? (
                     <img src="/shruti-avatar.jpg" alt="Shruti Profile" className="h-full w-full object-cover scale-105" />
                   ) : (
@@ -687,6 +703,8 @@ export function Layout() {
                     ? "Himanshu"
                     : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
                     ? "Prakash"
+                    : isTestCreditUser
+                    ? (user?.name || "Test Credit Manager")
                     : isShrutiUser
                     ? "Shruti Singh"
                     : user?.name || "User"}
@@ -694,6 +712,8 @@ export function Layout() {
                 <p className="text-[10px] font-bold text-emerald-400 truncate mt-0.5">
                   {isKanhaiyaUser || isHimanshuUser
                     ? "Collection Executive"
+                    : isTestCreditUser
+                    ? "Credit Manager (Testing)"
                     : isShrutiUser
                     ? "Senior Credit Manager"
                     : collectionAccount
@@ -704,7 +724,7 @@ export function Layout() {
                 </p>
                 <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-sidebar-foreground/60 mt-0.5">
                   <span className="h-1 w-1 rounded-full bg-emerald-400" />
-                  {isShrutiUser ? "1+ Yrs Exp • WaqtMoney" : "Active Duty"}
+                  {isTestCreditUser ? "Testing Sandbox Active" : isShrutiUser ? "1+ Yrs Exp • WaqtMoney" : "Active Duty"}
                 </span>
               </div>
             </div>
@@ -719,7 +739,7 @@ export function Layout() {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <AppTooltip label={isKanhaiyaUser ? "Kanhiya Kumar Profile" : isHimanshuUser ? "Himanshu Profile" : isShrutiUser ? "Shruti Singh Profile" : "View Profile"} side="right">
+            <AppTooltip label={isKanhaiyaUser ? "Kanhiya Kumar Profile" : isHimanshuUser ? "Himanshu Profile" : isTestCreditUser ? "Test Credit Manager Profile" : isShrutiUser ? "Shruti Singh Profile" : "View Profile"} side="right">
               <button
                 type="button"
                 onClick={() => setShowProfileModal(true)}
@@ -735,6 +755,8 @@ export function Layout() {
                   <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover scale-105" />
                 ) : user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                   <img src="/collection-agent-profile.jpg" alt="Prakash Profile" className="h-full w-full object-cover scale-105" />
+                ) : isTestCreditUser ? (
+                  <UserCircle className="h-6 w-6 text-indigo-400" />
                 ) : isShrutiUser ? (
                   <img src="/shruti-avatar.jpg" alt="Shruti Profile" className="h-full w-full object-cover scale-105" />
                 ) : (
@@ -953,6 +975,8 @@ export function Layout() {
                       <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover scale-105" />
                     ) : user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                       <img src="/collection-agent-profile.jpg" alt="Prakash Profile" className="h-full w-full object-cover scale-105" />
+                    ) : isTestCreditUser ? (
+                      <UserCircle className="h-6 w-6 text-indigo-500" />
                     ) : isShrutiUser ? (
                       <img src="/shruti-avatar.jpg" alt="Shruti Credit Manager" className="h-full w-full object-cover scale-105" />
                     ) : (
@@ -975,6 +999,8 @@ export function Layout() {
                             <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover scale-105" />
                           ) : user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                             <img src="/collection-agent-profile.jpg" alt="Prakash Profile" className="h-full w-full object-cover scale-105" />
+                          ) : isTestCreditUser ? (
+                            <UserCircle className="h-9 w-9 text-indigo-500" />
                           ) : isShrutiUser ? (
                             <img src="/shruti-avatar.jpg" alt="Shruti Credit Manager" className="h-full w-full object-cover scale-105" />
                           ) : (
@@ -989,6 +1015,8 @@ export function Layout() {
                               ? "Himanshu"
                               : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
                               ? "Prakash"
+                              : isTestCreditUser
+                              ? (user?.name || "Test Credit Manager")
                               : isShrutiUser
                               ? "Shruti Singh"
                               : user?.name || "User"}
@@ -1101,6 +1129,8 @@ export function Layout() {
                       ? "/himanshu.jpg"
                       : isNandiniUser
                       ? "/nandini.jpg"
+                      : isTestCreditUser
+                      ? null
                       : isShrutiUser
                       ? "/shruti-avatar.jpg"
                       : user?.name === "Kajal"
@@ -1123,6 +1153,8 @@ export function Layout() {
                     <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover" />
                   ) : user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                     <img src="/collection-agent-profile.jpg" alt="Prakash Profile" className="h-full w-full object-cover scale-105" />
+                  ) : isTestCreditUser ? (
+                    <UserCircle className="h-16 w-16 text-indigo-400" />
                   ) : isShrutiUser ? (
                     <img src="/shruti-avatar.jpg" alt="Shruti Credit Manager" className="h-full w-full object-cover scale-105" />
                   ) : (
@@ -1157,6 +1189,8 @@ export function Layout() {
                       ? "Nandni Gupta"
                       : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
                       ? "Prakash"
+                      : isTestCreditUser
+                      ? (user?.name || "Test Credit Manager")
                       : isShrutiUser
                       ? "Shruti Singh"
                       : user?.name || "CRM User"}
@@ -1172,6 +1206,8 @@ export function Layout() {
                     ? "Sales & Support Telecaller • Retail Lending"
                     : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
                     ? "Collection Manager • Debt Recovery"
+                    : isTestCreditUser
+                    ? "Credit Manager • Testing Sandbox"
                     : isShrutiUser
                     ? "Senior Credit Manager • Risk & Underwriting"
                     : role ? roleLabels[role] : "CRM User"}
@@ -1181,6 +1217,8 @@ export function Layout() {
                     ? `Collection Executive managing customer loan recovery, field collection followups, PTP tracking, and CRM collection workflows at ${branding.name}.`
                     : isNandiniUser
                     ? `Commerce Graduate with hands-on experience in loan sales, customer acquisition, lead qualification, and CRM documentation at ${branding.name}.`
+                    : isTestCreditUser
+                    ? `Testing Sandbox Account for Credit Manager evaluation, underwriting simulations, and test workflow verification at ${branding.name}.`
                     : isShrutiUser
                     ? "Credit risk manager evaluating CAM sheets, CIBIL reports, bank statements, and instant loan approval compliance."
                     : "Managing customer accounts, loan operations, and CRM workflows."}
@@ -1194,7 +1232,7 @@ export function Layout() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Official Email</p>
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                      {isNandiniUser ? "nandini@waqtmoney.in" : isShrutiUser ? (user?.email || "shrutisingh@waqtmoney.in") : user?.email}
+                      {isNandiniUser ? "nandini@waqtmoney.in" : isTestCreditUser ? (user?.email || "test.credit@waqtmoney.in") : isShrutiUser ? (user?.email || "shrutisingh@waqtmoney.in") : user?.email}
                     </p>
                   </div>
                 </div>
@@ -1213,6 +1251,8 @@ export function Layout() {
                           ? "WQTM-TEL-201"
                           : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
                           ? "COL-EMP-0402"
+                          : isTestCreditUser
+                          ? "WQTM-TEST-001"
                           : isShrutiUser
                           ? "WQTM-CRD-0892"
                           : "EMP-1082"}
@@ -1230,6 +1270,8 @@ export function Layout() {
                           ? "+91 92174 02920"
                           : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
                           ? "+91 9217086602"
+                          : isTestCreditUser
+                          ? "Testing Sandbox"
                           : isShrutiUser
                           ? "+91 9217086608"
                           : "-"}
@@ -1282,29 +1324,31 @@ export function Layout() {
 
               {/* Action Buttons */}
               <div className="mt-5 flex gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const avatarSrc = isKanhaiyaUser
-                      ? "/kanhaiya.jpg"
-                      : isHimanshuUser
-                      ? "/himanshu.jpg"
-                      : isNandiniUser
-                      ? "/nandini.jpg"
-                      : isShrutiUser
-                      ? "/shruti-avatar.jpg"
-                      : user?.name === "Kajal"
-                      ? "/kajal-avatar.jpg"
-                      : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
-                      ? "/collection-agent-profile.jpg"
-                      : null;
-                    if (avatarSrc) setFullImageModal(avatarSrc);
-                  }}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 py-2.5 text-xs font-black text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-xs cursor-pointer"
-                >
-                  <Maximize2 className="h-3.5 w-3.5 text-indigo-500" />
-                  <span>View Portrait Photo</span>
-                </button>
+                {isKanhaiyaUser || isHimanshuUser || isNandiniUser || (isShrutiUser && !isTestCreditUser) || user?.name === "Kajal" || user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const avatarSrc = isKanhaiyaUser
+                        ? "/kanhaiya.jpg"
+                        : isHimanshuUser
+                        ? "/himanshu.jpg"
+                        : isNandiniUser
+                        ? "/nandini.jpg"
+                        : isShrutiUser
+                        ? "/shruti-avatar.jpg"
+                        : user?.name === "Kajal"
+                        ? "/kajal-avatar.jpg"
+                        : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
+                        ? "/collection-agent-profile.jpg"
+                        : null;
+                      if (avatarSrc) setFullImageModal(avatarSrc);
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 py-2.5 text-xs font-black text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition shadow-xs cursor-pointer"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5 text-indigo-500" />
+                    <span>View Portrait Photo</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setShowProfileModal(false)}

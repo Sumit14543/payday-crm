@@ -3043,18 +3043,27 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     LEAD_PRIORITIES.map((priority) => ({ label: priority, value: priority }))
   ), []);
 
-  const assignedToOptions = useMemo(() => [
-    { label: "Unassigned", value: "Unassigned" },
-    { label: "Credit Manager (Shruti)", value: "Credit Manager" },
-    ...telecallerOptions
-      .filter((name) => name !== "Unassigned" && name !== "Credit Manager")
-      .map((name) => {
-        if (name === "assign to me") {
-          return { label: "Assign to me", value: "assign to me" };
-        }
-        return { label: `Assign to ${name}`, value: name };
-      }),
-  ], [telecallerOptions]);
+  const assignedToOptions = useMemo(() => {
+    const isTestingEnv =
+      typeof window !== "undefined" &&
+      (window.location.hostname.includes("testing") ||
+       window.location.hostname === "localhost" ||
+       window.location.hostname === "127.0.0.1" ||
+       Boolean(import.meta.env.VITE_API_URL && String(import.meta.env.VITE_API_URL).includes("testing")));
+
+    return [
+      { label: "Unassigned", value: "Unassigned" },
+      { label: isTestingEnv ? "Credit Manager (Testing)" : "Credit Manager (Shruti)", value: "Credit Manager" },
+      ...telecallerOptions
+        .filter((name) => name !== "Unassigned" && name !== "Credit Manager")
+        .map((name) => {
+          if (name === "assign to me") {
+            return { label: "Assign to me", value: "assign to me" };
+          }
+          return { label: `Assign to ${name}`, value: name };
+        }),
+    ];
+  }, [telecallerOptions]);
 
   const handleCibilRequest = async () => {
     try {
