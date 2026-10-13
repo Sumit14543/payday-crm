@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Calendar,
   CheckCircle2,
   Eye,
@@ -28,6 +31,7 @@ import { useAuth } from "../lib/auth";
 
 type Loan = {
   id: string;
+  loanId?: string;
   customer: string | null;
   customerId: string;
   principal: number;
@@ -97,7 +101,7 @@ type Loan = {
 };
 
 const COLLECTION_HEADERS = [
-  "Loan No.",
+  "Loan ID",
   "Name",
   "Email",
   "Mobile",
@@ -123,7 +127,7 @@ const DISBURSEMENT_HEADERS = [
   "Branch Name",
   "Customer ID",
   "Pancard",
-  "Loan No.",
+  "Loan ID",
   "Customer Name",
   "Mobile Number",
   "Gender",
@@ -195,10 +199,27 @@ function parseLoanRow(loan: Loan) {
   const dob = loan.dob || (loan as any).dateOfBirth || null;
   const monthlyIncome = Number(loan.monthlyIncome || (loan as any).incomeAmount || 0);
 
+  // Format Loan ID so that it always starts with "LN"
+  const rawId = String(loan.id || "").trim();
+  const rawLoanNo = String(loanNo || "").trim();
+  let formattedLoanId = "";
+  if (/^LN/i.test(rawId)) {
+    formattedLoanId = rawId;
+  } else if (/^LN/i.test(rawLoanNo)) {
+    formattedLoanId = rawLoanNo;
+  } else {
+    const base = rawLoanNo || rawId;
+    formattedLoanId = base ? `LN${base.replace(/^LN/i, "")}` : "-";
+  }
+  if (formattedLoanId.startsWith("ln")) {
+    formattedLoanId = `LN${formattedLoanId.slice(2)}`;
+  }
+
   return {
     ...loan,
     leadId: leadId || "-",
     loanNo: loanNo || loan.id,
+    loanId: formattedLoanId,
     customerName: customerName || loan.customer || "Customer not linked",
     email,
     mobile,
@@ -298,6 +319,19 @@ const DATE_PRESET_OPTIONS = [
   { label: "This Week", value: "this_week" },
   { label: "This Month", value: "this_month" },
   { label: "Last Month", value: "last_month" },
+];
+
+const SORT_FIELD_OPTIONS = [
+  { label: "Sort: Repayment Due Date", value: "dueDate" },
+  { label: "Sort: Disbursal Date", value: "disbursedDate" },
+  { label: "Sort: Loan ID", value: "loanId" },
+  { label: "Sort: Customer Name", value: "customerName" },
+  { label: "Sort: Loan Amount", value: "principal" },
+];
+
+const SORT_ORDER_OPTIONS = [
+  { label: "Ascending (Oldest / Due Soonest)", value: "asc" },
+  { label: "Descending (Newest / Due Latest)", value: "desc" },
 ];
 
 function getTodayDateStr(): string {
@@ -406,6 +440,8 @@ export function LoanManagement() {
   const [appliedToDate, setAppliedToDate] = useState("");
   const [dateType, setDateType] = useState<"disbursed" | "due" | "collected" | "created">("disbursed");
   const [datePreset, setDatePreset] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("dueDate");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("15");
   const [totalCount, setTotalCount] = useState(0);
@@ -414,6 +450,17 @@ export function LoanManagement() {
   const [error, setError] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [searchTrigger, setSearchTrigger] = useState(0);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+    setCurrentPage(1);
+    setSearchTrigger((prev) => prev + 1);
+  };
 
   const handleApplyDateSearch = () => {
     const from = toDateKey(fromDateInput) || fromDateInput.trim();
@@ -573,6 +620,10 @@ export function LoanManagement() {
       if (appliedFromDate || appliedToDate) {
         params.set("dateType", dateType);
       }
+      if (sortBy) {
+        params.set("sortBy", sortBy);
+        params.set("sortOrder", sortOrder);
+      }
       params.set("page", String(currentPage));
       params.set("limit", pageSize);
 
@@ -598,7 +649,7 @@ export function LoanManagement() {
       }
       throw err;
     }
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType, sortBy, sortOrder]);
 
   const { isRefreshing, lastUpdatedAt, refresh } = useSmartPolling(loadLoans, {
     enabled: true,
@@ -612,7 +663,7 @@ export function LoanManagement() {
       return;
     }
     refresh();
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType, searchTrigger, refresh]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, appliedFromDate, appliedToDate, dateType, sortBy, sortOrder, searchTrigger, refresh]);
 
   // Export CSV (Fetches complete dataset on-demand so viewing the table is always blazing fast)
   const handleExportCsv = async () => {
@@ -626,6 +677,10 @@ export function LoanManagement() {
       if (appliedFromDate || appliedToDate) {
         params.set("dateType", dateType);
       }
+      if (sortBy) {
+        params.set("sortBy", sortBy);
+        params.set("sortOrder", sortOrder);
+      }
       params.set("limit", "5000"); // full export
 
       const exportData = await apiGet<Loan[]>(`/loans?${params.toString()}`);
@@ -636,7 +691,7 @@ export function LoanManagement() {
 
       if (viewMode === "collection") {
         const headers = [
-          "Loan No.",
+          "Loan ID",
           "Name",
           "Email",
           "Mobile",
@@ -657,7 +712,7 @@ export function LoanManagement() {
         const rows = exportData.map((raw) => {
           const l = parseLoanRow(raw);
           return [
-            `"${(l.loanNo || l.id || "").replace(/"/g, '""')}"`,
+            `"${(l.loanId || l.loanNo || l.id || "").replace(/"/g, '""')}"`,
             `"${(l.customerName || "").replace(/"/g, '""')}"`,
             `"${(l.email || "").replace(/"/g, '""')}"`,
             `"${l.mobile || l.mobileNumber || ""}"`,
@@ -695,7 +750,7 @@ export function LoanManagement() {
           "Branch Name",
           "Customer ID",
           "Pancard",
-          "Loan No.",
+          "Loan ID",
           "Customer Name",
           "Mobile Number",
           "Gender",
@@ -744,7 +799,7 @@ export function LoanManagement() {
             `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
             `"${(l.customerId || "").replace(/"/g, '""')}"`,
             `"${(l.panNumber || "").replace(/"/g, '""')}"`,
-            `"${(l.loanNo || "").replace(/"/g, '""')}"`,
+            `"${(l.loanId || l.loanNo || "").replace(/"/g, '""')}"`,
             `"${(l.customerName || "").replace(/"/g, '""')}"`,
             `"${l.mobile || l.mobileNumber || ""}"`,
             `"${(l.gender || "-").replace(/"/g, '""')}"`,
@@ -849,7 +904,41 @@ export function LoanManagement() {
   const safePage = Math.min(currentPage, totalPages);
   const startIndex = totalCount ? (safePage - 1) * rowsPerPage : 0;
   const endIndex = Math.min(startIndex + loans.length, totalCount);
-  const visibleLoans = loans;
+  const visibleLoans = useMemo(() => {
+    if (!loans || loans.length === 0) return [];
+    const copy = [...loans];
+    copy.sort((a, b) => {
+      let valA: any = "";
+      let valB: any = "";
+      if (sortBy === "dueDate" || sortBy === "repaymentDate") {
+        valA = toDateKey(a.dueDate || a.repaymentDate) || "";
+        valB = toDateKey(b.dueDate || b.repaymentDate) || "";
+      } else if (sortBy === "disbursedDate" || sortBy === "startDate") {
+        valA = toDateKey(a.disbursedDate || a.startDate) || "";
+        valB = toDateKey(b.disbursedDate || b.startDate) || "";
+      } else if (sortBy === "loanId" || sortBy === "id") {
+        valA = String(a.loanId || a.id || "");
+        valB = String(b.loanId || b.id || "");
+      } else if (sortBy === "customerName" || sortBy === "name") {
+        valA = String(a.customerName || a.customer || "").toLowerCase();
+        valB = String(b.customerName || b.customer || "").toLowerCase();
+      } else if (sortBy === "principal" || sortBy === "loanAmount") {
+        valA = Number(a.principal || 0);
+        valB = Number(b.principal || 0);
+      }
+
+      if (valA === valB) return 0;
+      if (!valA) return 1;
+      if (!valB) return -1;
+
+      if (sortOrder === "asc") {
+        return valA < valB ? -1 : 1;
+      } else {
+        return valA > valB ? -1 : 1;
+      }
+    });
+    return copy;
+  }, [loans, sortBy, sortOrder]);
 
   const showInitialLoading = isRefreshing && !lastUpdatedAt && loans.length === 0;
 
@@ -863,6 +952,8 @@ export function LoanManagement() {
     setAppliedToDate("");
     setDatePreset("all");
     setDateType("disbursed");
+    setSortBy("dueDate");
+    setSortOrder("asc");
     setCurrentPage(1);
     setSearchTrigger((prev) => prev + 1);
   };
@@ -872,7 +963,9 @@ export function LoanManagement() {
     statusFilter !== "all" ||
     appliedFromDate !== "" ||
     appliedToDate !== "" ||
-    datePreset !== "all";
+    datePreset !== "all" ||
+    sortBy !== "dueDate" ||
+    sortOrder !== "asc";
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
@@ -1190,6 +1283,45 @@ export function LoanManagement() {
             </button>
           )}
 
+          {/* Dedicated Sorting controls */}
+          <div className="flex flex-wrap items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ArrowUpDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span>Sort:</span>
+            </div>
+            <NiceSelect
+              ariaLabel="Sort loans by field"
+              value={sortBy}
+              onValueChange={(val) => {
+                setSortBy(val);
+                setCurrentPage(1);
+              }}
+              className="w-52 text-xs font-semibold"
+              options={SORT_FIELD_OPTIONS}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+                setCurrentPage(1);
+              }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 shadow-sm transition"
+              title="Click to toggle Ascending / Descending"
+            >
+              {sortOrder === "asc" ? (
+                <>
+                  <ArrowUp className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Ascending (Due First)</span>
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Descending (Latest First)</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Active Range Banner */}
           {(appliedFromDate || appliedToDate) && (
             <div className="ml-auto inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
@@ -1299,14 +1431,48 @@ export function LoanManagement() {
             <thead className="bg-slate-50 dark:bg-slate-800/70">
               <tr>
                 {(viewMode === "collection" ? COLLECTION_HEADERS : DISBURSEMENT_HEADERS).map(
-                  (heading) => (
-                    <th
-                      key={heading}
-                      className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800"
-                    >
-                      {heading}
-                    </th>
-                  )
+                  (heading) => {
+                    let sortField = "";
+                    if (heading === "Loan ID" || heading === "Loan No.") sortField = "loanId";
+                    else if (heading === "Name" || heading === "Customer Name") sortField = "customerName";
+                    else if (heading === "Loan Amount") sortField = "principal";
+                    else if (heading === "Disbursed Date" || heading === "Disbursement Date") sortField = "disbursedDate";
+                    else if (heading === "Repay Date" || heading === "Repayment Date") sortField = "dueDate";
+
+                    if (sortField) {
+                      const isSorted = sortBy === sortField;
+                      return (
+                        <th
+                          key={heading}
+                          onClick={() => handleSort(sortField)}
+                          className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-700/60 transition group"
+                          title={`Click to sort by ${heading} (${isSorted && sortOrder === "asc" ? "switch to Descending" : "switch to Ascending"})`}
+                        >
+                          <div className="inline-flex items-center gap-1.5">
+                            <span>{heading}</span>
+                            {isSorted ? (
+                              sortOrder === "asc" ? (
+                                <ArrowUp className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              ) : (
+                                <ArrowDown className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 text-slate-400 opacity-50 group-hover:opacity-100 transition" />
+                            )}
+                          </div>
+                        </th>
+                      );
+                    }
+
+                    return (
+                      <th
+                        key={heading}
+                        className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800"
+                      >
+                        {heading}
+                      </th>
+                    );
+                  }
                 )}
               </tr>
             </thead>
@@ -1324,14 +1490,22 @@ export function LoanManagement() {
               ) : visibleLoans.length ? (
                 visibleLoans.map((rawLoan) => {
                   const loan = parseLoanRow(rawLoan);
+                  const repKey = toDateKey(loan.repaymentDate);
+                  const todayKey = getTodayDateStr();
+                  const isOverdue = !!(repKey && repKey < todayKey && loan.status !== "Paid Off" && loan.status !== "Closed");
+                  const isDueToday = !!(repKey && repKey === todayKey && loan.status !== "Paid Off" && loan.status !== "Closed");
 
                   if (viewMode === "collection") {
                     return (
                       <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                        {/* 0. Loan No. (Loan ID) */}
+                        {/* 0. Loan ID */}
                         <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400 select-all">
-                          <Link to={`/admin/loans/${loan.id}`} className="hover:underline flex items-center gap-1">
-                            {loan.loanNo || loan.id}
+                          <Link
+                            to={`/loan-management/${encodeURIComponent(loan.id)}`}
+                            className="hover:underline flex items-center gap-1 font-mono tracking-wide"
+                            title={`View Details for ${loan.loanId}`}
+                          >
+                            {loan.loanId || loan.id}
                           </Link>
                         </td>
 
@@ -1383,7 +1557,19 @@ export function LoanManagement() {
 
                         {/* 10. Repay Date */}
                         <td className="whitespace-nowrap px-4 py-3.5 text-xs font-semibold text-slate-900 dark:text-slate-200">
-                          {formatDate(loan.repaymentDate)}
+                          <div className="flex items-center gap-1.5">
+                            <span>{formatDate(loan.repaymentDate)}</span>
+                            {isOverdue && (
+                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300">
+                                Overdue
+                              </span>
+                            )}
+                            {isDueToday && (
+                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300">
+                                Due Today
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* 11. LOAN TENURE */}
@@ -1459,9 +1645,9 @@ export function LoanManagement() {
                         {loan.panNumber}
                       </td>
 
-                      {/* 7. Loan No. */}
+                      {/* 7. Loan ID */}
                       <td className="whitespace-nowrap px-4 py-3.5 font-mono font-bold text-blue-700 dark:text-blue-400 select-all">
-                        {loan.loanNo}
+                        {loan.loanId || loan.loanNo}
                       </td>
 
                       {/* 8. Customer Name */}

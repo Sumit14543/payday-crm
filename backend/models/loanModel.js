@@ -844,12 +844,15 @@ async function enrichLoansBatch(loans) {
     // Names and keys
     l.leadId = cleanStr(sanction?.lead_id || payment?.lead_id || app?.id || app?.source_lead_id || compositeLead || strippedCus) || '-';
     l.loanNo = cleanStr(sanction?.agreement_number || app?.application_id || app?.source_application_id || compositeApp || rawId);
+    l.loanId = String(rawId || '').toUpperCase().startsWith('LN')
+      ? rawId
+      : `LN${String(l.loanNo || rawId).replace(/^LN/i, '')}`;
     l.customerName = cleanStr(l.customerName || sanction?.borrower || app?.full_name || compositeName || aadhaar?.full_name) || 'Customer';
     l.customer = l.customerName;
   });
 }
 
-async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all', fromDate = '', toDate = '', dateType = 'disbursed' } = {}) {
+async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all', fromDate = '', toDate = '', dateType = 'disbursed', sortBy = '', sortOrder = 'desc' } = {}) {
   const effectiveLimit = pageSize || limit;
   const parsedPage = Math.max(Number(page) || 1, 1);
   const parsedLimit = Math.min(Math.max(Number(effectiveLimit) || 50, 1), 5000);
@@ -858,8 +861,10 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   const cleanFromDate = normalizeDateString(fromDate);
   const cleanToDate = normalizeDateString(toDate);
   const cleanDateType = (cleanStr(dateType) || 'disbursed').toLowerCase();
+  const cleanSortBy = cleanStr(sortBy).toLowerCase();
+  const cleanSortOrder = (cleanStr(sortOrder).toLowerCase() === 'asc') ? 'asc' : 'desc';
 
-  const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${cleanFromDate}:${cleanToDate}:${cleanDateType}:${parsedPage}:${parsedLimit}`;
+  const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${cleanFromDate}:${cleanToDate}:${cleanDateType}:${cleanSortBy}:${cleanSortOrder}:${parsedPage}:${parsedLimit}`;
   const cached = loansListCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < LOANS_CACHE_TTL_MS)) {
     return cached.data;
@@ -1034,7 +1039,30 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   ]);
   const total = Number(countRows?.[0]?.total || 0);
 
-  // 2. Ultra-fast base query without any scalar or joined correlated subqueries
+  // 2. Dynamic sorting (default: due_date ASC for collection, or start_date DESC)
+  let orderByClause = 'ORDER BY COALESCE(l.start_date, l.created_at) DESC, l.id DESC';
+  const sqlSortDir = cleanSortOrder === 'asc' ? 'ASC' : 'DESC';
+
+  if (sortBy) {
+    const s = cleanSortBy;
+    if (s === 'duedate' || s === 'repaymentdate' || s === 'repaydate' || s === 'due_date') {
+      orderByClause = `ORDER BY (l.due_date IS NULL), l.due_date ${sqlSortDir}, l.id ${sqlSortDir}`;
+    } else if (s === 'disburseddate' || s === 'startdate' || s === 'start_date' || s === 'disbursed') {
+      orderByClause = `ORDER BY (COALESCE(l.start_date, l.created_at) IS NULL), COALESCE(l.start_date, l.created_at) ${sqlSortDir}, l.id ${sqlSortDir}`;
+    } else if (s === 'loanid' || s === 'id' || s === 'loanno') {
+      orderByClause = `ORDER BY l.id ${sqlSortDir}`;
+    } else if (s === 'customername' || s === 'name' || s === 'customer') {
+      orderByClause = `ORDER BY c.name ${sqlSortDir}, l.id ${sqlSortDir}`;
+    } else if (s === 'principal' || s === 'loanamount' || s === 'amount') {
+      orderByClause = `ORDER BY l.principal ${sqlSortDir}, l.id ${sqlSortDir}`;
+    } else if (s === 'repaymentamount' || s === 'totalamount' || s === 'loanrepayamount') {
+      orderByClause = `ORDER BY l.total_amount ${sqlSortDir}, l.id ${sqlSortDir}`;
+    } else if (s === 'createdat' || s === 'created_at') {
+      orderByClause = `ORDER BY l.created_at ${sqlSortDir}, l.id ${sqlSortDir}`;
+    }
+  }
+
+  // 3. Ultra-fast base query without any scalar or joined correlated subqueries
   const queryParams = [...params, parsedLimit, offset];
   const loans = await query(`
     SELECT
@@ -1063,7 +1091,7 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
     FROM loans l
     LEFT JOIN customers c ON c.id = l.customer_id
     ${whereClause}
-    ORDER BY COALESCE(l.start_date, l.created_at) DESC, l.id DESC
+    ${orderByClause}
     LIMIT ? OFFSET ?
   `, queryParams);
 
@@ -1092,6 +1120,10 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
 }
 
 async function findById(id) {
+  const cleanId = String(id || '').trim();
+  const strippedLn = cleanId.replace(/^LN/i, '');
+  const prefixedLn = cleanId.toUpperCase().startsWith('LN') ? cleanId : `LN${cleanId}`;
+
   const rows = await query(`
     SELECT
       l.id,
@@ -1118,9 +1150,9 @@ async function findById(id) {
       c.total_loans AS customerTotalLoans
     FROM loans l
     LEFT JOIN customers c ON c.id = l.customer_id
-    WHERE l.id = ?
+    WHERE l.id = ? OR l.id = ? OR l.id = ?
     LIMIT 1
-  `, [id]);
+  `, [cleanId, strippedLn, prefixedLn]);
 
   if (!rows.length) return null;
   const l = rows[0];
