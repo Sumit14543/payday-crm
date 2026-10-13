@@ -382,24 +382,37 @@ function toDateKey(value: string | Date | null | undefined): string | null {
   }
 }
 
-function formatDate(value: string | null | undefined) {
+function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
   const str = String(value).trim();
+  if (!str || str === "-" || str === "null" || str === "undefined") return "-";
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    const [y, m, d] = str.split("-").map(Number);
-    const date = new Date(y, m - 1, d);
-    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const [y, m, d] = str.split("-");
+    return `${d}-${m}-${y}`;
   }
+
   if (/^(\d{2})[-/](\d{2})[-/](\d{4})$/.test(str)) {
     const parts = str.split(/[-/]/);
-    const date = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-    if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    }
+    return `${parts[0]}-${parts[1]}-${parts[2]}`;
   }
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
+  if (Number.isNaN(date.getTime())) return str;
+  try {
+    const dStr = date.toLocaleDateString("en-GB", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    return dStr.replace(/\//g, "-");
+  } catch {
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  }
 }
 
 function statusBadge(status: string) {
@@ -767,7 +780,7 @@ export function LoanManagement() {
           "Branch Name",
           "Customer ID",
           "Pancard",
-          "Loan ID",
+          "Loan No.",
           "Customer Name",
           "Mobile Number",
           "Gender",
