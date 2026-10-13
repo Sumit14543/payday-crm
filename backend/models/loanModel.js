@@ -842,11 +842,23 @@ async function enrichLoansBatch(loans) {
     l.repaymentDate = l.dueDate || null;
 
     // Names and keys
-    l.leadId = cleanStr(sanction?.lead_id || payment?.lead_id || app?.id || app?.source_lead_id || compositeLead || strippedCus) || '-';
-    l.loanNo = cleanStr(sanction?.agreement_number || app?.application_id || app?.source_application_id || compositeApp || rawId);
-    l.loanId = String(rawId || '').toUpperCase().startsWith('LN')
-      ? rawId
-      : `LN${String(l.loanNo || rawId).replace(/^LN/i, '')}`;
+    const appLeadCode = cleanStr(sanction?.agreement_number || app?.application_id || app?.source_application_id || compositeApp);
+    const numericLeadId = cleanStr(sanction?.lead_id || payment?.lead_id || app?.id || app?.source_lead_id || compositeLead || strippedCus);
+
+    // Lead ID: Application / Lead code (e.g. WQTMN05804)
+    l.leadId = appLeadCode || numericLeadId || '-';
+
+    // Loan Number / Loan ID: Always starts with LN (e.g. LNWQTMN05804)
+    if (String(rawId || '').toUpperCase().startsWith('LN')) {
+      l.loanNo = rawId;
+      l.loanId = rawId;
+    } else {
+      const baseForLoan = appLeadCode || rawId || numericLeadId;
+      const formattedLn = baseForLoan ? `LN${baseForLoan.replace(/^LN/i, '')}` : '-';
+      l.loanNo = formattedLn;
+      l.loanId = formattedLn;
+    }
+
     l.customerName = cleanStr(l.customerName || sanction?.borrower || app?.full_name || compositeName || aadhaar?.full_name) || 'Customer';
     l.customer = l.customerName;
   });

@@ -101,7 +101,7 @@ type Loan = {
 };
 
 const COLLECTION_HEADERS = [
-  "Loan ID",
+  "Loan No.",
   "Name",
   "Email",
   "Mobile",
@@ -127,7 +127,7 @@ const DISBURSEMENT_HEADERS = [
   "Branch Name",
   "Customer ID",
   "Pancard",
-  "Loan ID",
+  "Loan No.",
   "Customer Name",
   "Mobile Number",
   "Gender",
@@ -199,27 +199,44 @@ function parseLoanRow(loan: Loan) {
   const dob = loan.dob || (loan as any).dateOfBirth || null;
   const monthlyIncome = Number(loan.monthlyIncome || (loan as any).incomeAmount || 0);
 
-  // Format Loan ID so that it always starts with "LN"
+  // Format Lead ID & Loan Number
   const rawId = String(loan.id || "").trim();
   const rawLoanNo = String(loanNo || "").trim();
-  let formattedLoanId = "";
-  if (/^LN/i.test(rawId)) {
-    formattedLoanId = rawId;
-  } else if (/^LN/i.test(rawLoanNo)) {
-    formattedLoanId = rawLoanNo;
-  } else {
-    const base = rawLoanNo || rawId;
-    formattedLoanId = base ? `LN${base.replace(/^LN/i, "")}` : "-";
+  const rawLeadId = String(leadId || "").trim();
+
+  // Lead ID: Application / Lead code (e.g. WQTMN05804)
+  let resolvedLeadId = rawLeadId;
+  if (/^WQT/i.test(rawLoanNo) && !/^LN/i.test(rawLoanNo)) {
+    resolvedLeadId = rawLoanNo;
+  } else if (!resolvedLeadId || resolvedLeadId === "-" || /^\d+$/.test(resolvedLeadId)) {
+    if (/^WQT/i.test(rawId) && !/^LN/i.test(rawId)) {
+      resolvedLeadId = rawId;
+    } else if (rawId.replace(/^LN/i, "").startsWith("WQT")) {
+      resolvedLeadId = rawId.replace(/^LN/i, "");
+    } else if (rawLoanNo.replace(/^LN/i, "").startsWith("WQT")) {
+      resolvedLeadId = rawLoanNo.replace(/^LN/i, "");
+    }
   }
-  if (formattedLoanId.startsWith("ln")) {
-    formattedLoanId = `LN${formattedLoanId.slice(2)}`;
+
+  // Loan Number: Always starts with LN (e.g. LNWQTMN05804)
+  let resolvedLoanNo = "";
+  if (/^LN/i.test(rawId)) {
+    resolvedLoanNo = rawId;
+  } else if (/^LN/i.test(rawLoanNo)) {
+    resolvedLoanNo = rawLoanNo;
+  } else {
+    const base = resolvedLeadId || rawLoanNo || rawId;
+    resolvedLoanNo = base ? `LN${base.replace(/^LN/i, "")}` : "-";
+  }
+  if (resolvedLoanNo.startsWith("ln")) {
+    resolvedLoanNo = `LN${resolvedLoanNo.slice(2)}`;
   }
 
   return {
     ...loan,
-    leadId: leadId || "-",
-    loanNo: loanNo || loan.id,
-    loanId: formattedLoanId,
+    leadId: resolvedLeadId || "-",
+    loanNo: resolvedLoanNo,
+    loanId: resolvedLoanNo,
     customerName: customerName || loan.customer || "Customer not linked",
     email,
     mobile,
@@ -1498,15 +1515,20 @@ export function LoanManagement() {
                   if (viewMode === "collection") {
                     return (
                       <tr key={loan.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                        {/* 0. Loan ID */}
+                        {/* 0. Loan No. */}
                         <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400 select-all">
                           <Link
                             to={`/loan-management/${encodeURIComponent(loan.id)}`}
                             className="hover:underline flex items-center gap-1 font-mono tracking-wide"
-                            title={`View Details for ${loan.loanId}`}
+                            title={`View Details for ${loan.loanNo}`}
                           >
-                            {loan.loanId || loan.id}
+                            {loan.loanNo}
                           </Link>
+                          {loan.leadId && loan.leadId !== "-" && (
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-normal">
+                              Lead: {loan.leadId}
+                            </div>
+                          )}
                         </td>
 
                         {/* 1. Name */}
@@ -1645,9 +1667,9 @@ export function LoanManagement() {
                         {loan.panNumber}
                       </td>
 
-                      {/* 7. Loan ID */}
+                      {/* 7. Loan No. */}
                       <td className="whitespace-nowrap px-4 py-3.5 font-mono font-bold text-blue-700 dark:text-blue-400 select-all">
-                        {loan.loanId || loan.loanNo}
+                        {loan.loanNo}
                       </td>
 
                       {/* 8. Customer Name */}
