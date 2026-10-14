@@ -415,6 +415,46 @@ function formatDate(value: string | null | undefined): string {
   }
 }
 
+function formatCsvDate(value: string | null | undefined): string {
+  const d = formatDate(value);
+  return d === "-" ? "" : d;
+}
+
+function sortLoanList<T extends Record<string, any>>(list: T[], sortBy: string, sortOrder: "asc" | "desc"): T[] {
+  const copy = [...list];
+  copy.sort((a, b) => {
+    let valA: any = "";
+    let valB: any = "";
+    if (sortBy === "dueDate" || sortBy === "repaymentDate") {
+      valA = toDateKey(a.repaymentDate || a.dueDate) || "";
+      valB = toDateKey(b.repaymentDate || b.dueDate) || "";
+    } else if (sortBy === "disbursedDate" || sortBy === "startDate") {
+      valA = toDateKey(a.disbursedDate || a.startDate) || "";
+      valB = toDateKey(b.disbursedDate || b.startDate) || "";
+    } else if (sortBy === "loanId" || sortBy === "id" || sortBy === "loanNo") {
+      valA = String(a.loanNo || a.loanId || a.id || "");
+      valB = String(b.loanNo || b.loanId || b.id || "");
+    } else if (sortBy === "customerName" || sortBy === "name") {
+      valA = String(a.customerName || a.customer || "").toLowerCase();
+      valB = String(b.customerName || b.customer || "").toLowerCase();
+    } else if (sortBy === "principal" || sortBy === "loanAmount") {
+      valA = Number(a.principal || 0);
+      valB = Number(b.principal || 0);
+    }
+
+    if (valA === valB) return 0;
+    if (!valA) return 1;
+    if (!valB) return -1;
+
+    if (sortOrder === "asc") {
+      return valA < valB ? -1 : 1;
+    } else {
+      return valA > valB ? -1 : 1;
+    }
+  });
+  return copy;
+}
+
 function statusBadge(status: string) {
   const isPaidOff = status === "Paid Off" || status === "Closed";
   const isPartial = status === "Part Payment" || status === "Partial";
@@ -699,29 +739,48 @@ export function LoanManagement() {
   const handleExportCsv = async () => {
     try {
       setIsExporting(true);
+      const effectiveSearch = (debouncedSearch || searchTerm || "").trim();
+      const effectiveFromDate = appliedFromDate || toDateKey(fromDateInput) || fromDateInput.trim();
+      const effectiveToDate = appliedToDate || toDateKey(toDateInput) || toDateInput.trim();
+
       const params = new URLSearchParams();
-      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (effectiveSearch) params.set("search", effectiveSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
-      if (appliedFromDate) params.set("fromDate", appliedFromDate);
-      if (appliedToDate) params.set("toDate", appliedToDate);
-      if (appliedFromDate || appliedToDate) {
+      if (effectiveFromDate) params.set("fromDate", effectiveFromDate);
+      if (effectiveToDate) params.set("toDate", effectiveToDate);
+      if (effectiveFromDate || effectiveToDate) {
         params.set("dateType", dateType);
       }
       if (sortBy) {
         params.set("sortBy", sortBy);
         params.set("sortOrder", sortOrder);
       }
-      params.set("limit", "5000"); // full export
+      params.set("limit", "5000"); // full export with all active filters
 
-      const exportData = await apiGet<Loan[]>(`/loans?${params.toString()}`);
-      if (!exportData || !exportData.length) {
-        alert("No loans available to export with current filters.");
-        return;
+      let exportData: Loan[] = [];
+      try {
+        exportData = await apiGet<Loan[]>(`/loans?${params.toString()}`);
+      } catch (e) {
+        console.warn("apiGet full export failed, falling back to loaded loans:", e);
       }
+
+      if (!exportData || !exportData.length) {
+        if (loans && loans.length) {
+          exportData = loans;
+        } else {
+          alert("No loans available to export with current filters.");
+          return;
+        }
+      }
+
+      // Parse and sort loans strictly using the active UI sort criteria
+      const parsedLoans = exportData.map(parseLoanRow);
+      const sortedLoans = sortLoanList(parsedLoans, sortBy, sortOrder);
 
       if (viewMode === "collection") {
         const headers = [
-          "Loan ID",
+          "Loan No.",
+          "Lead ID",
           "Name",
           "Email",
           "Mobile",
@@ -739,27 +798,25 @@ export function LoanManagement() {
           "Collected Date",
         ];
 
-        const rows = exportData.map((raw) => {
-          const l = parseLoanRow(raw);
-          return [
-            `"${(l.loanId || l.loanNo || l.id || "").replace(/"/g, '""')}"`,
-            `"${(l.customerName || "").replace(/"/g, '""')}"`,
-            `"${(l.email || "").replace(/"/g, '""')}"`,
-            `"${l.mobile || l.mobileNumber || ""}"`,
-            `"${toDateKey(l.dob) || ""}"`,
-            `"${(l.panNumber || "").replace(/"/g, '""')}"`,
-            l.principal || 0,
-            l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
-            l.monthlyIncome || 0,
-            `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
-            `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
-            `"${l.tenure || 30} Days"`,
-            `"${l.roi || l.interestRate || 0}%"`,
-            l.amountPaid || l.collectedAmount || 0,
-            `"${(l.collectedMode || (Number(l.amountPaid || 0) > 0 ? "Bank Transfer" : "-")).replace(/"/g, '""')}"`,
-            `"${toDateKey(l.collectedDate || l.lastPaymentDate) || ""}"`,
-          ];
-        });
+        const rows = sortedLoans.map((l) => [
+          `"${(l.loanNo || l.loanId || "").replace(/"/g, '""')}"`,
+          `"${(l.leadId || "").replace(/"/g, '""')}"`,
+          `"${(l.customerName || "").replace(/"/g, '""')}"`,
+          `"${(l.email || "").replace(/"/g, '""')}"`,
+          `"${l.mobile || l.mobileNumber || ""}"`,
+          `"${formatCsvDate(l.dob)}"`,
+          `"${(l.panNumber || "").replace(/"/g, '""')}"`,
+          l.principal || 0,
+          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+          l.monthlyIncome || 0,
+          `"${formatCsvDate(l.disbursedDate || l.startDate)}"`,
+          `"${formatCsvDate(l.repaymentDate || l.dueDate)}"`,
+          `"${l.tenure || 30} Days"`,
+          `"${l.roi || l.interestRate || 0}%"`,
+          l.amountPaid || l.collectedAmount || 0,
+          `"${(l.collectedMode || (Number(l.amountPaid || 0) > 0 ? "Bank Transfer" : "-")).replace(/"/g, '""')}"`,
+          `"${formatCsvDate(l.collectedDate || l.lastPaymentDate)}"`,
+        ]);
 
         const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -820,55 +877,52 @@ export function LoanManagement() {
           "Pin Code",
         ];
 
-        const rows = exportData.map((raw) => {
-          const l = parseLoanRow(raw);
-          return [
-            `"${(l.leadId || "").replace(/"/g, '""')}"`,
-            `"${(l.stateName || "-").replace(/"/g, '""')}"`,
-            `"${(l.cityName || "-").replace(/"/g, '""')}"`,
-            `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
-            `"${(l.customerId || "").replace(/"/g, '""')}"`,
-            `"${(l.panNumber || "").replace(/"/g, '""')}"`,
-            `"${(l.loanId || l.loanNo || "").replace(/"/g, '""')}"`,
-            `"${(l.customerName || "").replace(/"/g, '""')}"`,
-            `"${l.mobile || l.mobileNumber || ""}"`,
-            `"${(l.gender || "-").replace(/"/g, '""')}"`,
-            `"${toDateKey(l.dob) || ""}"`,
-            `"${(l.alternativeNumber || "-").replace(/"/g, '""')}"`,
-            `"${(l.email || "").replace(/"/g, '""')}"`,
-            l.principal || 0,
-            l.disbursedAmount || l.principal || 0,
-            l.adminFee || l.processing || 0,
-            l.adminFeeGst || 0,
-            l.totalAdminFee || 0,
-            l.igst || 0,
-            l.cgst || 0,
-            l.sgst || 0,
-            l.processing || l.adminFee || 0,
-            `"${l.tenure || 30} Days"`,
-            `"${l.roi || l.interestRate || 0}%"`,
-            l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
-            `"${toDateKey(l.disbursedDate || l.startDate) || ""}"`,
-            `"${toDateKey(l.repaymentDate || l.dueDate) || ""}"`,
-            `"${(l.modeOfPayment || "Bank Transfer").replace(/"/g, '""')}"`,
-            `"${(l.companyBankAccount || "000705001234").replace(/"/g, '""')}"`,
-            l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
-            `"${(l.bankName || "").replace(/"/g, '""')}"`,
-            `"${(l.ifscCode || "").replace(/"/g, '""')}"`,
-            `"${(l.disbursementReference || l.utrNumber || "").replace(/"/g, '""')}"`,
-            `"${(l.disbursementStatus || "Disbursed").replace(/"/g, '""')}"`,
-            `"${(l.repeatType || "Fresh").replace(/"/g, '""')}"`,
-            `"${toDateKey(l.leadInitiatedDate || l.createdAt) || ""}"`,
-            `"${(l.sanctionedBy || "Credit Manager").replace(/"/g, '""')}"`,
-            `"${(l.approvedBy || "Credit Desk").replace(/"/g, '""')}"`,
-            `"${toDateKey(l.sanctionDate || l.startDate) || ""}"`,
-            `"${(l.disbursedBy || "Accountant").replace(/"/g, '""')}"`,
-            `"${toDateKey(l.loanDisbursedDate || l.disbursedDate || l.startDate) || ""}"`,
-            `"${(l.houseType || "Owned").replace(/"/g, '""')}"`,
-            `"${(l.address || "").replace(/"/g, '""')}"`,
-            `"${(l.pincode || "").replace(/"/g, '""')}"`,
-          ];
-        });
+        const rows = sortedLoans.map((l) => [
+          `"${(l.leadId || "").replace(/"/g, '""')}"`,
+          `"${(l.stateName || "-").replace(/"/g, '""')}"`,
+          `"${(l.cityName || "-").replace(/"/g, '""')}"`,
+          `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
+          `"${(l.customerId || "").replace(/"/g, '""')}"`,
+          `"${(l.panNumber || "").replace(/"/g, '""')}"`,
+          `"${(l.loanNo || l.loanId || "").replace(/"/g, '""')}"`,
+          `"${(l.customerName || "").replace(/"/g, '""')}"`,
+          `"${l.mobile || l.mobileNumber || ""}"`,
+          `"${(l.gender || "-").replace(/"/g, '""')}"`,
+          `"${formatCsvDate(l.dob)}"`,
+          `"${(l.alternativeNumber || "-").replace(/"/g, '""')}"`,
+          `"${(l.email || "").replace(/"/g, '""')}"`,
+          l.principal || 0,
+          l.disbursedAmount || l.principal || 0,
+          l.adminFee || l.processing || 0,
+          l.adminFeeGst || 0,
+          l.totalAdminFee || 0,
+          l.igst || 0,
+          l.cgst || 0,
+          l.sgst || 0,
+          l.processing || l.adminFee || 0,
+          `"${l.tenure || 30} Days"`,
+          `"${l.roi || l.interestRate || 0}%"`,
+          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+          `"${formatCsvDate(l.disbursedDate || l.startDate)}"`,
+          `"${formatCsvDate(l.repaymentDate || l.dueDate)}"`,
+          `"${(l.modeOfPayment || "Bank Transfer").replace(/"/g, '""')}"`,
+          `"${(l.companyBankAccount || "000705001234").replace(/"/g, '""')}"`,
+          l.accountNumber ? `="${String(l.accountNumber).replace(/"/g, '""').trim()}"` : `""`,
+          `"${(l.bankName || "").replace(/"/g, '""')}"`,
+          `"${(l.ifscCode || "").replace(/"/g, '""')}"`,
+          `"${(l.disbursementReference || l.utrNumber || "").replace(/"/g, '""')}"`,
+          `"${(l.disbursementStatus || "Disbursed").replace(/"/g, '""')}"`,
+          `"${(l.repeatType || "Fresh").replace(/"/g, '""')}"`,
+          `"${formatCsvDate(l.leadInitiatedDate || l.createdAt)}"`,
+          `"${(l.sanctionedBy || "Credit Manager").replace(/"/g, '""')}"`,
+          `"${(l.approvedBy || "Credit Desk").replace(/"/g, '""')}"`,
+          `"${formatCsvDate(l.sanctionDate || l.startDate)}"`,
+          `"${(l.disbursedBy || "Accountant").replace(/"/g, '""')}"`,
+          `"${formatCsvDate(l.loanDisbursedDate || l.disbursedDate || l.startDate)}"`,
+          `"${(l.houseType || "Owned").replace(/"/g, '""')}"`,
+          `"${(l.address || "").replace(/"/g, '""')}"`,
+          `"${(l.pincode || "").replace(/"/g, '""')}"`,
+        ]);
 
         const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -936,38 +990,8 @@ export function LoanManagement() {
   const endIndex = Math.min(startIndex + loans.length, totalCount);
   const visibleLoans = useMemo(() => {
     if (!loans || loans.length === 0) return [];
-    const copy = [...loans];
-    copy.sort((a, b) => {
-      let valA: any = "";
-      let valB: any = "";
-      if (sortBy === "dueDate" || sortBy === "repaymentDate") {
-        valA = toDateKey(a.dueDate || a.repaymentDate) || "";
-        valB = toDateKey(b.dueDate || b.repaymentDate) || "";
-      } else if (sortBy === "disbursedDate" || sortBy === "startDate") {
-        valA = toDateKey(a.disbursedDate || a.startDate) || "";
-        valB = toDateKey(b.disbursedDate || b.startDate) || "";
-      } else if (sortBy === "loanId" || sortBy === "id") {
-        valA = String(a.loanId || a.id || "");
-        valB = String(b.loanId || b.id || "");
-      } else if (sortBy === "customerName" || sortBy === "name") {
-        valA = String(a.customerName || a.customer || "").toLowerCase();
-        valB = String(b.customerName || b.customer || "").toLowerCase();
-      } else if (sortBy === "principal" || sortBy === "loanAmount") {
-        valA = Number(a.principal || 0);
-        valB = Number(b.principal || 0);
-      }
-
-      if (valA === valB) return 0;
-      if (!valA) return 1;
-      if (!valB) return -1;
-
-      if (sortOrder === "asc") {
-        return valA < valB ? -1 : 1;
-      } else {
-        return valA > valB ? -1 : 1;
-      }
-    });
-    return copy;
+    const parsed = loans.map(parseLoanRow);
+    return sortLoanList(parsed, sortBy, sortOrder);
   }, [loans, sortBy, sortOrder]);
 
   const showInitialLoading = isRefreshing && !lastUpdatedAt && loans.length === 0;
