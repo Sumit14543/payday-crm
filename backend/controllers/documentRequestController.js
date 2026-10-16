@@ -54,12 +54,33 @@ const storage = multer.diskStorage({
   },
 });
 
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mov', '.3gp']);
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/3gpp',
+]);
+
 const upload = multer({
   fileFilter: (req, file, callback) => {
     const extension = path.extname(file.originalname || '').toLowerCase();
-    const allowed = /pdf|png|jpe?g|webp|mp4|webm|quicktime|video/i.test(file.mimetype || '') ||
-      ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mov', '.3gp'].includes(extension);
-    callback(allowed ? null : new Error('Only PDF, image, and video files are allowed.'), allowed);
+    const mimeType = String(file.mimetype || '').toLowerCase();
+    
+    // Both extension and mimeType must match safe allowed formats
+    const isExtensionAllowed = ALLOWED_EXTENSIONS.has(extension);
+    const isMimeAllowed = ALLOWED_MIME_TYPES.has(mimeType) || mimeType.startsWith('image/') || mimeType.startsWith('video/');
+
+    if (isExtensionAllowed && isMimeAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Invalid file type. Only PDF, image, and video files are allowed.'), false);
+    }
   },
   limits: { fileSize: 10 * 1024 * 1024, files: 20 },
   storage,

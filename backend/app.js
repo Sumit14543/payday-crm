@@ -4,6 +4,8 @@ require('./config/env');
 const apiRoutes = require('./routes');
 const cashfreeWebhookController = require('./controllers/cashfreeWebhookController');
 const cors = require('./middleware/cors');
+const securityHeaders = require('./middleware/securityHeaders');
+const { apiLimiter, webhookLimiter } = require('./middleware/rateLimiter');
 const { authOptional } = require('./middleware/auth');
 const asyncHandler = require('./utils/asyncHandler');
 const errorHandler = require('./middleware/errorHandler');
@@ -12,19 +14,25 @@ const notFound = require('./middleware/notFound');
 const { DEFAULT_UPLOADS_ROOT, UPLOADS_ROOT } = require('./config/uploads');
 
 const app = express();
+app.disable('x-powered-by');
 app.set('trust proxy', true);
 
+app.use(securityHeaders);
 app.use(cors);
 
 
 app.post(
   '/api/cashfree/webhook',
+  webhookLimiter,
   express.raw({ type: 'application/json', limit: '2mb' }),
   asyncHandler(cashfreeWebhookController.receiveCashfreeWebhook)
 );
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+// Apply general API rate limiting to all /api routes
+app.use('/api', apiLimiter);
 
 const tallyRoutes = require('./routes/tallyRoutes');
 app.use('/api/tally', tallyRoutes);
@@ -37,12 +45,13 @@ app.use(asyncHandler(verifyTenantSession));
 app.use(logger);
 app.use('/uploads', (req, res, next) => {
   const sensitivePrefixes = [
-    '/agreements/',
-    '/lead-documents/',
-    '/sanction-acceptance/',
-    '/sanctions/',
+    '/agreements',
+    '/lead-documents',
+    '/sanction-acceptance',
+    '/sanctions',
   ];
-  const isSensitive = sensitivePrefixes.some((prefix) => req.path.startsWith(prefix));
+  const normalizedPath = String(req.path || '').toLowerCase().replace(/\\/g, '/');
+  const isSensitive = sensitivePrefixes.some((prefix) => normalizedPath.startsWith(prefix));
   if (!isSensitive || req.user) return next();
 
   return res.status(401).json({

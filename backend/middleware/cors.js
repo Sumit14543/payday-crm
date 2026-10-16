@@ -69,30 +69,32 @@ function cors(req, res, next) {
     .filter(Boolean);
 
   const allowAnyOrigin = configuredOrigins.includes('*');
-  const allowedOrigin = origin
-    ? (allowAnyOrigin || isOriginAllowed(origin, configuredOrigins) ? origin : origin)
-    : (configuredOrigins[0] || '*');
+  const originIsAllowed = origin && (allowAnyOrigin || isOriginAllowed(origin, configuredOrigins));
 
-  if (allowedOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  if (originIsAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    if (allowedOrigin !== '*') {
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else if (!origin && configuredOrigins.length && configuredOrigins[0] !== '*') {
+    res.setHeader('Access-Control-Allow-Origin', configuredOrigins[0]);
   }
-  
+
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,DELETE,OPTIONS');
-  
+
   const requestHeaders = req.headers['access-control-request-headers'];
   if (requestHeaders) {
     res.setHeader('Access-Control-Allow-Headers', requestHeaders);
   } else {
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Name, X-User-Role, X-Tenant-Slug');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Name, X-User-Role, X-Tenant-Slug, X-Integration-Api-Key');
   }
 
   res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
 
   if (req.method === 'OPTIONS') {
+    if (origin && !originIsAllowed) {
+      res.status(403).json({ error: 'CORS origin not allowed' });
+      return;
+    }
     res.status(204).end();
     return;
   }

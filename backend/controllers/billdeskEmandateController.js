@@ -373,11 +373,16 @@ async function verifyPublicEmandate(req, res) {
 
   try {
     let responseObj = null;
-
+    const isSandbox = process.env.NODE_ENV !== 'production' || process.env.BILLDESK_ENV === 'sandbox';
     if (joseResponse) {
       responseObj = billdeskJose.parseJoseResponse(joseResponse);
+    } else if (isSandbox && paymentId) {
+      responseObj = { auth_status: '0300', payment_id: paymentId };
     } else {
-      responseObj = { auth_status: '0300', payment_id: paymentId || 'BD_PAY_SUCCESS' };
+      return res.status(400).json({
+        success: false,
+        message: 'Valid encrypted payment gateway verification token (joseResponse) is required.',
+      });
     }
 
     const authStatus = responseObj?.auth_status || responseObj?.authstatus || '0300';

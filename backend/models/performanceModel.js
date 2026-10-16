@@ -15,15 +15,19 @@ function parseJson(val) {
 }
 
 async function getTelecallerPerformance({ period = 'last30days', startDate, endDate } = {}) {
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   let dateCondition = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+  const dateParams = [];
+
   if (period === 'today') {
     dateCondition = 'DATE(lcl.created_at) = CURRENT_DATE()';
   } else if (period === 'last7days') {
     dateCondition = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
   } else if (period === 'last30days') {
     dateCondition = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
-  } else if (startDate && endDate) {
-    dateCondition = `lcl.created_at BETWEEN '${startDate} 00:00:00' AND '${endDate} 23:59:59'`;
+  } else if (startDate && endDate && dateRegex.test(String(startDate).trim()) && dateRegex.test(String(endDate).trim())) {
+    dateCondition = 'lcl.created_at BETWEEN ? AND ?';
+    dateParams.push(`${String(startDate).trim()} 00:00:00`, `${String(endDate).trim()} 23:59:59`);
   }
 
   // Aggregate call logs by telecaller actor
@@ -44,7 +48,7 @@ async function getTelecallerPerformance({ period = 'last30days', startDate, endD
     WHERE ${dateCondition}
     GROUP BY actor
     ORDER BY totalCalls DESC
-  `);
+  `, dateParams);
 
   // Aggregate lead handoffs / conversions by assigned user or actor
   const handoffRows = await query(`

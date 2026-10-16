@@ -28,7 +28,7 @@ setInterval(() => {
 }, 10 * 60 * 1000).unref();
 
 function getClientIdentifier(req, email) {
-  const ip = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
   return `${ip}:${email || ''}`;
 }
 
@@ -37,8 +37,16 @@ async function login(req, res) {
 
   const emailClean = String(req.body?.email || '').trim().toLowerCase();
   const roleClean = String(req.body?.role || '').trim().toLowerCase();
+  const rawPassword = String(req.body?.password || '').trim();
   const rateLimitKey = getClientIdentifier(req, emailClean);
   const now = Date.now();
+
+  if (rawPassword === 'Admin@123' || rawPassword === 'Admin@12345') {
+    const error = new Error('Default password is no longer valid. Please use your updated secure password.');
+    error.statusCode = 401;
+    error.publicMessage = error.message;
+    throw error;
+  }
 
   const attemptRecord = loginAttempts.get(rateLimitKey);
   if (attemptRecord && attemptRecord.lockUntil > now) {
@@ -141,10 +149,10 @@ async function login(req, res) {
   // Clear failed login attempts on successful credentials
   loginAttempts.delete(rateLimitKey);
 
-  // Telecaller, Collection & Credit Manager Roles: Mandatory 2FA Email OTP Verification
+  // Telecaller, Collection, Accountant & Credit Manager Roles: Mandatory 2FA Email OTP Verification
   const userRoleClean = String(user.role || '').trim().toLowerCase();
   const userEmailClean = String(user.email || '').trim().toLowerCase();
-  const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userRoleClean === 'credit-manager' || userEmailClean.includes('himanshu');
+  const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userRoleClean === 'credit-manager' || userRoleClean === 'accountant' || userEmailClean.includes('himanshu');
 
   if (isOtpRequired) {
     const isTestAccount = isTestEnv && (

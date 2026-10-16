@@ -2,6 +2,7 @@ const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const superadminController = require('../controllers/superadminController');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { authLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ function restrictGeetPay(req, res, next) {
 }
 
 // Public superadmin login
-router.post('/login', asyncHandler(superadminController.login));
+router.post('/login', authLimiter, asyncHandler(superadminController.login));
 
 // Protected superadmin tenant management endpoints
 router.get(

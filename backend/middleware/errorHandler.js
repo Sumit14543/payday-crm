@@ -11,9 +11,21 @@ function errorHandler(err, req, res, next) {
   }
 
   const statusCode = err.statusCode || 500;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // For 500 errors, never leak internal database or system error messages to client in production
+  let clientMessage = err.publicMessage;
+  if (!clientMessage) {
+    if (statusCode < 500) {
+      clientMessage = err.message || 'Invalid request';
+    } else {
+      clientMessage = isProduction ? 'An unexpected error occurred. Please try again later.' : (err.message || 'Internal server error');
+    }
+  }
+
   res.status(statusCode).json({
     success: false,
-    message: err.publicMessage || err.message || 'Internal server error',
+    message: clientMessage,
   });
 }
 

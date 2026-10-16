@@ -10,22 +10,16 @@ async function getHealth(req, res) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
     res.status(503).json({
       status: 'degraded',
       success: false,
       service: 'payday-loan-crm-api',
       database: 'disconnected',
-      message: error.message,
+      message: isDev ? error.message : 'Database service temporarily unavailable.',
       timestamp: new Date().toISOString(),
     });
   }
 }
 
-async function restartServer(req, res) {
-  res.json({ success: true, message: 'Server process restarting...' });
-  setTimeout(() => {
-    process.exit(0);
-  }, 500);
-}
-
-module.exports = { getHealth, restartServer };
+module.exports = { getHealth };

@@ -27,15 +27,16 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { requireIntegrationApiKey } = require('../middleware/integrationAuth');
 const asyncHandler = require('../utils/asyncHandler');
 
+const {
+  publicLeadLimiter,
+  publicUploadLimiter,
+  trackingLimiter,
+  webhookLimiter,
+} = require('../middleware/rateLimiter');
+
 const router = express.Router();
 
 router.use('/health', healthRoutes);
-router.get('/health-restart', (req, res) => {
-  res.json({ success: true, message: 'Initiating process exit to reload code...' });
-  setTimeout(() => {
-    process.exit(0);
-  }, 500);
-});
 router.use('/auth', authRoutes);
 router.use('/superadmin', superadminRoutes);
 router.use(databaseReady);
@@ -43,7 +44,7 @@ router.use(databaseReady);
 const cashfreeEmandateController = require('../controllers/cashfreeEmandateController');
 const cashfreeEmandateRoutes = require('./cashfreeEmandateRoutes');
 
-router.use('/public', publicLeadRoutes);
+router.use('/public', publicLeadLimiter, publicLeadRoutes);
 router.get('/public/emandate-details/:id', asyncHandler(billdeskEmandateController.getPublicEmandateDetails));
 router.get('/public/cashfree-emandate-details/:id', asyncHandler(cashfreeEmandateController.getPublicCashfreeDetails));
 router.post('/public/emandate-verify', asyncHandler(billdeskEmandateController.verifyPublicEmandate));
@@ -56,7 +57,7 @@ const tallyRoutes = require('./tallyRoutes');
 
 router.use('/integrations', integrationRoutes);
 router.use('/tally', tallyRoutes);
-router.use('/tracking', trackingRoutes);
+router.use('/tracking', trackingLimiter, trackingRoutes);
 router.use('/accounts', requireAuth, accountRoutes);
 router.use('/dashboard', requireAuth, dashboardRoutes);
 router.use('/performance', requireAuth, performanceRoutes);
@@ -71,9 +72,9 @@ const accountAggregatorRoutes = require('./accountAggregatorRoutes');
 router.use('/account-aggregator', accountAggregatorRoutes);
 router.use('/credit/cashfree-emandate', requireAuth, cashfreeEmandateRoutes);
 router.use('/leads/cashfree-emandate', requireAuth, cashfreeEmandateRoutes);
-router.post('/webhooks/billdesk-emandate', asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
-router.post('/webhooks/razorpay-emandate', asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
-router.post('/webhooks/cashfree-emandate', asyncHandler(cashfreeEmandateController.handleCashfreeWebhook));
+router.post('/webhooks/billdesk-emandate', webhookLimiter, asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
+router.post('/webhooks/razorpay-emandate', webhookLimiter, asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
+router.post('/webhooks/cashfree-emandate', webhookLimiter, asyncHandler(cashfreeEmandateController.handleCashfreeWebhook));
 router.use('/collections', requireAuth, collectionRoutes);
 router.use('/customers', requireRole(['credit-manager']), customerRoutes);
 router.use('/loans', requireAuth, loanRoutes);
@@ -81,6 +82,7 @@ router.get('/files/download', requireAuth, asyncHandler(fileController.downloadU
 router.get('/document-upload/:token', asyncHandler(documentRequestController.getPublicDocumentRequest));
 router.post(
   '/document-upload/:token',
+  publicUploadLimiter,
   documentRequestController.uploadMiddleware(),
   asyncHandler(documentRequestController.uploadPublicDocument)
 );
@@ -89,8 +91,8 @@ router.post('/esign/:token/sign', asyncHandler(esignController.signPublicEsign))
 router.get('/sanction-decision/:token', asyncHandler(sanctionController.handleCustomerSanctionDecision));
 router.post('/sanction-decision/:token', asyncHandler(sanctionController.handleCustomerSanctionDecision));
 router.get('/digio/diagnostics', requireRole(['credit-manager', 'accountant']), asyncHandler(loanAgreementController.getDigioDiagnostics));
-router.post('/digio/webhook', asyncHandler(loanAgreementController.receiveDigioWebhook));
-router.post('/score-callback', asyncHandler(cibilController.receiveScoreCallback));
+router.post('/digio/webhook', webhookLimiter, asyncHandler(loanAgreementController.receiveDigioWebhook));
+router.post('/score-callback', webhookLimiter, asyncHandler(cibilController.receiveScoreCallback));
 router.use('/', requireAuth, referenceRoutes);
 
 module.exports = router;

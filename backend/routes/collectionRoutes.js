@@ -11,9 +11,14 @@ const paymentProofDir = ensureUploadDir('payment-proofs');
 
 const uploadProof = multer({
   fileFilter: (req, file, callback) => {
-    const allowed = /pdf|png|jpe?g|webp/i.test(file.mimetype || '') ||
-      /\.(pdf|png|jpg|jpeg|webp)$/i.test(file.originalname || '');
-    callback(allowed ? null : new Error('Only PDF and image files are allowed for payment proof.'), allowed);
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const isExtAllowed = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'].includes(ext);
+    const isMimeAllowed = /pdf|png|jpe?g|webp/i.test(file.mimetype || '') || String(file.mimetype || '').startsWith('image/');
+    if (isExtAllowed && isMimeAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Only PDF and image files are allowed for payment proof.'), false);
+    }
   },
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   storage: multer.diskStorage({

