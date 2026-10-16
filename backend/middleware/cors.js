@@ -1,5 +1,12 @@
 const { config } = require('../config/env');
-const ALWAYS_ALLOWED_BASE_DOMAINS = ['waqtmoney.com', 'waqtfinance.com'];
+const ALWAYS_ALLOWED_BASE_DOMAINS = [
+  'waqtmoney.com',
+  'waqtfinance.com',
+  'geetpay.in',
+  'geetpay.com',
+  'loaninwallet.com',
+  'salarywaves.com',
+];
 
 
 function getBaseDomain(hostname) {
@@ -68,13 +75,16 @@ function cors(req, res, next) {
     .map((item) => item.trim())
     .filter(Boolean);
 
-  const allowAnyOrigin = configuredOrigins.includes('*');
-  const originIsAllowed = origin && (allowAnyOrigin || isOriginAllowed(origin, configuredOrigins));
+  const isExplicitAllowed = origin && isOriginAllowed(origin, configuredOrigins);
+  const isWildcardAllowed = configuredOrigins.includes('*') && process.env.NODE_ENV !== 'production';
+  const originIsAllowed = isExplicitAllowed || (origin && isWildcardAllowed);
 
   if (originIsAllowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    if (isExplicitAllowed) {
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
   } else if (!origin && configuredOrigins.length && configuredOrigins[0] !== '*') {
     res.setHeader('Access-Control-Allow-Origin', configuredOrigins[0]);
   }

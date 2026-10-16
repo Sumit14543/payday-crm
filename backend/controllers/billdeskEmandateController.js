@@ -329,6 +329,8 @@ async function getPublicEmandateDetails(req, res) {
     console.warn('[BillDesk Public Order Notice]:', apiErr.message);
   }
 
+  const maskedAccountNumber = lead.accountNumber ? `(*****${String(lead.accountNumber).slice(-4)})` : '';
+
   return res.status(200).json({
     success: true,
     clientId: config.clientId,
@@ -341,7 +343,7 @@ async function getPublicEmandateDetails(req, res) {
     loanAmount,
     mandateMaxAmount,
     bankName: lead.emandateBankName || lead.bankName || '',
-    accountNumber: lead.accountNumber || '',
+    accountNumber: maskedAccountNumber,
     ifscCode: lead.ifscCode || '',
     subscriptionId: orderId,
     orderId,

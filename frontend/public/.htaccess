@@ -1,15 +1,38 @@
+Options -Indexes
+ErrorDocument 403 "Access Forbidden"
+ErrorDocument 404 "Not Found"
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
 
-    # Proxy /api requests to Express Node.js backend on port 8081
+    # 1. Block access to hidden files and directories (including .env, .git, etc.)
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+
+    # 2. Block sensitive file extensions from direct web access
+    RewriteRule \.(env|env\..*|log|err|sql|bak|yml|yaml|lock|sh|key|conf)$ - [F,NC,L]
+
+    # 3. Proxy /api requests to Express Node.js backend on port 8081
     RewriteRule ^api/(.*)$ http://127.0.0.1:8081/api/$1 [P,L]
 
-    # Proxy /uploads requests to Express Node.js backend on port 8081
+    # 4. Proxy /uploads requests to Express Node.js backend on port 8081
     RewriteRule ^uploads/(.*)$ http://127.0.0.1:8081/uploads/$1 [P,L]
 
-    # SPA routing for React frontend
+    # 5. SPA routing for React frontend
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule . /index.html [L]
+</IfModule>
+
+# Defense-in-depth: Deny access to sensitive files even if mod_rewrite is bypassed
+<IfModule mod_authz_core.c>
+    <FilesMatch "(^\.|\.(env|log|err|sql|bak|yml|yaml|lock|sh|key|conf)$)">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(^\.|\.(env|log|err|sql|bak|yml|yaml|lock|sh|key|conf)$)">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
 </IfModule>

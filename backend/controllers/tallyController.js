@@ -35,7 +35,15 @@ async function getTallyVouchers(req, res) {
       req.query.api_key ||
       req.query.apiKey;
 
-    const validKey = process.env.TALLY_API_KEY || 'WAQT-TALLY-SECRET-KEY-DEVELOPER-2026!!';
+    const validKey = process.env.TALLY_API_KEY;
+    if (!validKey) {
+      return res.status(503).json({
+        status: false,
+        count: 0,
+        data: [],
+        message: 'Tally integration is not configured on this server.',
+      });
+    }
 
     if (apiKey !== validKey) {
       return res.status(401).json({

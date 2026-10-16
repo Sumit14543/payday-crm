@@ -75,9 +75,14 @@ jobs:
             /uploads/,
             /backups/,
             /deploy-doc/,
+            /scratch/,
+            gcp-key*.json,
+            *.key,
+            *.pem,
             *.zip,
             *.log,
             *.err,
+            superadmin_debug.log,
             dev*.log,
             backend-smoke.*
 
@@ -110,10 +115,8 @@ jobs:
             find . -type f -not -path '*/node_modules*' -exec chmod 644 {} \; || true
             chmod 644 app.js server.js package.json || true
             [ ! -f .env ] || chmod 600 .env || true
+            [ ! -f gcp-key.json ] || chmod 600 gcp-key*.json || true
             [ ! -f .htaccess ] || chmod 644 .htaccess || true
-
-            echo "Running diagnose_putty.js..."
-            node scratch/diagnose_putty.js || true
 
             if [ ! -d node_modules ] || [ -L node_modules ]; then
               echo "node_modules is missing. Running npm install..."

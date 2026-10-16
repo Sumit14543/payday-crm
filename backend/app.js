@@ -44,15 +44,19 @@ app.use(authOptional);
 app.use(asyncHandler(verifyTenantSession));
 app.use(logger);
 app.use('/uploads', (req, res, next) => {
-  const sensitivePrefixes = [
-    '/agreements',
-    '/lead-documents',
-    '/sanction-acceptance',
-    '/sanctions',
-  ];
   const normalizedPath = String(req.path || '').toLowerCase().replace(/\\/g, '/');
-  const isSensitive = sensitivePrefixes.some((prefix) => normalizedPath.startsWith(prefix));
-  if (!isSensitive || req.user) return next();
+
+  // Block directory traversal attempts immediately
+  if (normalizedPath.includes('..')) {
+    return res.status(403).json({
+      success: false,
+      message: 'Forbidden document path.',
+    });
+  }
+
+  // Only public branding assets (logos) can be accessed without authentication
+  const isPublicBrandAsset = normalizedPath.startsWith('/brand/') || normalizedPath === '/brand';
+  if (isPublicBrandAsset || req.user) return next();
 
   return res.status(401).json({
     success: false,
@@ -104,6 +108,9 @@ app.use('/uploads', async (req, res, next) => {
 });
 
 
+
+app.get('/403.shtml', (req, res) => res.status(403).json({ success: false, message: 'Access Forbidden' }));
+app.get('/404.shtml', (req, res) => res.status(404).json({ success: false, message: 'Not Found' }));
 
 app.get('/', (req, res) => {
   res.json({

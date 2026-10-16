@@ -80,9 +80,14 @@ jobs:
             /uploads/,
             /backups/,
             /deploy-doc/,
+            /scratch/,
+            gcp-key*.json,
+            *.key,
+            *.pem,
             *.zip,
             *.log,
             *.err,
+            superadmin_debug.log,
             dev*.log,
             backend-smoke.*
 
@@ -134,54 +139,8 @@ jobs:
             echo "--- DIAGNOSTICS: LOAN MODEL FILE CONTENT ---"
             cat models/loanModel.js | grep -E "processingFee|gstAmount|LEFT JOIN" || true
 
-            # Write diagnostics to publicly accessible file
-            {
-              echo "=== DIAGNOSTICS: CURRENT DIRECTORY ==="
-              pwd
-              ls -la
-              echo ""
-              echo "=== DIAGNOSTICS: ENV CONFIG ==="
-              [ ! -f .env ] || cat .env | grep -E "PORT|DB_HOST|DB_PORT|DB_NAME" || true
-              echo ""
-              echo "=== DIAGNOSTICS: HTACCESS ==="
-              [ ! -f .htaccess ] || cat .htaccess || true
-              echo ""
-              echo "=== DIAGNOSTICS: ACTIVE NODE PROCESSES ==="
-              ps -ef | grep node || true
-              echo ""
-              echo "=== DIAGNOSTICS: LIVE REVENUE CALCULATION ==="
-              node scratch/calculate_monthly_revenue.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: LIVE LOAN DATES DISTRIBUTION ==="
-              node scratch/check_loan_dates.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: LIVE TODAY REPAYMENTS DETAIL ==="
-              node scratch/check_today_repayments.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: TESTING LOANS REAL-TIME AUDIT ==="
-              node scratch/inspect_testing_loans.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: PRINT LOAN MODEL ==="
-              node scratch/print_loanModel.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: AUDIT REPAYMENTS FOR LNWQTMN01131 ==="
-              node scratch/inspect_loan_1131.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: AUDIT ALL REPAYMENTS ON TESTING SERVER ==="
-              node scratch/inspect_all_repayments_testing.js || true
-              echo ""
-              echo "=== DIAGNOSTICS: PM2 STATUS ==="
-              pm2 status || npx pm2 status || /root/.nvm/versions/node/v24.15.0/bin/pm2 status || true
-              echo ""
-              echo "=== DIAGNOSTICS: PM2 LOGS ==="
-              tail -n 50 ~/.pm2/logs/testing-api-out.log || tail -n 50 ~/.pm2/logs/testing-api-error.log || true
-              echo ""
-              echo "=== DIAGNOSTICS: LISTENING PORTS ==="
-              ss -tlnp || netstat -tlnp || true
-              echo ""
-              echo "=== DIAGNOSTICS: LOAN MODEL FILE CONTENT ==="
-              cat models/loanModel.js | grep -E "processingFee|gstAmount|LEFT JOIN" || true
-            } > /home/waqtmoney/public_html/testing/diagnostics.txt || true
+            # Clean up any sensitive diagnostics file from public web root
+            rm -f /home/waqtmoney/public_html/testing/diagnostics.txt /home/waqtmoney/public_html/payday/diagnostics.txt || true
 
             echo "--- DIAGNOSTICS: PM2 STATUS ---"
             /root/.nvm/versions/node/v24.15.0/bin/pm2 status || true
