@@ -21,7 +21,17 @@ function buildPublicFileUrl(req, filePath) {
   const requestHost = `${req.protocol}://${req.get('host')}`;
   const baseUrl = String(requestHost || '').replace(/\/+$/, '');
   const normalizedPath = String(filePath || '').startsWith('/') ? filePath : `/${filePath || ''}`;
-  return `${baseUrl}${normalizedPath}`;
+  try {
+    const { createToken } = require('../middleware/auth');
+    const token = createToken({
+      email: 'system-whatsapp@waqtmoney.in',
+      name: 'WhatsApp Bot',
+      role: 'telecaller',
+    });
+    return `${baseUrl}${normalizedPath}?token=${encodeURIComponent(token)}`;
+  } catch {
+    return `${baseUrl}${normalizedPath}`;
+  }
 }
 
 const acceptanceUpload = multer({
