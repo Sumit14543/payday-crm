@@ -7861,7 +7861,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                   </div>
                   <div>
                     <DueDateHolidayPicker
-                      label="Repayment Due Date"
+                      label="Due Date"
                       value={camDueDate}
                       startDate={todayIso}
                       onChange={(newDateIso, calculatedTenureDays) => {
@@ -7870,14 +7870,10 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                           setCamLoanTermDays(String(calculatedTenureDays));
                         }
                       }}
-                      helperText="Calculates loan term and highlights holidays"
                     />
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-sm font-medium text-gray-600">Loan Term (Days)</label>
-                      <span className="text-xs text-blue-600 font-medium">Auto-synced</span>
-                    </div>
+                    <label className="text-sm font-medium text-gray-600">Loan Term (Days)</label>
                     <input
                       min="1"
                       step="1"
@@ -8257,7 +8253,6 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                       tenureDays: String(nextTenure),
                     });
                   }}
-                  helperText="Holiday-aware calendar; auto-syncs tenure"
                 />
                 <SanctionInput label="Repayment Amount" type="number" value={sanctionForm.repaymentAmount} onChange={(value) => setSanctionForm((form) => ({ ...form, repaymentAmount: value }))} />
                 <SanctionInput label="APR / Effective Annualized Rate (%)" type="number" value={sanctionForm.apr} onChange={(value) => setSanctionForm((form) => ({ ...form, apr: value }))} />
