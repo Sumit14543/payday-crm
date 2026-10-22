@@ -149,6 +149,15 @@ async function login(req, res) {
   // Clear failed login attempts on successful credentials
   loginAttempts.delete(rateLimitKey);
 
+  // GUARANTEE: If email or password was wrong, authenticateUser returned null above and threw 401.
+  // Double-check user object to be 100% sure NO OTP is generated and NO mail is hit on invalid credentials.
+  if (!user || !user.id || !user.email) {
+    const error = new Error('Email, password, and role do not match.');
+    error.statusCode = 401;
+    error.publicMessage = error.message;
+    throw error;
+  }
+
   // Telecaller, Collection, Accountant & Credit Manager Roles: Mandatory 2FA Email OTP Verification
   const userRoleClean = String(user.role || '').trim().toLowerCase();
   const userEmailClean = String(user.email || '').trim().toLowerCase();
@@ -156,10 +165,9 @@ async function login(req, res) {
 
   if (isOtpRequired) {
     const isTestAccount = isTestEnv && (
-      userEmailClean.startsWith('test.') ||
-      userEmailClean.startsWith('support.')
+      userEmailClean.startsWith('test.')
     );
-    const otpCode = isTestAccount ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
+    const otpCode = isTestAccount ? '123456' : crypto.randomInt(100000, 1000000).toString();
     const tempToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
@@ -239,12 +247,14 @@ async function verifyTelecallerOtp(req, res) {
                     String(process.env.PUBLIC_APP_URL || '').includes('testing');
 
   const isTestAccount = isTestEnv && (
-    String(foundUser.email || '').toLowerCase().startsWith('test.') ||
-    String(foundUser.email || '').toLowerCase().startsWith('support.')
+    String(foundUser.email || '').toLowerCase().startsWith('test.')
   );
 
-  const isValidOtp = String(foundUser.login_otp_code).trim() === String(otp).trim() ||
-                     (isTestAccount && String(otp).trim() === '123456');
+  const userOtpClean = String(otp || '').trim();
+  const storedOtpClean = String(foundUser.login_otp_code || '').trim();
+  const isMatchStored = userOtpClean.length === storedOtpClean.length &&
+                        crypto.timingSafeEqual(Buffer.from(userOtpClean), Buffer.from(storedOtpClean));
+  const isValidOtp = isMatchStored || (isTestAccount && userOtpClean === '123456');
 
   const otpAttemptKey = `otp:${tempToken}`;
   if (!isValidOtp) {
@@ -303,7 +313,7 @@ async function resendTelecallerOtp(req, res) {
     throw error;
   }
 
-  const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+  const otpCode = crypto.randomInt(100000, 1000000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   await crmUserModel.saveLoginOtp(foundUser.id, otpCode, tempToken, expiresAt);

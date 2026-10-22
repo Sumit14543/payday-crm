@@ -54,6 +54,8 @@ import {
 import { AppTooltip } from "../components/ui/app-tooltip";
 import { NiceSelect, type NiceSelectOption } from "../components/ui/nice-select";
 import { DuplicateLeadsModal } from "../components/DuplicateLeadsModal";
+import { DueDateHolidayPicker } from "../components/crm/DueDateHolidayPicker";
+import { addDaysToDate } from "../lib/indianHolidays";
 
 
 const objectUrlCache = new Map<string, string>();
@@ -2653,6 +2655,8 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
   const [camRecommendedAmount, setCamRecommendedAmount] = useState("");
   const [camApprovedAmount, setCamApprovedAmount] = useState("");
   const camHydrationKeyRef = useRef("");
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [camDueDate, setCamDueDate] = useState(() => addDaysToDate(new Date().toISOString().slice(0, 10), 30));
   const [camLoanTermDays, setCamLoanTermDays] = useState("30");
   const [camInterestRate, setCamInterestRate] = useState("1");
   const [camProcessingFeeRate, setCamProcessingFeeRate] = useState("10");
@@ -3781,7 +3785,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       conditions: camConditions,
       disbursementDate: agreementDate,
       disbursementMode: "Bank Transfer",
-      dueDate: addDaysIso(agreementDate, tenure),
+      dueDate: camDueDate || addDaysToDate(agreementDate, tenure),
       gstAmount: String(gstAmount),
       ifscCode: lead.ifscCode || "",
       interestRate: String(interestRate),
@@ -4566,6 +4570,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       setCamRecommendedAmount(String(Math.round(savedRecommendedAmount)));
       setCamApprovedAmount(String(Math.round(Number.isFinite(latestCamSheet.approvedAmount) ? latestCamSheet.approvedAmount : savedRecommendedAmount || loanAmount || 0)));
       setCamLoanTermDays(String(latestCamSheet.loanTermDays || 30));
+      setCamDueDate(addDaysToDate(todayIso, Number(latestCamSheet.loanTermDays || 30)));
       const savedInterestRate = String(latestCamSheet.interestRate || 1);
       const savedProcessingFeeRate = String(latestCamSheet.processingFeeRate || 10);
       setCamInterestRate(CAM_INTEREST_RATE_OPTIONS.includes(savedInterestRate) ? savedInterestRate : "1");
@@ -7855,14 +7860,38 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                     )}
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-600">Loan Term</label>
+                    <DueDateHolidayPicker
+                      label="Repayment Due Date"
+                      value={camDueDate}
+                      startDate={todayIso}
+                      onChange={(newDateIso, calculatedTenureDays) => {
+                        setCamDueDate(newDateIso);
+                        if (calculatedTenureDays > 0) {
+                          setCamLoanTermDays(String(calculatedTenureDays));
+                        }
+                      }}
+                      helperText="Calculates loan term and highlights holidays"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-sm font-medium text-gray-600">Loan Term (Days)</label>
+                      <span className="text-xs text-blue-600 font-medium">Auto-synced</span>
+                    </div>
                     <input
                       min="1"
                       step="1"
                       type="number"
                       value={camLoanTermDays}
-                      onChange={(event) => setCamLoanTermDays(event.target.value)}
-                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        setCamLoanTermDays(val);
+                        const days = Number(val);
+                        if (Number.isFinite(days) && days > 0) {
+                          setCamDueDate(addDaysToDate(todayIso, days));
+                        }
+                      }}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       aria-label="Loan term in days"
                     />
                   </div>
@@ -8177,7 +8206,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
               )}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <SanctionInput label="Loan Agreement Number" value={sanctionForm.agreementNumber} onChange={(value) => setSanctionForm((form) => ({ ...form, agreementNumber: value }))} />
-                <SanctionInput label="Agreement Date" type="date" value={sanctionForm.agreementDate} onChange={(value) => updateSanctionForm({ agreementDate: value, dueDate: addDaysIso(value, Number(sanctionForm.tenureDays || 30)) })} />
+                <SanctionInput label="Agreement Date" type="date" value={sanctionForm.agreementDate} onChange={(value) => updateSanctionForm({ agreementDate: value, disbursementDate: value, dueDate: addDaysToDate(value, Number(sanctionForm.tenureDays || 30)) })} />
                 <SanctionInput label="Borrower" value={lead.name || ""} readOnly onChange={() => undefined} />
                 <SanctionInput label="Borrower Email" value={sanctionForm.borrowerEmail} onChange={(value) => setSanctionForm((form) => ({ ...form, borrowerEmail: value }))} />
                 <SanctionInput label="Borrower Phone" value={sanctionForm.borrowerPhone} onChange={(value) => setSanctionForm((form) => ({ ...form, borrowerPhone: value }))} />
@@ -8192,7 +8221,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                   />
                 </label>
                 <SanctionInput label="Principal Loan Amount" type="number" value={sanctionForm.principalAmount} onChange={(value) => updateSanctionForm({ principalAmount: value })} />
-                <SanctionInput label="Tenure (Days)" type="number" value={sanctionForm.tenureDays} onChange={(value) => updateSanctionForm({ tenureDays: value, dueDate: addDaysIso(sanctionForm.agreementDate, Number(value || 30)) })} />
+                <SanctionInput label="Tenure (Days)" type="number" value={sanctionForm.tenureDays} onChange={(value) => updateSanctionForm({ tenureDays: value, dueDate: addDaysToDate(sanctionForm.disbursementDate || sanctionForm.agreementDate || todayIso, Number(value || 30)) })} />
                 <label className="block text-sm font-medium text-gray-600">
                   Rate of Interest (% per day)
                   <NiceSelect
@@ -8216,8 +8245,20 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                 <SanctionInput label="Processing Fees" value={formatCurrency(Number(sanctionForm.processingFee || 0))} readOnly onChange={() => undefined} />
                 <SanctionInput label="GST (18% fixed)" value={formatCurrency(Number(sanctionForm.gstAmount || 0))} readOnly onChange={() => undefined} />
                 <SanctionInput label="Amount to be Disbursed" value={formatCurrency(buildSanctionPayload().disbursedAmount)} readOnly onChange={() => undefined} />
-                <SanctionInput label="Disbursement Date" type="date" value={sanctionForm.disbursementDate} onChange={(value) => setSanctionForm((form) => ({ ...form, disbursementDate: value }))} />
-                <SanctionInput label="Due Date" type="date" value={sanctionForm.dueDate} onChange={(value) => setSanctionForm((form) => ({ ...form, dueDate: value }))} />
+                <SanctionInput label="Disbursement Date" type="date" value={sanctionForm.disbursementDate} onChange={(value) => updateSanctionForm({ disbursementDate: value, dueDate: addDaysToDate(value, Number(sanctionForm.tenureDays || 30)) })} />
+                <DueDateHolidayPicker
+                  label="Due Date"
+                  value={sanctionForm.dueDate}
+                  startDate={sanctionForm.disbursementDate || sanctionForm.agreementDate || todayIso}
+                  onChange={(newDateIso, calculatedTenureDays) => {
+                    const nextTenure = Math.max(1, calculatedTenureDays);
+                    updateSanctionForm({
+                      dueDate: newDateIso,
+                      tenureDays: String(nextTenure),
+                    });
+                  }}
+                  helperText="Holiday-aware calendar; auto-syncs tenure"
+                />
                 <SanctionInput label="Repayment Amount" type="number" value={sanctionForm.repaymentAmount} onChange={(value) => setSanctionForm((form) => ({ ...form, repaymentAmount: value }))} />
                 <SanctionInput label="APR / Effective Annualized Rate (%)" type="number" value={sanctionForm.apr} onChange={(value) => setSanctionForm((form) => ({ ...form, apr: value }))} />
                 <SanctionInput label="Bank Name" value={sanctionForm.bankName} onChange={(value) => setSanctionForm((form) => ({ ...form, bankName: value }))} />

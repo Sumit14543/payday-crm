@@ -88,6 +88,7 @@ function verifyPassword(password, user) {
   if (!user || !user.salt || !user.hash) return Promise.resolve(false);
 
   const cleanPass = String(password || '').trim();
+  if (!cleanPass) return Promise.resolve(false);
 
   return new Promise((resolve) => {
     crypto.pbkdf2(cleanPass, user.salt, PASSWORD_ITERATIONS, 32, 'sha256', (err, derivedKey) => {
@@ -106,6 +107,11 @@ async function authenticateUser({ email, password, role }) {
 
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const trimmedPassword = String(password || '').trim();
+
+  // Strict validation: both email and password must be present
+  if (!normalizedEmail || !trimmedPassword) {
+    return null;
+  }
 
   // Find user in active database crm_users table
   const foundUser = await crmUserModel.findActiveByEmailAndRole(normalizedEmail, role);

@@ -1,4 +1,6 @@
 Options -Indexes
+ErrorDocument 403 "Access Forbidden"
+ErrorDocument 404 "Not Found"
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
