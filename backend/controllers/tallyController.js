@@ -1,5 +1,144 @@
 const { query } = require('../config/db');
 
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh',
+  'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Chandigarh',
+  'Puducherry', 'Andaman and Nicobar', 'Dadra and Nagar Haveli', 'Daman and Diu', 'Lakshadweep'
+];
+
+/**
+ * Resolves customer state name and whether customer belongs to Uttar Pradesh (UP).
+ * Accurately parses state field, abbreviations (UP, U.P.), address text, and PIN codes.
+ */
+function resolveStateInfo(rawState, rawAddress) {
+  const stateStr = String(rawState || '').trim();
+  const addrStr = String(rawAddress || '').trim();
+
+  // 1. Direct UP Check (string match or regex)
+  if (
+    /^u\.?p\.?$/i.test(stateStr) ||
+    /uttar\s*pradesh/i.test(stateStr) ||
+    /\buttar\s*pradesh\b/i.test(addrStr) ||
+    /\bu\.?p\.?\b/i.test(addrStr)
+  ) {
+    return { state: 'Uttar Pradesh', isUP: true };
+  }
+
+  // 2. UP PIN code range check (20xxxx to 28xxxx) if explicit state is absent
+  if (!stateStr && addrStr) {
+    const pinMatch = addrStr.match(/\b(2[0-8]\d{4})\b/);
+    if (pinMatch) {
+      return { state: 'Uttar Pradesh', isUP: true };
+    }
+  }
+
+  // 3. Match against known Indian states
+  if (stateStr) {
+    for (const st of INDIAN_STATES) {
+      if (new RegExp('^' + st + '$', 'i').test(stateStr) || new RegExp('\\b' + st + '\\b', 'i').test(stateStr)) {
+        return { state: st, isUP: false };
+      }
+    }
+  }
+  if (addrStr) {
+    for (const st of INDIAN_STATES) {
+      if (new RegExp('\\b' + st + '\\b', 'i').test(addrStr)) {
+        return { state: st, isUP: false };
+      }
+    }
+  }
+
+  return { state: stateStr || 'West Bengal', isUP: false };
+}
+
+/**
+ * Builds balanced journal entries for loan disbursal booking with GST & Interest.
+ * - For UP customer: GST is split into Output Cgst + Output Sgst (50% each)
+ * - For non-UP customer: GST remains Output Igst
+ * - Interest on Loan is added as a separate Cr entry if interestAmount > 0
+ * - Debit and Credit are guaranteed to balance identically
+ */
+function buildJournalEntries(loanId, processingFee, gstAmount, interestAmount, isUP, totalLoanAmount) {
+  const entries = [];
+
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
+
+  if (gstAmount > 0) {
+    if (isUP) {
+      cgst = Math.round(gstAmount / 2);
+      sgst = gstAmount - cgst;
+    } else {
+      igst = gstAmount;
+    }
+  }
+
+  const validInterest = Math.max(0, Number(interestAmount) || 0);
+  const totalCredits = (processingFee || 0) + (gstAmount || 0) + validInterest;
+  const totalDebit = totalCredits > 0 ? totalCredits : (Number(totalLoanAmount) || 0);
+
+  // 1. Borrower / Loan Debit
+  entries.push({
+    ledger_name: loanId,
+    amount: totalDebit,
+    dr_cr: 'Dr',
+  });
+
+  // 2. Processing Fee Credit
+  if (processingFee > 0) {
+    entries.push({
+      ledger_name: 'Processing Fee (WaqtMoney)',
+      amount: processingFee,
+      dr_cr: 'Cr',
+    });
+  }
+
+  // 3. GST Credits: UP split into CGST + SGST, Non-UP Output Igst
+  if (isUP) {
+    if (cgst > 0) {
+      entries.push({
+        ledger_name: 'Output Cgst',
+        amount: cgst,
+        dr_cr: 'Cr',
+      });
+    }
+    if (sgst > 0) {
+      entries.push({
+        ledger_name: 'Output Sgst',
+        amount: sgst,
+        dr_cr: 'Cr',
+      });
+    }
+  } else {
+    if (igst > 0) {
+      entries.push({
+        ledger_name: 'Output Igst',
+        amount: igst,
+        dr_cr: 'Cr',
+      });
+    }
+  }
+
+  // 4. Interest on Loan Credit
+  if (validInterest > 0) {
+    entries.push({
+      ledger_name: 'Interest on Loan',
+      amount: validInterest,
+      dr_cr: 'Cr',
+    });
+  }
+
+  return {
+    entries,
+    totalDebit,
+    totalCredit: totalDebit,
+  };
+}
+
 /**
  * Helper to format Javascript dates to DD-MM-YYYY for Tally
  */
@@ -74,7 +213,7 @@ async function getTallyVouchers(req, res) {
         }
 
         const loansList = await query(
-          `SELECT l.id AS loan_id, l.principal AS loan_principal, l.start_date, l.customer_id, c.name AS customer_name, c.phone AS customer_phone
+          `SELECT l.id AS loan_id, l.principal AS loan_principal, l.total_amount AS loan_total_amount, l.interest_rate AS loan_interest_rate, l.start_date, l.customer_id, c.name AS customer_name, c.phone AS customer_phone, c.address AS customer_address
            FROM loans l
            LEFT JOIN customers c ON c.id = l.customer_id
            ${loanWhere}
@@ -91,14 +230,24 @@ async function getTallyVouchers(req, res) {
           const processingFee = Math.round(totalLoanAmount * 0.10);
           const gstAmount = Math.round(processingFee * 0.18);
           const netDisbursed = Math.max(0, totalLoanAmount - processingFee - gstAmount) || totalLoanAmount;
-          const feeAndGstTotal = processingFee + gstAmount;
+
+          let interestAmount = 0;
+          if (item.loan_total_amount && Number(item.loan_total_amount) > totalLoanAmount) {
+            interestAmount = Math.round(Number(item.loan_total_amount) - totalLoanAmount);
+          } else if (item.loan_interest_rate && Number(item.loan_interest_rate) > 0) {
+            interestAmount = Math.round((totalLoanAmount * Number(item.loan_interest_rate)) / 100);
+          } else {
+            interestAmount = Math.round(totalLoanAmount * 0.10);
+          }
+
+          const { state: customerState, isUP } = resolveStateInfo('', item.customer_address);
 
           if (isPayment) {
             vouchers.push({
               id: loanId,
               pan_number: "ABCDE1234F",
-              State: "West Bengal",
-              address_line1: "Main Address",
+              State: customerState,
+              address_line1: item.customer_address || "Main Address",
               address_line2: null,
               voucher_type: "payment",
               voucher_date: formatDateForTally(item.start_date),
@@ -113,25 +262,28 @@ async function getTallyVouchers(req, res) {
               ]
             });
           } else {
-            const entries = [
-              { ledger_name: loanId, amount: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount, dr_cr: "Dr" }
-            ];
-            if (processingFee > 0) entries.push({ ledger_name: "Processing Fee (WaqtMoney)", amount: processingFee, dr_cr: "Cr" });
-            if (gstAmount > 0) entries.push({ ledger_name: "Output Igst", amount: gstAmount, dr_cr: "Cr" });
+            const { entries, totalDebit, totalCredit } = buildJournalEntries(
+              loanId,
+              processingFee,
+              gstAmount,
+              interestAmount,
+              isUP,
+              totalLoanAmount
+            );
 
             vouchers.push({
               id: loanId,
               pan_number: "ABCDE1234F",
-              State: "West Bengal",
-              address_line1: "Main Address",
+              State: customerState,
+              address_line1: item.customer_address || "Main Address",
               address_line2: null,
               voucher_type: "journal",
               voucher_date: formatDateForTally(item.start_date),
               voucher_number: `VCH/DISB/${loanId}`,
               reference_number: `REF/DISB/${loanId}`,
-              narration: `Fee & GST Booking for ${item.customer_name || 'Borrower'} (${loanId})`,
-              total_debit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
-              total_credit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
+              narration: `Fee, GST & Interest Booking for ${item.customer_name || 'Borrower'} (${loanId})`,
+              total_debit: totalDebit,
+              total_credit: totalCredit,
               entries
             });
           }
@@ -151,8 +303,10 @@ async function getTallyVouchers(req, res) {
         }
 
         const lapList = await query(
-          `SELECT lap.id, lap.lead_id, lap.application_id, lap.loan_id, lap.amount, lap.reference, lap.transaction_id, lap.disbursed_at, lap.paid_at
+          `SELECT lap.id, lap.lead_id, lap.application_id, lap.loan_id, lap.amount, lap.reference, lap.transaction_id, lap.disbursed_at, lap.paid_at,
+                  la.city AS customer_city, la.office_address AS customer_address, la.pan_number AS customer_pan, la.full_name AS customer_name
            FROM lead_accounting_payments lap
+           LEFT JOIN loan_applications la ON (la.application_id = lap.application_id)
            ${lapWhere}
            ORDER BY lap.id DESC LIMIT 500`,
           lapParams
@@ -167,14 +321,16 @@ async function getTallyVouchers(req, res) {
           const processingFee = Math.round(totalLoanAmount * 0.10);
           const gstAmount = Math.round(processingFee * 0.18);
           const netDisbursed = Math.max(0, totalLoanAmount - processingFee - gstAmount) || totalLoanAmount;
-          const feeAndGstTotal = processingFee + gstAmount;
+          const interestAmount = Math.round(totalLoanAmount * 0.10);
+
+          const { state: customerState, isUP } = resolveStateInfo('', item.customer_address || item.customer_city);
 
           if (isPayment) {
             vouchers.push({
               id: loanId,
-              pan_number: "ABCDE1234F",
-              State: "West Bengal",
-              address_line1: "Main Address",
+              pan_number: item.customer_pan || "ABCDE1234F",
+              State: customerState,
+              address_line1: item.customer_address || item.customer_city || "Main Address",
               address_line2: null,
               voucher_type: "payment",
               voucher_date: formatDateForTally(item.disbursed_at || item.paid_at),
@@ -189,25 +345,28 @@ async function getTallyVouchers(req, res) {
               ]
             });
           } else {
-            const entries = [
-              { ledger_name: loanId, amount: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount, dr_cr: "Dr" }
-            ];
-            if (processingFee > 0) entries.push({ ledger_name: "Processing Fee (WaqtMoney)", amount: processingFee, dr_cr: "Cr" });
-            if (gstAmount > 0) entries.push({ ledger_name: "Output Igst", amount: gstAmount, dr_cr: "Cr" });
+            const { entries, totalDebit, totalCredit } = buildJournalEntries(
+              loanId,
+              processingFee,
+              gstAmount,
+              interestAmount,
+              isUP,
+              totalLoanAmount
+            );
 
             vouchers.push({
               id: loanId,
-              pan_number: "ABCDE1234F",
-              State: "West Bengal",
-              address_line1: "Main Address",
+              pan_number: item.customer_pan || "ABCDE1234F",
+              State: customerState,
+              address_line1: item.customer_address || item.customer_city || "Main Address",
               address_line2: null,
               voucher_type: "journal",
               voucher_date: formatDateForTally(item.disbursed_at || item.paid_at),
               voucher_number: `VCH/DISB/${item.id}`,
               reference_number: item.transaction_id || item.reference || `REF/DISB/${item.id}`,
-              narration: `Fee & GST Booking (${loanId})`,
-              total_debit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
-              total_credit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
+              narration: `Fee, GST & Interest Booking (${loanId})`,
+              total_debit: totalDebit,
+              total_credit: totalCredit,
               entries
             });
           }
@@ -227,7 +386,7 @@ async function getTallyVouchers(req, res) {
         }
 
         const laList = await query(
-          `SELECT la.id, la.application_id, la.full_name, la.pan_number, la.city, la.state, la.loan_amount, la.processing_fee, la.gst_amount, la.created_at
+          `SELECT la.id, la.application_id, la.full_name, la.pan_number, la.city, la.office_address, la.loan_amount, la.created_at
            FROM loan_applications la
            ${laWhere}
            ORDER BY la.id DESC LIMIT 500`,
@@ -240,17 +399,19 @@ async function getTallyVouchers(req, res) {
           processedLoanIds.add(loanId);
 
           const totalLoanAmount = Number(item.loan_amount || 0);
-          const processingFee = Number(item.processing_fee || Math.round(totalLoanAmount * 0.10) || 0);
-          const gstAmount = Number(item.gst_amount || Math.round(processingFee * 0.18) || 0);
+          const processingFee = Math.round(totalLoanAmount * 0.10);
+          const gstAmount = Math.round(processingFee * 0.18);
           const netDisbursed = Math.max(0, totalLoanAmount - processingFee - gstAmount) || totalLoanAmount;
-          const feeAndGstTotal = processingFee + gstAmount;
+          const interestAmount = Math.round(totalLoanAmount * 0.10);
+
+          const { state: customerState, isUP } = resolveStateInfo('', item.office_address || item.city);
 
           if (isPayment) {
             vouchers.push({
               id: loanId,
               pan_number: item.pan_number || "ABCDE1234F",
-              State: item.state || "West Bengal",
-              address_line1: item.city || "Main Address",
+              State: customerState,
+              address_line1: item.office_address || item.city || "Main Address",
               address_line2: null,
               voucher_type: "payment",
               voucher_date: formatDateForTally(item.created_at),
@@ -265,25 +426,28 @@ async function getTallyVouchers(req, res) {
               ]
             });
           } else {
-            const entries = [
-              { ledger_name: loanId, amount: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount, dr_cr: "Dr" }
-            ];
-            if (processingFee > 0) entries.push({ ledger_name: "Processing Fee (WaqtMoney)", amount: processingFee, dr_cr: "Cr" });
-            if (gstAmount > 0) entries.push({ ledger_name: "Output Igst", amount: gstAmount, dr_cr: "Cr" });
+            const { entries, totalDebit, totalCredit } = buildJournalEntries(
+              loanId,
+              processingFee,
+              gstAmount,
+              interestAmount,
+              isUP,
+              totalLoanAmount
+            );
 
             vouchers.push({
               id: loanId,
               pan_number: item.pan_number || "ABCDE1234F",
-              State: item.state || "West Bengal",
-              address_line1: item.city || "Main Address",
+              State: customerState,
+              address_line1: item.office_address || item.city || "Main Address",
               address_line2: null,
               voucher_type: "journal",
               voucher_date: formatDateForTally(item.created_at),
               voucher_number: `VCH/DISB/${item.id}`,
               reference_number: `REF/DISB/${item.id}`,
-              narration: `Fee & GST Booking for ${item.full_name || 'Borrower'} (${loanId})`,
-              total_debit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
-              total_credit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
+              narration: `Fee, GST & Interest Booking for ${item.full_name || 'Borrower'} (${loanId})`,
+              total_debit: totalDebit,
+              total_credit: totalCredit,
               entries
             });
           }
@@ -309,9 +473,7 @@ async function getTallyVouchers(req, res) {
             COALESCE(MAX(la.full_name), 'Borrower') AS applicant_name,
             COALESCE(MAX(la.pan_number), 'ABCDE1234F') AS pan_number,
             COALESCE(MAX(la.city), 'Main Address') AS address,
-            COALESCE(MAX(la.loan_amount), SUM(lr.amount), 10000) AS total_amount,
-            COALESCE(MAX(la.processing_fee), 0) AS processing_fee,
-            COALESCE(MAX(la.gst_amount), 0) AS gst_amount
+            COALESCE(MAX(la.loan_amount), SUM(lr.amount), 10000) AS total_amount
            FROM loan_repayments lr
            LEFT JOIN loan_applications la ON (la.application_id = lr.loan_id OR lr.lead_id = CAST(la.id AS CHAR) OR lr.customer_id = CAST(la.id AS CHAR))
            ${lrWhere}
@@ -326,16 +488,18 @@ async function getTallyVouchers(req, res) {
           processedLoanIds.add(loanId);
 
           const totalLoanAmount = Number(item.total_amount || 10000);
-          const processingFee = Number(item.processing_fee || Math.round(totalLoanAmount * 0.10) || 0);
-          const gstAmount = Number(item.gst_amount || Math.round(processingFee * 0.18) || 0);
+          const processingFee = Math.round(totalLoanAmount * 0.10);
+          const gstAmount = Math.round(processingFee * 0.18);
           const netDisbursed = Math.max(0, totalLoanAmount - processingFee - gstAmount) || totalLoanAmount;
-          const feeAndGstTotal = processingFee + gstAmount;
+          const interestAmount = Math.round(totalLoanAmount * 0.10);
+
+          const { state: customerState, isUP } = resolveStateInfo('', item.address);
 
           if (isPayment) {
             vouchers.push({
               id: loanId,
               pan_number: item.pan_number || "ABCDE1234F",
-              State: "West Bengal",
+              State: customerState,
               address_line1: item.address || "Main Address",
               address_line2: null,
               voucher_type: "payment",
@@ -351,25 +515,28 @@ async function getTallyVouchers(req, res) {
               ]
             });
           } else {
-            const entries = [
-              { ledger_name: loanId, amount: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount, dr_cr: "Dr" }
-            ];
-            if (processingFee > 0) entries.push({ ledger_name: "Processing Fee (WaqtMoney)", amount: processingFee, dr_cr: "Cr" });
-            if (gstAmount > 0) entries.push({ ledger_name: "Output Igst", amount: gstAmount, dr_cr: "Cr" });
+            const { entries, totalDebit, totalCredit } = buildJournalEntries(
+              loanId,
+              processingFee,
+              gstAmount,
+              interestAmount,
+              isUP,
+              totalLoanAmount
+            );
 
             vouchers.push({
               id: loanId,
               pan_number: item.pan_number || "ABCDE1234F",
-              State: "West Bengal",
+              State: customerState,
               address_line1: item.address || "Main Address",
               address_line2: null,
               voucher_type: "journal",
               voucher_date: formatDateForTally(item.disb_date),
               voucher_number: `VCH/DISB/${loanId}`,
               reference_number: `REF/DISB/${loanId}`,
-              narration: `Fee & GST Booking for ${item.applicant_name || 'Borrower'} (${loanId})`,
-              total_debit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
-              total_credit: feeAndGstTotal > 0 ? feeAndGstTotal : totalLoanAmount,
+              narration: `Fee, GST & Interest Booking for ${item.applicant_name || 'Borrower'} (${loanId})`,
+              total_debit: totalDebit,
+              total_credit: totalCredit,
               entries
             });
           }
@@ -469,4 +636,6 @@ async function getTallyVouchers(req, res) {
 
 module.exports = {
   getTallyVouchers,
+  resolveStateInfo,
+  buildJournalEntries,
 };
