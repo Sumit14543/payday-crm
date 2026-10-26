@@ -541,6 +541,7 @@ export function Layout() {
                             { label: "Lead Report", target: "lead-report" },
                             { label: "Application Report", target: "application-report" },
                             { label: "Loan Report", target: "loan-report" },
+                            { label: "Reloan Report", target: "reloan-report" },
                             { label: "Disbursement Report", target: "disbursement-report" },
                             { label: "Collection Report", target: "collection-report" },
                             { label: "CIBIL Bureau Report", target: "cibil-report" },

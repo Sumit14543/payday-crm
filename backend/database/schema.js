@@ -1455,6 +1455,7 @@ async function ensureSupportUsers() {
   await ensureCrmUserRoleSupportsProductAdmin();
 
   const users = [
+    { email: 'support@waqtmoney.in', name: 'CRM Superadmin', role: 'superadmin' },
     { email: 'support@waqtmoney.in', name: 'Waqt Support Telecaller', role: 'telecaller' },
     { email: 'support@waqtfinance.com', name: 'Waqt Support Telecaller', role: 'telecaller' },
     { email: 'support@waqtmoney.in', name: 'Waqt Support Admin', role: 'product-admin' },
@@ -1463,7 +1464,9 @@ async function ensureSupportUsers() {
   ];
 
   const salt = '45fc08e36726dcad454fdc48a13b0c61';
-  const hash = 'df0f082a63d1ba7ee1d265f71b286a2dd4a7dea87d7124a4fcf46f85cc83e621'; // WaqtSupport@2026##
+  const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b'; // Sanjay@@2026@@123##
+  const prodAdminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d'; // Bhupender@@2026@321##
+  const telecallerHash = 'df0f082a63d1ba7ee1d265f71b286a2dd4a7dea87d7124a4fcf46f85cc83e621'; // WaqtSupport@2026##
 
   for (const u of users) {
     try {
@@ -1471,7 +1474,7 @@ async function ensureSupportUsers() {
         `INSERT INTO crm_users (email, name, role, password_salt, password_hash, is_active, on_duty)
          VALUES (?, ?, ?, ?, ?, 1, 1)
          ON DUPLICATE KEY UPDATE name = VALUES(name), password_salt = VALUES(password_salt), password_hash = VALUES(password_hash), is_active = 1, on_duty = 1`,
-        [u.email, u.name, u.role, salt, hash]
+        [u.email, u.name, u.role, salt, u.role === 'superadmin' ? superadminHash : (u.role === 'product-admin' ? prodAdminHash : telecallerHash)]
       );
     } catch (e) {
       console.error('[SCHEMA] ensureSupportUsers failed for:', u.email, u.role, e.message);

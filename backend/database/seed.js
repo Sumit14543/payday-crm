@@ -115,7 +115,7 @@ async function seedCrmUsers(tenant) {
       email = isWaqt ? (role === 'product-admin' ? 'support@waqtfinance.com' : `${role}@waqtfinance.com`) : `${role}@${slug}.com`;
       userName = isWaqt ? (role === 'product-admin' ? 'Waqt Support Admin' : `Waqt ${role}`) : `${name} ${role}`;
       salt = '45fc08e36726dcad454fdc48a13b0c61';
-      hash = role === 'product-admin' ? 'aa685e02f752d8ed815bd246a6fd721ed2376e170b4758bf70ececdc431b4521' : '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c';
+      hash = role === 'product-admin' ? '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d' : '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c';
     }
 
     await query(
@@ -145,7 +145,8 @@ async function seedCrmUsers(tenant) {
       INSERT INTO crm_users (email, name, role, password_salt, password_hash, is_active)
       VALUES 
         ('support@waqtmoney.in', 'Waqt Support Telecaller', 'telecaller', '45fc08e36726dcad454fdc48a13b0c61', '70db89d03407cd26e00725ffd1f9cbc9822b33cc36e6f7047d86c0fccd517b8c', 1),
-        ('support@waqtmoney.in', 'Waqt Support Admin', 'product-admin', '45fc08e36726dcad454fdc48a13b0c61', 'aa685e02f752d8ed815bd246a6fd721ed2376e170b4758bf70ececdc431b4521', 1)
+        ('support@waqtmoney.in', 'Waqt Support Admin', 'product-admin', '45fc08e36726dcad454fdc48a13b0c61', '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d', 1),
+        ('support@waqtmoney.in', 'CRM Superadmin', 'superadmin', '45fc08e36726dcad454fdc48a13b0c61', '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b', 1)
       ON DUPLICATE KEY UPDATE
         name = VALUES(name),
         password_salt = VALUES(password_salt),

@@ -5,7 +5,7 @@ const { config } = require('../config/env');
 const PASSWORD_ITERATIONS = 120000;
 
 const [, , tenantSlug, role, email, newPassword] = process.argv;
-const validRoles = new Set(['telecaller', 'credit-manager', 'accountant', 'collection']);
+const validRoles = new Set(['telecaller', 'credit-manager', 'accountant', 'collection', 'product-admin', 'superadmin']);
 
 if (!tenantSlug || !role || !email || !newPassword) {
   console.log('\n❌ Missing arguments!');

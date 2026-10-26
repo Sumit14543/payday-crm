@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams, useOutletContext } from "react-router-dom";
-import { Activity, AlertTriangle, Banknote, Briefcase, Calendar, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, DollarSign, Download, FileSpreadsheet, FileText, IndianRupee, Phone, Search, Send, ShieldAlert, ShieldCheck, UserPlus, Users, Printer } from "lucide-react";
+import { Activity, AlertTriangle, Banknote, Briefcase, Calendar, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, DollarSign, Download, FileSpreadsheet, FileText, IndianRupee, Phone, Search, Send, ShieldAlert, ShieldCheck, UserPlus, Users, Printer, RefreshCw, Repeat } from "lucide-react";
 import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { AppTooltip } from "../../components/ui/app-tooltip";
@@ -30,6 +30,49 @@ type Lead = {
   nextActionDueAt?: string | null;
   slaBreached?: boolean;
   slaStatus?: string;
+  isReloan?: number | boolean;
+  previousLoanId?: string | null;
+  panNumber?: string;
+  email?: string;
+  city?: string;
+  companyName?: string;
+  employmentStatus?: string;
+  monthlyIncome?: number | null;
+  bankName?: string;
+  accountNumber?: string;
+  loanPurpose?: string;
+  aadhaarNumber?: string;
+  loanId?: string;
+};
+
+type ReloanReportItem = {
+  id: string;
+  applicationId: string;
+  loanId?: string;
+  customerName: string;
+  phone: string;
+  email?: string;
+  panNumber?: string;
+  aadhaarNumber?: string;
+  city?: string;
+  pincode?: string;
+  companyName?: string;
+  employmentStatus?: string;
+  monthlyIncome?: number;
+  bankName?: string;
+  accountNumber?: string;
+  loanPurpose?: string;
+  loanAmount: number;
+  status: string;
+  priority?: string;
+  assignedTo?: string;
+  previousLoanId?: string;
+  reloanIteration: number;
+  reloanNumberLabel: string;
+  totalTimesReloaned: number;
+  totalTimesLabel: string;
+  createdAt?: string;
+  createdDate?: string;
 };
 
 type SlaReport = {
@@ -560,6 +603,7 @@ export function Reports() {
   const [collectionDeepReport, setCollectionDeepReport] = useState<CollectionDeepReport | null>(null);
   const [collections, setCollections] = useState<CollectionReportRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [reloansReportData, setReloansReportData] = useState<ReloanReportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [apiError, setApiError] = useState("");
   const currentRole = "superadmin";
@@ -621,9 +665,16 @@ export function Reports() {
     const auditLogsRequest = isAccountant || currentRole === "credit-manager" || isSuperadmin
       ? apiGet<AuditLog[]>("/dashboard/audit-logs", controller.signal)
       : Promise.resolve<AuditLog[]>([]);
+    const reloansRequest = apiGet<any>("/leads/reports/reloans", controller.signal)
+      .then((res: any) => {
+        if (Array.isArray(res)) return res as ReloanReportItem[];
+        if (res && Array.isArray(res.data)) return res.data as ReloanReportItem[];
+        return [] as ReloanReportItem[];
+      })
+      .catch(() => [] as ReloanReportItem[]);
 
-    Promise.all([leadsRequest, slaRequest, accountRequest, interestRequest, collectionRequest, collectionDeepRequest, auditLogsRequest])
-      .then(([leadRows, report, account, interest, collectionRows, collectionDeep, logs]) => {
+    Promise.all([leadsRequest, slaRequest, accountRequest, interestRequest, collectionRequest, collectionDeepRequest, auditLogsRequest, reloansRequest])
+      .then(([leadRows, report, account, interest, collectionRows, collectionDeep, logs, reloansList]) => {
         const schemes = ["Payday Loan (Standard)", "Payday Loan (Express)", "Payday Loan (Flexi)", "Payday Loan (Premium)"];
         const activeIdx = schemes.indexOf(activeProduct);
         const filterList = (arr: any[]) => arr;
@@ -687,6 +738,7 @@ export function Reports() {
         setCollections(filteredCollections);
         setCollectionDeepReport(filteredCollectionDeep);
         setAuditLogs(filteredLogs);
+        setReloansReportData(reloansList || []);
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
@@ -711,6 +763,77 @@ export function Reports() {
   const documentPendingLeads = filteredLeads.filter((lead) => Number(lead.pendingDocumentCount || 0) > 0);
   const followupLeads = filteredLeads.filter((lead) => Boolean(lead.nextFollowupAt));
   const handoffLeads = filteredLeads.filter((lead) => Boolean(lead.latestHandoffStatus));
+
+  const dashboardReloans = useMemo(() => {
+    if (reloansReportData && reloansReportData.length > 0) {
+      return reloansReportData;
+    }
+    const custMap = new Map<string, any[]>();
+    leads.forEach((l) => {
+      const pan = (l.panNumber || "").trim().toUpperCase();
+      const phone = (l.phone || "").trim().replace(/[^0-9]/g, "").slice(-10);
+      const email = (l.email || "").trim().toLowerCase();
+      const key = (pan && pan.length >= 5) ? `pan_${pan}` : (phone && phone.length === 10) ? `phone_${phone}` : (email && email.includes("@")) ? `email_${email}` : `lead_${l.id}`;
+      if (!custMap.has(key)) custMap.set(key, []);
+      custMap.get(key)!.push(l);
+    });
+
+    const items: ReloanReportItem[] = [];
+    custMap.forEach((apps) => {
+      apps.sort((a, b) => new Date(a.createdDate || 0).getTime() - new Date(b.createdDate || 0).getTime());
+      const reloanApps: Array<{ app: any; idx: number }> = [];
+      apps.forEach((app, idx) => {
+        const isExplicit = Number(app.isReloan) === 1 || Boolean(app.previousLoanId && String(app.previousLoanId).trim() !== "");
+        const isSubsequent = idx > 0;
+        if (isExplicit || isSubsequent) {
+          reloanApps.push({ app, idx });
+        }
+      });
+      const totalTimes = reloanApps.length;
+      reloanApps.forEach((item, rIdx) => {
+        const iteration = rIdx + 1;
+        const suffix = iteration === 1 ? "1st" : iteration === 2 ? "2nd" : iteration === 3 ? "3rd" : `${iteration}th`;
+        let prev = item.app.previousLoanId;
+        if (!prev && item.idx > 0) {
+          prev = apps[item.idx - 1]?.loanId || apps[item.idx - 1]?.id || "-";
+        }
+        const statusLower = String(item.app.status || "").toLowerCase();
+        const isDisbursedOrClosed = ["disbursed", "active", "closed", "settled", "paid", "converted"].includes(statusLower);
+        const appLoanId = item.app.loanId || (isDisbursedOrClosed ? `LN-${String(item.app.id).replace(/[^0-9]/g, "")}` : "-");
+
+        items.push({
+          id: item.app.id,
+          applicationId: item.app.id,
+          loanId: appLoanId,
+          customerName: item.app.name || "Borrower",
+          phone: item.app.phone || "-",
+          email: item.app.email || "-",
+          panNumber: item.app.panNumber || "-",
+          aadhaarNumber: item.app.aadhaarNumber || "-",
+          city: item.app.city || "-",
+          pincode: item.app.pincode || "-",
+          companyName: item.app.companyName || "-",
+          employmentStatus: item.app.employmentStatus || "-",
+          monthlyIncome: Number(item.app.monthlyIncome || 0),
+          bankName: item.app.bankName || "-",
+          accountNumber: item.app.accountNumber || "-",
+          loanPurpose: item.app.loanPurpose || "-",
+          loanAmount: Number(item.app.loanAmount || 0),
+          status: item.app.status || "review",
+          priority: item.app.priority || "Medium",
+          previousLoanId: prev || "-",
+          reloanIteration: iteration,
+          reloanNumberLabel: `${suffix} Reloan`,
+          totalTimesReloaned: totalTimes,
+          totalTimesLabel: `${totalTimes} ${totalTimes === 1 ? "Time" : "Times"}`,
+          createdAt: item.app.createdDate,
+          createdDate: item.app.createdDate,
+        });
+      });
+    });
+    items.sort((a, b) => new Date(b.createdAt || b.createdDate || 0).getTime() - new Date(a.createdAt || a.createdDate || 0).getTime());
+    return items;
+  }, [reloansReportData, leads]);
   const summaryRows = [
     ...countRows(filteredLeads, "status").map((row) => ({ report: "Status", ...row })),
     ...countRows(filteredLeads, "priority").map((row) => ({ report: "Priority", ...row })),
@@ -915,6 +1038,7 @@ export function Reports() {
         collectionDeepReport={collectionDeepReport}
         collections={collections}
         auditLogs={auditLogs}
+        reloansData={reloansReportData}
         isLoading={isLoading}
         apiError={apiError}
         selectedPeriod={selectedPeriod}
@@ -968,6 +1092,13 @@ export function Reports() {
             <p className="mt-1 text-sm text-gray-600 dark:text-slate-300">Aging, DPD, outstanding exposure, and borrower-level collection file.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/product-admin/reports?type=reloan-report"
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white text-sm font-semibold hover:bg-indigo-700 transition shadow-sm"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Reloans Report
+            </Link>
             <Link
               to="/product-admin/reports?type=cibil-report"
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm"
@@ -1159,6 +1290,13 @@ export function Reports() {
             <p className="mt-1 text-sm text-gray-600">Finance, disbursement, repayment, payout, and collection file reports.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/product-admin/reports?type=reloan-report"
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white text-sm font-semibold hover:bg-indigo-700 transition shadow-sm"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Reloans Report
+            </Link>
             <Link
               to="/product-admin/reports?type=cibil-report"
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm"
@@ -1417,6 +1555,13 @@ export function Reports() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link
+            to="/product-admin/reports?type=reloan-report"
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white text-sm font-semibold hover:bg-indigo-700 transition shadow-sm"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Reloans Report
+          </Link>
+          <Link
             to="/product-admin/reports?type=cibil-report"
             className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm"
           >
@@ -1453,12 +1598,13 @@ export function Reports() {
 
       {apiError && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{apiError}</div>}
 
-      <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
         {[
           ["Total Leads", filteredLeads.length, Users, "Current period", "lead-summary-report"],
           ["Follow-ups", followupLeads.length, Clock, "Scheduled callbacks", "followup-report"],
           ["Docs Pending", documentPendingLeads.length, FileText, "Upload or verification needed", "doc-pending-report"],
           ["Credit Handoffs", handoffLeads.length, Send, "Sent to credit manager", "handoff-report"],
+          ["Total Reloans", dashboardReloans.length, RefreshCw, "Repeat borrower cases", "reloan-cases-report"],
         ].map(([label, value, Icon, note, targetId], index) => (
           <button
             key={label as string}
@@ -1611,6 +1757,39 @@ export function Reports() {
         ])}
       />
 
+      <div id="reloan-cases-report" className="mt-8">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base font-semibold text-gray-950">Reloan Cases</h3>
+            <p className="text-xs text-slate-500">Borrowers with repeat applications and reloan iterations.</p>
+          </div>
+          <Link
+            to="/product-admin/reports?type=reloan-report"
+            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+          >
+            Open Full Reloans Report <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <ReportTable
+          id="reloan-summary-table"
+          title="Reloan Cases"
+          headers={["Borrower", "Loan ID", "Application ID", "Previous Loan", "Phone", "Email", "PAN", "Reloan Cycle", "Times Reloaned", "Amount", "Status"]}
+          rows={dashboardReloans.slice(0, 15).map((r) => [
+            r.customerName,
+            r.loanId || "-",
+            r.applicationId,
+            r.previousLoanId || "-",
+            r.phone,
+            r.email || "-",
+            r.panNumber || "-",
+            r.reloanNumberLabel,
+            r.totalTimesLabel,
+            formatCurrency(r.loanAmount),
+            r.status,
+          ])}
+        />
+      </div>
+
       {(currentRole === "superadmin" || currentRole === "credit-manager") && (
         <div className="mt-8">
           <ReportTable
@@ -1641,6 +1820,7 @@ function SingleReportView({
   collectionDeepReport,
   collections,
   auditLogs,
+  reloansData = [],
   isLoading,
   apiError,
   selectedPeriod,
@@ -1655,6 +1835,7 @@ function SingleReportView({
   collectionDeepReport: CollectionDeepReport | null;
   collections: CollectionReportRow[];
   auditLogs: AuditLog[];
+  reloansData?: ReloanReportItem[];
   isLoading: boolean;
   apiError: string;
   selectedPeriod: string;
@@ -1666,6 +1847,83 @@ function SingleReportView({
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
 
+  const allReloanItems = useMemo(() => {
+    if (reloansData && reloansData.length > 0) {
+      return [...reloansData];
+    }
+    const custMap = new Map<string, any[]>();
+    leads.forEach((l) => {
+      const pan = (l.panNumber || "").trim().toUpperCase();
+      const phone = (l.phone || "").trim().replace(/[^0-9]/g, "").slice(-10);
+      const email = (l.email || "").trim().toLowerCase();
+      const key = (pan && pan.length >= 5)
+        ? `pan_${pan}`
+        : (phone && phone.length === 10)
+          ? `phone_${phone}`
+          : (email && email.includes("@"))
+            ? `email_${email}`
+            : `lead_${l.id}`;
+      if (!custMap.has(key)) custMap.set(key, []);
+      custMap.get(key)!.push(l);
+    });
+
+    const items: ReloanReportItem[] = [];
+    custMap.forEach((apps) => {
+      apps.sort((a, b) => new Date(a.createdDate || 0).getTime() - new Date(b.createdDate || 0).getTime());
+      const reloanApps: Array<{ app: any; idx: number }> = [];
+      apps.forEach((app, idx) => {
+        const isExplicit = Number(app.isReloan) === 1 || Boolean(app.previousLoanId && String(app.previousLoanId).trim() !== "");
+        const isSubsequent = idx > 0;
+        if (isExplicit || isSubsequent) {
+          reloanApps.push({ app, idx });
+        }
+      });
+      const totalTimes = reloanApps.length;
+      reloanApps.forEach((item, rIdx) => {
+        const iteration = rIdx + 1;
+        const suffix = iteration === 1 ? "1st" : iteration === 2 ? "2nd" : iteration === 3 ? "3rd" : `${iteration}th`;
+        let prev = item.app.previousLoanId;
+        if (!prev && item.idx > 0) {
+          prev = apps[item.idx - 1]?.loanId || apps[item.idx - 1]?.id || "-";
+        }
+        const statusLower = String(item.app.status || "").toLowerCase();
+        const isDisbursedOrClosed = ["disbursed", "active", "closed", "settled", "paid", "converted"].includes(statusLower);
+        const appLoanId = item.app.loanId || (isDisbursedOrClosed ? `LN-${String(item.app.id).replace(/[^0-9]/g, "")}` : "-");
+
+        items.push({
+          id: item.app.id,
+          applicationId: item.app.id,
+          loanId: appLoanId,
+          customerName: item.app.name || "Borrower",
+          phone: item.app.phone || "-",
+          email: item.app.email || "-",
+          panNumber: item.app.panNumber || "-",
+          aadhaarNumber: item.app.aadhaarNumber || "-",
+          city: item.app.city || "-",
+          pincode: item.app.pincode || "-",
+          companyName: item.app.companyName || "-",
+          employmentStatus: item.app.employmentStatus || "-",
+          monthlyIncome: Number(item.app.monthlyIncome || 0),
+          bankName: item.app.bankName || "-",
+          accountNumber: item.app.accountNumber || "-",
+          loanPurpose: item.app.loanPurpose || "-",
+          loanAmount: Number(item.app.loanAmount || 0),
+          status: item.app.status || "review",
+          priority: item.app.priority || "Medium",
+          previousLoanId: prev || "-",
+          reloanIteration: iteration,
+          reloanNumberLabel: `${suffix} Reloan`,
+          totalTimesReloaned: totalTimes,
+          totalTimesLabel: `${totalTimes} ${totalTimes === 1 ? "Time" : "Times"}`,
+          createdAt: item.app.createdDate,
+          createdDate: item.app.createdDate,
+        });
+      });
+    });
+    items.sort((a, b) => new Date(b.createdAt || b.createdDate || 0).getTime() - new Date(a.createdAt || a.createdDate || 0).getTime());
+    return items;
+  }, [reloansData, leads]);
+
   const summaryCards = useMemo(() => {
     const { start, end } = getPeriodRange(selectedPeriod);
     const filterByDate = (dateVal: any) => {
@@ -1675,6 +1933,13 @@ function SingleReportView({
     };
 
     const pLeads = leads.filter(l => filterByDate(l.createdDate));
+    let pReloans = allReloanItems.filter(r => {
+      if (selectedPeriod === "alltime" || selectedPeriod === "all") return true;
+      return filterByDate(r.createdAt || r.createdDate);
+    });
+    if (statusFilter !== "all" && reportType === "reloan-report") {
+      pReloans = pReloans.filter(r => String(r.status || "").toLowerCase() === statusFilter.toLowerCase());
+    }
     
     let pCollections = collections;
     if (reportType === "collection-report") {
@@ -1782,6 +2047,17 @@ function SingleReportView({
           { label: "Total Outstanding", value: formatCurrency(totalOutstanding), note: "Principal & Interest due", color: "amber", icon: "DollarSign" },
           { label: "Overdue Loans", value: String(overdueLoans), note: "DPD > 0", color: "red", icon: "AlertTriangle" },
           { label: "Closed / Paid", value: String(paidLoans), note: "Loans settled", color: "emerald", icon: "CheckCircle2" },
+        ];
+      }
+      case "reloan-report": {
+        const totalReloanAmount = pReloans.reduce((sum, r) => sum + Number(r.loanAmount || 0), 0);
+        const firstTimeCount = pReloans.filter(r => r.reloanIteration === 1).length;
+        const repeatCount = pReloans.filter(r => r.reloanIteration > 1).length;
+        return [
+          { label: "Total Reloans", value: String(pReloans.length), note: "Reloans in selected period", color: "blue", icon: "RefreshCw" },
+          { label: "Reloan Volume", value: formatCurrency(totalReloanAmount), note: "Total requested/funded", color: "emerald", icon: "Banknote" },
+          { label: "1st Time Reloans", value: String(firstTimeCount), note: "First reloan cycle", color: "indigo", icon: "CheckCircle2" },
+          { label: "Repeat Reloans (2+)", value: String(repeatCount), note: "Customers reloaned 2+ times", color: "amber", icon: "Activity" },
         ];
       }
       case "disbursement-report": {
@@ -1901,7 +2177,7 @@ function SingleReportView({
       default:
         return [];
     }
-  }, [reportType, leads, slaReport, accountantReport, interestReports, collectionDeepReport, collections, auditLogs, selectedPeriod, statusFilter, priorityFilter]);
+  }, [reportType, leads, slaReport, accountantReport, interestReports, collectionDeepReport, collections, auditLogs, allReloanItems, selectedPeriod, statusFilter, priorityFilter]);
 
   const reportDetails = useMemo(() => {
     let title = "System Report";
@@ -1933,6 +2209,27 @@ function SingleReportView({
       case "loan-report":
         title = "Loan Report";
         headers = ["Loan Account", "Borrower", "Disbursement", "Disbursed On", "Due Date", "Outstanding", "EMI Status", "DPD"];
+        break;
+      case "reloan-report":
+        title = "Reloans Report";
+        headers = [
+          "S. No.",
+          "Customer Name",
+          "Loan ID",
+          "Application ID",
+          "Previous Loan ID",
+          "Phone",
+          "Email",
+          "PAN Number",
+          "City",
+          "Employment / Company",
+          "Monthly Income",
+          "Reloan Cycle",
+          "Times Reloaned",
+          "Loan Amount",
+          "Status",
+          "Applied Date",
+        ];
         break;
       case "disbursement-report":
         title = "Disbursement Report";
@@ -2053,6 +2350,10 @@ function SingleReportView({
       return true;
     });
     const periodAuditLogs = auditLogs.filter(a => filterByDate(a.createdAt));
+    const periodReloans = allReloanItems.filter(r => {
+      if (selectedPeriod === "alltime" || selectedPeriod === "all") return true;
+      return filterByDate(r.createdAt || r.createdDate);
+    });
 
     // Now populate records
     switch (reportType) {
@@ -2089,6 +2390,27 @@ function SingleReportView({
           outstanding: formatCurrency(row.outstanding || row.totalDue),
           status: row.emiStatus || "-",
           dpd: String(row.daysOverdue || 0),
+        }));
+        break;
+
+      case "reloan-report":
+        rawData = periodReloans.map((r, idx) => ({
+          serial: String(idx + 1),
+          customerName: r.customerName || "-",
+          loanId: r.loanId || "-",
+          applicationId: r.applicationId || r.id || "-",
+          previousLoanId: r.previousLoanId || "-",
+          phone: r.phone || "-",
+          email: r.email || "-",
+          pan: r.panNumber || "-",
+          city: r.city || "-",
+          employment: r.companyName && r.companyName !== "-" ? `${r.companyName}${r.employmentStatus && r.employmentStatus !== "-" ? ` (${r.employmentStatus})` : ""}` : (r.employmentStatus || "-"),
+          monthlyIncome: r.monthlyIncome ? formatCurrency(r.monthlyIncome) : "-",
+          reloanCycle: r.reloanNumberLabel || `${r.reloanIteration || 1}${r.reloanIteration === 1 ? 'st' : r.reloanIteration === 2 ? 'nd' : r.reloanIteration === 3 ? 'rd' : 'th'} Reloan`,
+          timesReloaned: r.totalTimesLabel || `${r.totalTimesReloaned || 1} ${Number(r.totalTimesReloaned) === 1 ? 'Time' : 'Times'}`,
+          loanAmount: formatCurrency(r.loanAmount),
+          status: r.status || "-",
+          appliedDate: formatDate(r.createdAt || r.createdDate),
         }));
         break;
 
@@ -2307,7 +2629,7 @@ function SingleReportView({
       );
     }
 
-    if (statusFilter !== "all" && (reportType === "lead-report" || reportType === "loan-report" || reportType === "collection-report" || reportType === "outstanding-report" || reportType === "recovery-report")) {
+    if (statusFilter !== "all" && (reportType === "lead-report" || reportType === "loan-report" || reportType === "reloan-report" || reportType === "collection-report" || reportType === "outstanding-report" || reportType === "recovery-report")) {
       filteredData = filteredData.filter((item: any) => String(item.status || item.emiStatus || "").toLowerCase() === statusFilter.toLowerCase());
     }
 
@@ -2318,7 +2640,7 @@ function SingleReportView({
     rows = filteredData.map(item => Object.values(item));
 
     return { title, headers, rows, rawData: filteredData };
-  }, [reportType, leads, slaReport, accountantReport, interestReports, collectionDeepReport, collections, auditLogs, isLoading, searchQuery, statusFilter, priorityFilter, selectedPeriod]);
+  }, [reportType, leads, slaReport, accountantReport, interestReports, collectionDeepReport, collections, auditLogs, allReloanItems, isLoading, searchQuery, statusFilter, priorityFilter, selectedPeriod]);
 
   const handleExportCsv = () => {
     if (reportType === "cibil-report") {
@@ -2447,6 +2769,8 @@ function SingleReportView({
               Briefcase,
               DollarSign,
               ShieldAlert,
+              RefreshCw,
+              Repeat,
             }[card.icon] || FileText;
 
             const colorClasses = {
@@ -2556,7 +2880,7 @@ function SingleReportView({
           ]}
         />
 
-        {(reportType === "lead-report" || reportType === "loan-report" || reportType === "collection-report" || reportType === "outstanding-report" || reportType === "recovery-report") && (
+        {(reportType === "lead-report" || reportType === "loan-report" || reportType === "reloan-report" || reportType === "collection-report" || reportType === "outstanding-report" || reportType === "recovery-report") && (
           <NiceSelect
             ariaLabel="Filter status"
             value={statusFilter}
@@ -2618,6 +2942,7 @@ function getHeaderAlignment(header: string) {
     h.includes("balance") ||
     h.includes("principal") ||
     h.includes("interest") ||
+    h.includes("income") ||
     h.includes("fees") ||
     h.includes("total") ||
     h.includes("rate") ||
@@ -2625,7 +2950,15 @@ function getHeaderAlignment(header: string) {
   ) {
     return "text-right";
   }
-  if (h === "s. no." || h === "dpd" || h === "priority" || h === "status" || h.includes("status")) {
+  if (
+    h === "s. no." ||
+    h === "dpd" ||
+    h === "priority" ||
+    h === "status" ||
+    h.includes("status") ||
+    h.includes("cycle") ||
+    h.includes("times")
+  ) {
     return "text-center";
   }
   return "text-left";
@@ -2636,7 +2969,7 @@ function renderCell(cell: string, header: string) {
   const lowerHeader = header.toLowerCase();
 
   // Clickable Lead / Application Links
-  if (lowerHeader === "lead id" || lowerHeader === "id" || lowerHeader === "lead / app id") {
+  if (lowerHeader === "lead id" || lowerHeader === "id" || lowerHeader === "lead / app id" || lowerHeader === "application id") {
     if (trimmed && trimmed !== "-" && trimmed !== "System") {
       return (
         <Link to={`/leads/${trimmed}`} className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline">
@@ -2647,7 +2980,7 @@ function renderCell(cell: string, header: string) {
   }
 
   // Clickable Loan Account Links
-  if (lowerHeader === "loan account" || lowerHeader === "loan account id" || lowerHeader === "loan id") {
+  if (lowerHeader === "loan account" || lowerHeader === "loan account id" || lowerHeader === "loan id" || lowerHeader === "previous loan id" || lowerHeader === "previous loan") {
     if (trimmed && trimmed !== "-") {
       return (
         <Link to={`/loan-management/${trimmed}`} className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline">
@@ -2655,6 +2988,53 @@ function renderCell(cell: string, header: string) {
         </Link>
       );
     }
+  }
+
+  // Reloan Cycle badge
+  if (lowerHeader === "reloan cycle") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+        <RefreshCw className="h-3 w-3 text-blue-500" />
+        {trimmed}
+      </span>
+    );
+  }
+
+  // Times Reloaned badge
+  if (lowerHeader === "times reloaned" || lowerHeader.includes("times reloaned")) {
+    const count = parseInt(trimmed, 10);
+    const badgeColor = count >= 3 
+      ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
+      : count === 2
+      ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+      : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold border ${badgeColor}`}>
+        <Repeat className="h-3 w-3" />
+        {trimmed}
+      </span>
+    );
+  }
+
+  // Customer Name with avatar
+  if (lowerHeader === "customer name" || lowerHeader === "borrower" || lowerHeader === "customer") {
+    return (
+      <span className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+        <span className="h-6 w-6 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center justify-center border border-indigo-200 dark:border-indigo-800 shrink-0">
+          {trimmed.charAt(0).toUpperCase()}
+        </span>
+        <span className="truncate max-w-[200px]">{trimmed}</span>
+      </span>
+    );
+  }
+
+  // Email
+  if (lowerHeader === "email") {
+    return (
+      <span className="text-slate-600 dark:text-slate-300 text-xs font-normal lowercase truncate max-w-[190px] block" title={trimmed}>
+        {trimmed}
+      </span>
+    );
   }
 
   // 1. Currency formatting

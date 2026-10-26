@@ -124,6 +124,21 @@ async function migrateMaster() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    // Helper function to add columns to superadmins if they don't exist
+    const addSuperadminColumn = async (columnName, definition) => {
+      try {
+        await queryMaster(connection, `ALTER TABLE superadmins ADD COLUMN ${columnName} ${definition}`);
+      } catch (err) {
+        if (err.code !== 'ER_DUP_FIELDNAME') {
+          console.error(`Error adding column ${columnName} to superadmins:`, err);
+        }
+      }
+    };
+
+    await addSuperadminColumn('login_otp_code', 'VARCHAR(10) DEFAULT NULL');
+    await addSuperadminColumn('login_otp_token', 'VARCHAR(128) DEFAULT NULL');
+    await addSuperadminColumn('login_otp_expires_at', 'DATETIME DEFAULT NULL');
+
     console.log('Master database migration completed.');
   } finally {
     connection.end();
@@ -137,12 +152,12 @@ async function seedMaster() {
   });
 
   try {
-    // Seed default superadmin: admin@paydaycrm.com / Sanjay@#2026@#
-    const email = 'admin@paydaycrm.com';
+    // Seed default superadmin: support@waqtmoney.in / Sanjay@@2026@@123##
+    const email = 'support@waqtmoney.in';
     const name = 'CRM Superadmin';
     const salt = '45fc08e36726dcad454fdc48a13b0c61';
-    const superadminHash = 'a98cb65017271ac0480300711827d1c0847279d1cd3a0f63d5657b44da832355'; // Sanjay@#2026@#
-    const productadminHash = 'aa685e02f752d8ed815bd246a6fd721ed2376e170b4758bf70ececdc431b4521'; // Bhupendra@#2026@#
+    const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b'; // Sanjay@@2026@@123##
+    const productadminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d'; // Bhupender@@2026@321##
 
     await queryMaster(connection, `
       INSERT INTO superadmins (name, email, password_hash, password_salt, is_active)
@@ -150,7 +165,7 @@ async function seedMaster() {
       ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), password_salt = VALUES(password_salt)
     `, [name, email, superadminHash, salt]);
 
-    // Seed default product admin: productadmin@paydaycrm.com / Bhupendra@#2026@#
+    // Seed default product admin: productadmin@paydaycrm.com / ProdAdmin@#6184JwZr9!K
     await queryMaster(connection, `
       INSERT INTO superadmins (name, email, password_hash, password_salt, is_active)
       VALUES (?, ?, ?, ?, 1)

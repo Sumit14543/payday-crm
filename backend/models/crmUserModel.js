@@ -1,5 +1,8 @@
 const { query } = require('../config/db');
 
+// In-memory OTP store to guarantee instant lookup across Master and Tenant DBs
+const memoryOtpSessions = new Map();
+
 async function findActiveByEmailAndRole(email, role) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   let rows = await query(
@@ -38,6 +41,20 @@ async function findActiveByEmailAndRole(email, role) {
     } catch (e) {}
   }
 
+  if ((!rows || !rows[0]) && role === 'superadmin') {
+    try {
+      const { queryMaster } = require('../config/db');
+      const masterRows = await queryMaster(
+        `SELECT id, email, name, 'superadmin' AS role, password_salt AS salt, password_hash AS hash FROM superadmins WHERE email = ? AND is_active = 1 LIMIT 1`,
+        [cleanEmail]
+      );
+      if (masterRows && masterRows[0]) {
+        masterRows[0].isMasterSuperadmin = true;
+        return masterRows[0];
+      }
+    } catch (e) {}
+  }
+
   return rows[0] || null;
 }
 
@@ -53,33 +70,101 @@ async function listPublicUsers() {
 async function markLogin(userId) {
   if (!userId) return;
 
-  await query('UPDATE crm_users SET last_login_at = NOW() WHERE id = ?', [userId]);
+  try {
+    await query('UPDATE crm_users SET last_login_at = NOW() WHERE id = ?', [userId]);
+  } catch (e) {}
 }
 
-async function saveLoginOtp(userId, otpCode, tempToken, expiresAt) {
-  if (!userId) return;
-  await query(
-    `UPDATE crm_users SET login_otp_code = ?, login_otp_token = ?, login_otp_expires_at = ? WHERE id = ?`,
-    [otpCode, tempToken, expiresAt, userId]
-  );
+async function saveLoginOtp(userId, otpCode, tempToken, expiresAt, fullUser = null) {
+  if (tempToken) {
+    memoryOtpSessions.set(tempToken, {
+      id: userId || fullUser?.id,
+      email: fullUser?.email,
+      name: fullUser?.name,
+      role: fullUser?.role,
+      login_otp_code: otpCode,
+      login_otp_token: tempToken,
+      login_otp_expires_at: expiresAt,
+      isMasterSuperadmin: Boolean(fullUser?.isMasterSuperadmin),
+    });
+  }
+
+  if (userId) {
+    if (fullUser?.isMasterSuperadmin) {
+      try {
+        const { queryMaster } = require('../config/db');
+        await queryMaster(
+          `UPDATE superadmins SET login_otp_code = ?, login_otp_token = ?, login_otp_expires_at = ? WHERE id = ?`,
+          [otpCode, tempToken, expiresAt, userId]
+        );
+      } catch (e) {}
+    } else {
+      try {
+        await query(
+          `UPDATE crm_users SET login_otp_code = ?, login_otp_token = ?, login_otp_expires_at = ? WHERE id = ?`,
+          [otpCode, tempToken, expiresAt, userId]
+        );
+      } catch (e) {}
+    }
+  }
 }
 
 async function findUserByOtpToken(tempToken) {
   if (!tempToken) return null;
-  const rows = await query(
-    `SELECT id, email, name, role, login_otp_code, login_otp_token, login_otp_expires_at
-     FROM crm_users WHERE login_otp_token = ? AND is_active = 1 LIMIT 1`,
-    [tempToken]
-  );
-  return rows[0] || null;
+
+  // 1. Fast in-memory check
+  const mem = memoryOtpSessions.get(tempToken);
+  if (mem) {
+    return mem;
+  }
+
+  // 2. Check crm_users
+  try {
+    const rows = await query(
+      `SELECT id, email, name, role, login_otp_code, login_otp_token, login_otp_expires_at
+       FROM crm_users WHERE login_otp_token = ? AND is_active = 1 LIMIT 1`,
+      [tempToken]
+    );
+    if (rows && rows[0]) return rows[0];
+  } catch (e) {}
+
+  // 3. Check master superadmins
+  try {
+    const { queryMaster } = require('../config/db');
+    const masterRows = await queryMaster(
+      `SELECT id, email, name, 'superadmin' AS role, login_otp_code, login_otp_token, login_otp_expires_at
+       FROM superadmins WHERE login_otp_token = ? AND is_active = 1 LIMIT 1`,
+      [tempToken]
+    );
+    if (masterRows && masterRows[0]) {
+      masterRows[0].isMasterSuperadmin = true;
+      return masterRows[0];
+    }
+  } catch (e) {}
+
+  return null;
 }
 
-async function clearLoginOtp(userId) {
+async function clearLoginOtp(userId, tempToken = null) {
+  if (tempToken) {
+    memoryOtpSessions.delete(tempToken);
+  }
   if (!userId) return;
-  await query(
-    `UPDATE crm_users SET login_otp_code = NULL, login_otp_token = NULL, login_otp_expires_at = NULL WHERE id = ?`,
-    [userId]
-  );
+
+  try {
+    await query(
+      `UPDATE crm_users SET login_otp_code = NULL, login_otp_token = NULL, login_otp_expires_at = NULL WHERE id = ?`,
+      [userId]
+    );
+  } catch (e) {}
+
+  try {
+    const { queryMaster } = require('../config/db');
+    await queryMaster(
+      `UPDATE superadmins SET login_otp_code = NULL, login_otp_token = NULL, login_otp_expires_at = NULL WHERE id = ?`,
+      [userId]
+    );
+  } catch (e) {}
 }
 
 async function listActiveTelecallers() {
@@ -94,7 +179,6 @@ async function listActiveTelecallers() {
   `);
 }
 
-
 module.exports = {
   findActiveByEmailAndRole,
   listPublicUsers,
@@ -104,5 +188,3 @@ module.exports = {
   findUserByOtpToken,
   clearLoginOtp,
 };
-
-

@@ -645,6 +645,152 @@ async function updateLeadReferences(req, res) {
   });
 }
 
+async function getReloansReport(req, res) {
+  const { query } = require('../config/db');
+
+  let rawApplications = [];
+  try {
+    rawApplications = await query(`
+      SELECT 
+        la.id,
+        la.application_id AS applicationId,
+        COALESCE(
+          (SELECT lap.loan_id FROM lead_accounting_payments lap WHERE (lap.application_id = la.application_id OR lap.lead_id = CAST(la.id AS CHAR)) AND lap.loan_id IS NOT NULL AND lap.loan_id <> '' ORDER BY lap.id DESC LIMIT 1),
+          (SELECT cc.loan_id FROM collection_cases cc WHERE (cc.customer_id = la.application_id OR cc.customer_id = CAST(la.id AS CHAR)) AND cc.loan_id IS NOT NULL AND cc.loan_id <> '' ORDER BY cc.created_at DESC LIMIT 1),
+          (SELECT l.id FROM loans l WHERE (l.customer_id = la.application_id OR l.customer_id = CAST(la.id AS CHAR)) AND l.id IS NOT NULL AND l.id <> '' ORDER BY l.created_at DESC LIMIT 1),
+          ''
+        ) AS loanId,
+        la.full_name AS customerName,
+        la.mobile AS phone,
+        la.email,
+        la.pan_number AS panNumber,
+        la.aadhaar_number AS aadhaarNumber,
+        la.city,
+        la.pincode,
+        la.monthly_income AS monthlyIncome,
+        la.employment_status AS employmentStatus,
+        la.company_name AS companyName,
+        la.bank_name AS bankName,
+        la.account_number AS accountNumber,
+        la.loan_purpose AS loanPurpose,
+        la.loan_amount AS loanAmount,
+        la.status,
+        la.priority,
+        la.assigned_to AS assignedTo,
+        COALESCE(la.is_reloan, 0) AS isReloan,
+        la.previous_loan_id AS previousLoanId,
+        la.created_at AS createdAt,
+        la.updated_at AS updatedAt
+      FROM loan_applications la
+      ORDER BY la.created_at ASC, la.id ASC
+    `);
+  } catch (err) {
+    console.error('[leadController] getReloansReport query error:', err.message);
+  }
+
+  // Group applications by customer (PAN || phone || email || id)
+  const custApps = new Map();
+  for (const app of rawApplications) {
+    const pan = String(app.panNumber || '').trim().toUpperCase();
+    const phone = String(app.phone || '').trim().replace(/[^0-9]/g, '').slice(-10);
+    const email = String(app.email || '').trim().toLowerCase();
+    const key = (pan && pan.length >= 5)
+      ? `pan_${pan}`
+      : (phone && phone.length === 10)
+        ? `phone_${phone}`
+        : (email && email.includes('@'))
+          ? `email_${email}`
+          : `app_${app.id}`;
+
+    if (!custApps.has(key)) custApps.set(key, []);
+    custApps.get(key).push(app);
+  }
+
+  const reloans = [];
+
+  for (const [key, apps] of custApps.entries()) {
+    const reloanItems = [];
+    apps.forEach((app, idx) => {
+      const isExplicitReloan = Number(app.isReloan) === 1 || Boolean(app.previousLoanId && String(app.previousLoanId).trim() !== '');
+      const isSubsequent = idx > 0;
+      if (isExplicitReloan || isSubsequent) {
+        reloanItems.push({
+          app,
+          appIndex: idx,
+        });
+      }
+    });
+
+    const totalTimesReloaned = reloanItems.length;
+
+    reloanItems.forEach((item, rIdx) => {
+      const iteration = rIdx + 1;
+      const suffix = iteration === 1 ? '1st' : iteration === 2 ? '2nd' : iteration === 3 ? '3rd' : `${iteration}th`;
+
+      let prevLoan = item.app.previousLoanId;
+      if (!prevLoan && item.appIndex > 0) {
+        prevLoan = apps[item.appIndex - 1]?.loanId || apps[item.appIndex - 1]?.applicationId || apps[item.appIndex - 1]?.id || '-';
+      }
+
+      const rawLoanId = String(item.app.loanId || '').trim();
+      const statusLower = String(item.app.status || '').toLowerCase();
+      const isDisbursedOrClosed = ['disbursed', 'active', 'closed', 'settled', 'paid'].includes(statusLower);
+      const computedLoanId = (rawLoanId && rawLoanId !== '')
+        ? rawLoanId
+        : isDisbursedOrClosed
+          ? `LN-${String(item.app.applicationId || item.app.id).replace(/[^0-9]/g, '')}`
+          : '-';
+
+      reloans.push({
+        id: item.app.id,
+        applicationId: item.app.applicationId || String(item.app.id),
+        loanId: computedLoanId,
+        customerName: item.app.customerName || 'Borrower',
+        phone: item.app.phone || '-',
+        email: item.app.email || '-',
+        panNumber: item.app.panNumber || '-',
+        aadhaarNumber: item.app.aadhaarNumber || '-',
+        city: item.app.city || '-',
+        pincode: item.app.pincode || '-',
+        companyName: item.app.companyName || '-',
+        employmentStatus: item.app.employmentStatus || '-',
+        monthlyIncome: Number(item.app.monthlyIncome || 0),
+        bankName: item.app.bankName || '-',
+        accountNumber: item.app.accountNumber || '-',
+        loanPurpose: item.app.loanPurpose || '-',
+        loanAmount: Number(item.app.loanAmount || 0),
+        status: item.app.status || 'review',
+        priority: item.app.priority || 'Medium',
+        assignedTo: item.app.assignedTo || '-',
+        previousLoanId: prevLoan || '-',
+        reloanIteration: iteration,
+        reloanNumberLabel: `${suffix} Reloan`,
+        totalTimesReloaned,
+        totalTimesLabel: `${totalTimesReloaned} ${totalTimesReloaned === 1 ? 'Time' : 'Times'}`,
+        createdAt: item.app.createdAt,
+      });
+    });
+  }
+
+  reloans.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+  const totalReloanAmount = reloans.reduce((sum, r) => sum + (r.loanAmount || 0), 0);
+  const firstTimeCount = reloans.filter((r) => r.reloanIteration === 1).length;
+  const repeatReloansCount = reloans.filter((r) => r.reloanIteration > 1).length;
+
+  return res.status(200).json({
+    success: true,
+    data: reloans,
+    summary: {
+      totalReloans: reloans.length,
+      totalReloanAmount,
+      firstTimeReloans: firstTimeCount,
+      repeatReloans: repeatReloansCount,
+    },
+    message: 'Reloans report retrieved successfully.',
+  });
+}
+
 module.exports = {
   addLeadReference,
   createLead,
@@ -652,6 +798,7 @@ module.exports = {
   downloadLeadNocPdf,
   getDuplicateLeads,
   getLead,
+  getReloansReport,
   initiateReloan,
   listLeads,
   rejectLeadByTelecaller,

@@ -66,6 +66,7 @@ export function ProductAdminLayout() {
     { label: "Lead Report", type: "lead-report" },
     { label: "Application Report", type: "application-report" },
     { label: "Loan Report", type: "loan-report" },
+    { label: "Reloan Report", type: "reloan-report" },
     { label: "Disbursement Report", type: "disbursement-report" },
     { label: "Collection Report", type: "collection-report" },
     { label: "CIBIL Bureau Report", type: "cibil-report" },

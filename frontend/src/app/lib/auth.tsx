@@ -60,8 +60,8 @@ export const roleDefaultEmails: Record<UserRole, string> = {
   collection: "prakash@waqtfinance.com",
   "credit-manager": "shrutisingh@waqtmoney.in",
   telecaller: "telecaller@waqtfinance.com",
-  superadmin: "admin@paydaycrm.com",
-  "product-admin": "productadmin@paydaycrm.com",
+  superadmin: "",
+  "product-admin": "",
 };
 
 export const COLLECTION_ACCOUNT_EMAIL = "prakash@waqtfinance.com";
@@ -164,12 +164,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: nextUser,
       };
 
-      if (role === "superadmin") {
+      if (role === "superadmin" || nextUser.role === "superadmin") {
         localStorage.setItem("paydayops.auth.superadmin", JSON.stringify(sessionPayload));
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
-      } else {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
       }
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
       setUser(nextUser);
       return { requiresOtp: false, user: nextUser };
     },
@@ -186,6 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: nextUser,
       };
 
+      if (nextUser.role === 'superadmin') {
+        localStorage.setItem("paydayops.auth.superadmin", JSON.stringify(sessionPayload));
+      }
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
       setUser(nextUser);
       return nextUser;

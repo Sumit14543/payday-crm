@@ -23,6 +23,16 @@ logDebug("Superadmin controller initialized.");
 
 const PASSWORD_ITERATIONS = 120000;
 
+// Rate limiting and lockout for administrative logins
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+function getClientIdentifier(req, email) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  return `superadmin:${ip}:${email || ''}`;
+}
+
 function verifyPassword(password, salt, expectedHash) {
   if (!password || !salt || !expectedHash) return Promise.resolve(false);
   return new Promise((resolve) => {
@@ -38,6 +48,18 @@ async function login(req, res) {
 
   const email = String(req.body.email).trim().toLowerCase();
   const password = String(req.body.password);
+  const reqRole = String(req.body?.role || '').trim().toLowerCase();
+
+  const rateLimitKey = getClientIdentifier(req, email);
+  const now = Date.now();
+  const attemptRecord = loginAttempts.get(rateLimitKey);
+  if (attemptRecord && attemptRecord.lockUntil > now) {
+    const remainingMinutes = Math.ceil((attemptRecord.lockUntil - now) / 60000);
+    return res.status(429).json({
+      success: false,
+      message: `Too many failed login attempts. Temporarily locked for security. Please try again after ${remainingMinutes} minute(s).`,
+    });
+  }
 
   const lat = req.body?.latitude ?? req.headers?.['x-client-latitude'];
   const lng = req.body?.longitude ?? req.headers?.['x-client-longitude'];
@@ -60,7 +82,7 @@ async function login(req, res) {
     }
   }
 
-  if (password === 'Admin@123' || password === 'Admin@12345') {
+  if (password === 'Admin@123' || password === 'Admin@12345' || password === 'Sanjay@#2026@#' || password === 'Bhupendra@#2026@#' || password === 'SpAdmin@#9842KxVq7!M' || password === 'ProdAdmin@#6184JwZr9!K') {
     try {
       await auditModel.create(req, {
         action: 'superadmin.login_failed',
@@ -70,30 +92,76 @@ async function login(req, res) {
     } catch (e) {}
     return res.status(401).json({
       success: false,
-      message: 'Password Admin@123 is no longer valid. Please use your updated password.',
+      message: 'Previous default credentials are no longer valid for security. Please use the newly updated secure credentials.',
     });
   }
 
-  const reqRole = String(req.body?.role || '').trim().toLowerCase();
-
   let admin = null;
-  try {
-    const rows = await queryMaster(
-      'SELECT id, name, email, password_hash, password_salt, is_active FROM superadmins WHERE email = ? LIMIT 1',
-      [email]
-    );
-    admin = rows[0];
-  } catch (e) {}
+  const { query } = require('../config/db');
 
-  if (!admin) {
+  if (reqRole === 'product-admin') {
     try {
-      const { query } = require('../config/db');
       const rows = await query(
-        "SELECT id, name, email, password_hash, password_salt, role, is_active FROM crm_users WHERE email = ? AND role IN ('product-admin', 'superadmin') AND is_active = 1 LIMIT 1",
+        "SELECT id, name, email, password_hash, password_salt, role, is_active FROM crm_users WHERE email = ? AND role = 'product-admin' AND is_active = 1 LIMIT 1",
         [email]
       );
-      admin = rows[0];
+      if (rows && rows[0]) admin = rows[0];
     } catch (e) {}
+  } else if (reqRole === 'superadmin') {
+    try {
+      const rows = await queryMaster(
+        'SELECT id, name, email, password_hash, password_salt, is_active FROM superadmins WHERE email = ? LIMIT 1',
+        [email]
+      );
+      if (rows && rows[0]) {
+        admin = rows[0];
+        admin.role = 'superadmin';
+      }
+    } catch (e) {}
+
+    if (!admin) {
+      try {
+        const rows = await query(
+          "SELECT id, name, email, password_hash, password_salt, role, is_active FROM crm_users WHERE email = ? AND role = 'superadmin' AND is_active = 1 LIMIT 1",
+          [email]
+        );
+        if (rows && rows[0]) admin = rows[0];
+      } catch (e) {}
+    }
+  } else {
+    // Role not explicitly provided: test both superadmin and product-admin credentials against the entered password
+    try {
+      const masterRows = await queryMaster(
+        'SELECT id, name, email, password_hash, password_salt, is_active FROM superadmins WHERE email = ? LIMIT 1',
+        [email]
+      );
+      if (masterRows && masterRows[0]) {
+        const matchMaster = await verifyPassword(password, masterRows[0].password_salt, masterRows[0].password_hash);
+        if (matchMaster) {
+          admin = masterRows[0];
+          admin.role = 'superadmin';
+        }
+      }
+    } catch (e) {}
+
+    if (!admin) {
+      try {
+        const rows = await query(
+          "SELECT id, name, email, password_hash, password_salt, role, is_active FROM crm_users WHERE email = ? AND role IN ('product-admin', 'superadmin') AND is_active = 1",
+          [email]
+        );
+        for (const candidate of (rows || [])) {
+          const matchCand = await verifyPassword(password, candidate.password_salt, candidate.password_hash);
+          if (matchCand) {
+            admin = candidate;
+            break;
+          }
+        }
+        if (!admin && rows && rows[0]) {
+          admin = rows[0];
+        }
+      } catch (e) {}
+    }
   }
 
   if (!admin || !admin.is_active) {
@@ -113,44 +181,92 @@ async function login(req, res) {
   const matchesHash = await verifyPassword(password, admin.password_salt, admin.password_hash);
 
   if (!matchesHash) {
+    const currentFailures = (attemptRecord?.count || 0) + 1;
+    const lockUntil = currentFailures >= MAX_LOGIN_ATTEMPTS ? now + LOCKOUT_DURATION_MS : 0;
+    loginAttempts.set(rateLimitKey, { count: currentFailures, lockUntil, lastAttempt: now });
+
     try {
       await auditModel.create(req, {
         action: 'superadmin.login_failed',
         entityType: 'auth',
-        metadata: { email, role: admin.role || 'superadmin', ...geoMetadata },
+        metadata: { email, role: admin.role || 'superadmin', attempt: currentFailures, locked: currentFailures >= MAX_LOGIN_ATTEMPTS, ...geoMetadata },
       });
     } catch (e) {}
+
+    if (currentFailures >= MAX_LOGIN_ATTEMPTS) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed login attempts. Temporarily locked for 15 minutes.',
+      });
+    }
+
+    const remaining = MAX_LOGIN_ATTEMPTS - currentFailures;
     return res.status(401).json({
       success: false,
-      message: 'Invalid credentials.',
+      message: `Invalid credentials. (${remaining} attempt(s) remaining before temporary lockout)`,
     });
   }
+
+  // Clear failed login attempts on password success
+  loginAttempts.delete(rateLimitKey);
 
   const isProductAdmin = reqRole === 'product-admin' || admin.role === 'product-admin';
   const userRole = isProductAdmin ? 'product-admin' : (admin.role || 'superadmin');
 
-  // Generate standard JWT token with userRole
-  const token = createToken({
+  // Mandatory 2FA OTP for Superadmin and Product Admin
+  const crmUserModel = require('../models/crmUserModel');
+  const emailService = require('../services/emailService');
+
+  const host = String(req.headers?.host || req.headers?.origin || '').toLowerCase();
+  const isTestEnv = (
+    process.env.NODE_ENV !== 'production' ||
+    host.includes('testing') ||
+    host.includes('localhost') ||
+    host.includes('127.0.0.1') ||
+    String(process.env.PORT || '') === '8083' ||
+    String(process.env.PUBLIC_APP_URL || '').includes('testing')
+  );
+
+  const isTestAccount = isTestEnv && email.startsWith('test.');
+  const otpCode = isTestAccount ? '123456' : crypto.randomInt(100000, 1000000).toString();
+  const tempToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await crmUserModel.saveLoginOtp(admin.id, otpCode, tempToken, expiresAt, {
+    id: admin.id,
     email: admin.email,
     name: admin.name,
     role: userRole,
+    isMasterSuperadmin: !isProductAdmin,
   });
 
-  req.user = { email: admin.email, name: admin.name, role: userRole };
-  await auditModel.create(req, {
-    action: isProductAdmin ? 'productadmin.login_success' : 'superadmin.login_success',
-    entityType: 'auth',
-    metadata: { ...geoMetadata },
-  });
+  try {
+    await emailService.sendTelecallerOtpEmail({
+      toEmail: admin.email,
+      otpCode,
+      userName: admin.name,
+    });
+    console.log(`[OTP] Admin Login OTP sent to ${admin.email}: ${otpCode}`);
+  } catch (mailErr) {
+    if (isTestAccount) {
+      console.warn('[OTP Warning] Test account OTP email failed, but test OTP 123456 is active:', mailErr.message);
+    } else {
+      console.error(`[OTP Error] Failed to send OTP email to ${admin.email}:`, mailErr.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send security OTP email. Please try again.',
+      });
+    }
+  }
 
   return success(res, {
-    token,
-    user: {
-      email: admin.email,
-      name: admin.name,
-      role: userRole,
-    },
-  }, `${isProductAdmin ? 'Product Admin' : 'Superadmin'} logged in successfully.`);
+    requiresOtp: true,
+    tempToken,
+    email: admin.email,
+    message: isTestAccount
+      ? 'OTP code generated. For testing, enter the code sent to your email or test OTP 123456.'
+      : `An OTP security code has been sent to your email (${admin.email}). Please enter it to complete login.`,
+  }, 'Security OTP code sent to administrative email.');
 }
 
 async function getTenants(req, res) {
@@ -887,8 +1003,20 @@ async function updateTelecallerProducts(req, res) {
   }
 }
 
+async function verifyOtp(req, res) {
+  const authController = require('./authController');
+  return authController.verifyTelecallerOtp(req, res);
+}
+
+async function resendOtp(req, res) {
+  const authController = require('./authController');
+  return authController.resendTelecallerOtp(req, res);
+}
+
 module.exports = {
   login,
+  verifyOtp,
+  resendOtp,
   getTenants,
   createTenant,
   toggleTenantStatus,

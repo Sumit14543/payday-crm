@@ -34,13 +34,13 @@ async function createSupportUser() {
         email: 'support@waqtmoney.in',
         name: 'Support Admin (All Leads)',
         role: 'product-admin',
-        password: 'Bhupendra@#2026@#',
+        password: 'Bhupender@@2026@321##',
       },
       {
         email: 'support@waqtfinance.com',
         name: 'Support Admin (All Leads)',
         role: 'product-admin',
-        password: 'Bhupendra@#2026@#',
+        password: 'Bhupender@@2026@321##',
       },
     ];
 

@@ -150,10 +150,12 @@ export function Login() {
   const changeRole = (nextRole: UserRole | "product-admin") => {
     setRole(nextRole);
     if (nextRole === "superadmin") {
-      setEmail("admin@paydaycrm.com");
+      setEmail("");
+      setPassword("");
     } else if (nextRole === "product-admin") {
       const domain = branding.slug === "waqtfinance" ? "waqtfinance.com" : `${branding.slug}.com`;
-      setEmail(domain === "waqtfinance.com" ? "support@waqtfinance.com" : "productadmin@paydaycrm.com");
+      setEmail("");
+      setPassword("");
     } else if (nextRole === "credit-manager") {
       const isTestingEnv =
         typeof window !== "undefined" &&

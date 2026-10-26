@@ -32,6 +32,8 @@ router.get('/accounting-queue-v2', requireRole(['accountant', 'product-admin', '
 router.get('/accounting-payments/recent', requireRole(['accountant', 'product-admin', 'superadmin']), asyncHandler(telecallerController.listRecentAccountingPayments));
 router.get('/telecaller-policy', requireRole(['telecaller', 'product-admin', 'superadmin']), asyncHandler(telecallerController.getTelecallerPolicy));
 router.get('/telecaller-sla-report', requireRole(['telecaller', 'credit-manager', 'product-admin', 'superadmin']), asyncHandler(telecallerController.getTelecallerSlaReport));
+router.get('/reports/reloans', requireRole(['telecaller', 'credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(leadController.getReloansReport));
+router.get('/reloans-report', requireRole(['telecaller', 'credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(leadController.getReloansReport));
 router.get('/telecaller-workbench', requireRole(['telecaller', 'product-admin', 'superadmin']), asyncHandler(telecallerController.listTelecallerWorkbench));
 router.get('/telecaller-workbench-v2', requireRole(['telecaller', 'product-admin', 'superadmin']), asyncHandler(telecallerController.listTelecallerWorkbenchV2));
 router.get('/:id/duplicates', requireRole(['telecaller', 'credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(leadController.getDuplicateLeads));

@@ -41,8 +41,8 @@ async function login(req, res) {
   const rateLimitKey = getClientIdentifier(req, emailClean);
   const now = Date.now();
 
-  if (rawPassword === 'Admin@123' || rawPassword === 'Admin@12345') {
-    const error = new Error('Default password is no longer valid. Please use your updated secure password.');
+  if (rawPassword === 'Admin@123' || rawPassword === 'Admin@12345' || rawPassword === 'Sanjay@#2026@#' || rawPassword === 'Bhupendra@#2026@#') {
+    const error = new Error('Previous default credentials are no longer valid for security. Please use the newly updated secure credentials.');
     error.statusCode = 401;
     error.publicMessage = error.message;
     throw error;
@@ -161,7 +161,7 @@ async function login(req, res) {
   // Telecaller, Collection, Accountant & Credit Manager Roles: Mandatory 2FA Email OTP Verification
   const userRoleClean = String(user.role || '').trim().toLowerCase();
   const userEmailClean = String(user.email || '').trim().toLowerCase();
-  const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userRoleClean === 'credit-manager' || userRoleClean === 'accountant' || userEmailClean.includes('himanshu');
+  const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userRoleClean === 'credit-manager' || userRoleClean === 'accountant' || userRoleClean === 'superadmin' || userRoleClean === 'product-admin' || userEmailClean.includes('himanshu');
 
   if (isOtpRequired) {
     const isTestAccount = isTestEnv && (
@@ -171,7 +171,7 @@ async function login(req, res) {
     const tempToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
-    await crmUserModel.saveLoginOtp(user.id, otpCode, tempToken, expiresAt);
+    await crmUserModel.saveLoginOtp(user.id, otpCode, tempToken, expiresAt, user);
 
     try {
       await emailService.sendTelecallerOtpEmail({
@@ -231,7 +231,7 @@ async function verifyTelecallerOtp(req, res) {
 
   const now = new Date();
   if (!foundUser.login_otp_expires_at || new Date(foundUser.login_otp_expires_at) < now) {
-    await crmUserModel.clearLoginOtp(foundUser.id);
+    await crmUserModel.clearLoginOtp(foundUser.id, tempToken);
     const error = new Error('OTP has expired. Please request a new OTP.');
     error.statusCode = 401;
     error.publicMessage = error.message;
@@ -263,7 +263,7 @@ async function verifyTelecallerOtp(req, res) {
 
     if (currentOtpAttempts >= 3) {
       otpAttempts.delete(otpAttemptKey);
-      await crmUserModel.clearLoginOtp(foundUser.id);
+      await crmUserModel.clearLoginOtp(foundUser.id, tempToken);
       const error = new Error('Too many invalid OTP attempts. For your security, this OTP session has been terminated. Please log in again.');
       error.statusCode = 429;
       error.publicMessage = error.message;
@@ -279,7 +279,7 @@ async function verifyTelecallerOtp(req, res) {
 
   // Clear OTP attempt counter and credentials
   otpAttempts.delete(otpAttemptKey);
-  await crmUserModel.clearLoginOtp(foundUser.id);
+  await crmUserModel.clearLoginOtp(foundUser.id, tempToken);
   await crmUserModel.markLogin(foundUser.id);
 
   const user = {
@@ -316,7 +316,7 @@ async function resendTelecallerOtp(req, res) {
   const otpCode = crypto.randomInt(100000, 1000000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-  await crmUserModel.saveLoginOtp(foundUser.id, otpCode, tempToken, expiresAt);
+  await crmUserModel.saveLoginOtp(foundUser.id, otpCode, tempToken, expiresAt, foundUser);
 
   try {
     await emailService.sendTelecallerOtpEmail({

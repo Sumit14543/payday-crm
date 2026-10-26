@@ -12,6 +12,7 @@
     "backup:db": "node scripts/backupDatabase.js",
     "generate-auth-user": "node scripts/generateAuthUser.js",
     "generate-superadmin": "node scripts/generateSuperadmin.js",
+    "update-admin-credentials": "node scripts/updateAdminCredentials.js",
     "setup": "node scripts/setup.js",
     "smoke:api": "node scripts/smokeTestApis.js",
     "test": "node scripts/checkCibilNormalization.js && node scripts/checkBackend.js"
