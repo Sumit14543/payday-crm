@@ -230,15 +230,19 @@ async function listCollections(req, res) {
     referenceModel.all(`SELECT * FROM loan_repayment_schedule ORDER BY id DESC LIMIT 10000`).catch(() => []),
     referenceModel.all(`SELECT * FROM lead_accounting_payments ORDER BY id DESC LIMIT 10000`).catch(() => []),
     referenceModel.all(`
-      SELECT loan_id, SUM(amount) AS totalPaid, MAX(payment_date) AS lastPaymentDate
+      SELECT 
+        loan_id, 
+        SUM(amount) AS totalPaid, 
+        SUM(CASE WHEN DATE(COALESCE(received_at, created_at)) = CURDATE() THEN amount ELSE 0 END) AS todayPaid,
+        MAX(COALESCE(received_at, payment_date, created_at)) AS lastPaymentDate
       FROM loan_repayments
-      WHERE status = 'Success'
+      WHERE LOWER(TRIM(status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
       GROUP BY loan_id
     `).catch(() =>
       referenceModel.all(`
-        SELECT loan_id, SUM(amount) AS totalPaid, MAX(received_at) AS lastPaymentDate
+        SELECT loan_id, SUM(amount) AS totalPaid, MAX(payment_date) AS lastPaymentDate
         FROM loan_repayments
-        WHERE status IN ('received', 'success', 'paid', 'settled')
+        WHERE status = 'Success'
         GROUP BY loan_id
       `).catch(() => [])
     ),
@@ -317,11 +321,12 @@ async function listCollections(req, res) {
       const existing = repaymentsByNormLoan.get(n);
       if (existing) {
         existing.totalPaid = Number(existing.totalPaid || 0) + Number(r.totalPaid || 0);
+        existing.todayPaid = Number(existing.todayPaid || 0) + Number(r.todayPaid || 0);
         if (r.lastPaymentDate && (!existing.lastPaymentDate || new Date(r.lastPaymentDate) > new Date(existing.lastPaymentDate))) {
           existing.lastPaymentDate = r.lastPaymentDate;
         }
       } else {
-        repaymentsByNormLoan.set(n, { ...r });
+        repaymentsByNormLoan.set(n, { ...r, todayPaid: Number(r.todayPaid || 0) });
       }
     }
   }
@@ -555,6 +560,7 @@ async function listCollections(req, res) {
       disbursementDate,
       baseRepayment: totalAmount,
       amountPaid,
+      todayPaid: Number(rep?.todayPaid || 0),
       overdueInterest,
       baseOutstanding: balance,
       outstanding: balance,

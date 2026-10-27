@@ -51,7 +51,7 @@ import {
 import { NiceSelect } from "../components/ui/nice-select";
 import { EmptyState, MetricCard } from "../components/crm/DashboardPrimitives";
 import { PageLoading } from "../components/PageLoading";
-import { apiGet, apiPatch, apiPost, apiPostForm, resolveBackendUploadUrl } from "../lib/api";
+import { apiGet, apiPatch, apiPost, apiPostForm, resolveBackendUploadUrl, openSecureDocument } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
 
 type CollectionCase = {
@@ -75,6 +75,7 @@ type CollectionCase = {
   baseOutstanding?: number;
   baseRepayment?: number;
   amountPaid?: number;
+  todayPaid?: number;
   pan?: string;
   pincode?: string;
   customerId: string;
@@ -636,12 +637,14 @@ export function LoanCollection() {
   const loadCollections = useCallback(async (signal: AbortSignal) => {
     try {
       setError("");
-      const [data, summaryData] = await Promise.all([
+      const [data, summaryData, repData] = await Promise.all([
         apiPost<CollectionCase[]>("/collections/list", {}, signal),
         apiPost<CollectionSummary>("/collections/summary/fetch", {}, signal),
+        apiGet<any>("/collections/reports", signal).catch(() => null),
       ]);
       setCollections(data || []);
       setSummary(summaryData || null);
+      if (repData) setReportsData(repData);
     } catch (requestError) {
       if (!signal.aborted) {
         setError(requestError instanceof Error ? requestError.message : "Unable to load collections");
@@ -796,12 +799,13 @@ export function LoanCollection() {
       const dpd = getDaysPastDue(item);
       const outstanding = Number(item.outstanding !== undefined ? item.outstanding : item.totalDue || 0);
       const amountPaid = Number(item.amountPaid || 0);
+      const todayPaid = Number(item.todayPaid || 0);
       const isPaid = outstanding <= 0;
       const isActive = !isPaid && dpd <= 0;
       const isOverdue = !isPaid && dpd > 0;
       const isPartPayment = amountPaid > 0 && outstanding > 0;
       const lastPayment = item.lastPaymentDate || item.paidAt || item.updatedAt;
-      const isCollectedToday = amountPaid > 0 && (lastPayment ? isSameDay(lastPayment) : true);
+      const isCollectedToday = todayPaid > 0 || (amountPaid > 0 && Boolean(lastPayment) && isSameDay(lastPayment));
 
       if (reportDuesFilter === "dueToday" && dueTime !== today) return false;
       if (reportDuesFilter === "collectedToday" && !isCollectedToday) return false;
@@ -842,8 +846,9 @@ export function LoanCollection() {
       }).length,
       collectedToday: collections.filter((item) => {
         const amountPaid = Number(item.amountPaid || 0);
+        const todayPaid = Number(item.todayPaid || 0);
         const lastPayment = item.lastPaymentDate || item.paidAt || item.updatedAt;
-        return amountPaid > 0 && (lastPayment ? isSameDay(lastPayment) : true);
+        return todayPaid > 0 || (amountPaid > 0 && Boolean(lastPayment) && isSameDay(lastPayment));
       }).length,
       overdue: collections.filter((item) => {
         const outstanding = Number(item.outstanding !== undefined ? item.outstanding : item.totalDue || 0);
@@ -1579,13 +1584,27 @@ export function LoanCollection() {
     const rows: string[][] = [];
     let rowCounter = 1;
 
+    const isCollectedTodayFilter = reportDuesFilter === "collectedToday";
+
     filteredCollections.forEach((item) => {
-      const loanPayments = (reportsData?.recentPayments || []).filter((p) => {
+      const allPaymentsForLoan = (reportsData?.recentPayments || []).filter((p) => {
         if (!p.loanId || !item.loanId) return false;
         const normP = String(p.loanId).replace(/\D/g, "");
         const normItem = String(item.loanId).replace(/\D/g, "");
         return normP === normItem || String(p.loanId).toUpperCase() === String(item.loanId).toUpperCase();
       });
+
+      const loanPayments = isCollectedTodayFilter
+        ? allPaymentsForLoan.filter((p) => p.receivedAt && isSameDay(p.receivedAt))
+        : allPaymentsForLoan;
+
+      const todayAmt = Number(item.todayPaid || 0) > 0
+        ? Number(item.todayPaid)
+        : (loanPayments.length > 0
+            ? loanPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+            : (isCollectedTodayFilter ? Number(item.amountPaid || 0) : 0));
+
+      const displayAmountPaid = isCollectedTodayFilter ? String(todayAmt) : String(item.amountPaid || 0);
 
       const aadhaarVal = String(item.aadhaar || "").trim();
       const formattedAadhaar = aadhaarVal ? (/^\d{10,16}$/.test(aadhaarVal.replace(/[-\s]/g, "")) ? `\t${aadhaarVal}` : aadhaarVal) : "";
@@ -1619,7 +1638,7 @@ export function LoanCollection() {
         String(item.baseRepayment || item.totalDue || 0),
         formatDate(item.disbursementDate),
         formatDate(item.dueDate || item.originalDueDate),
-        String(item.amountPaid || 0),
+        displayAmountPaid,
         String(item.outstanding !== undefined ? item.outstanding : (item.totalDue || 0)),
         item.emiStatus || item.status || "",
         String(getDaysPastDue(item)),
@@ -1766,6 +1785,43 @@ export function LoanCollection() {
           )}
 
           <div className="flex flex-wrap items-center justify-end pt-2 border-t border-slate-100 dark:border-slate-800 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const header = [
+                  "S. No.",
+                  "Borrower / Customer",
+                  "Loan ID",
+                  "Amount Collected (INR)",
+                  "Reference / UTR",
+                  "Received At",
+                  "Status",
+                ];
+                const rows = displayPaymentsList.map((p, idx) => [
+                  String(idx + 1),
+                  p.customerName || "Borrower",
+                  p.loanId || "",
+                  String(p.amount || 0),
+                  p.reference || "N/A",
+                  p.receivedAt || "",
+                  p.status || "Received",
+                ]);
+                const csvContent = "\uFEFF" + [header, ...rows]
+                  .map((row) => row.map((cell) => `"${String(cell || "").replace(/"/g, '""')}"`).join(","))
+                  .join("\n");
+                const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `payments_log_${todayPaymentsFilter}_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="px-4 py-2 rounded-lg border border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-700 text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900 transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export Payments CSV
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -2607,18 +2663,34 @@ if (isLogPaymentPage) {
                 const csvRows: string[][] = [];
                 let rowCounter = 1;
 
+                const isCollectedTodayFilter = reportDuesFilter === "collectedToday";
+
                 list.forEach((c) => {
-                  const loanPayments = (reportsData?.recentPayments || []).filter((p) => {
+                  const allPaymentsForLoan = (reportsData?.recentPayments || []).filter((p) => {
                     if (!p.loanId || !c.loanId) return false;
                     const normP = String(p.loanId).replace(/\D/g, "");
                     const normC = String(c.loanId).replace(/\D/g, "");
                     return normP === normC || String(p.loanId).toUpperCase() === String(c.loanId).toUpperCase();
                   });
 
+                  // If filtering by collectedToday, only consider payments received today
+                  const loanPayments = isCollectedTodayFilter
+                    ? allPaymentsForLoan.filter((p) => p.receivedAt && isSameDay(p.receivedAt))
+                    : allPaymentsForLoan;
+
                   const phoneVal = String(c.phone || "").trim();
                   const formattedPhone = phoneVal ? (/^\d{10,16}$/.test(phoneVal) ? `\t${phoneVal}` : phoneVal) : "";
                   const memberVal = String(c.memberCode || c.customerId || "").trim();
                   const formattedMember = memberVal ? (/^\d{10,16}$/.test(memberVal) ? `\t${memberVal}` : memberVal) : "";
+
+                  // When filtering by collectedToday, amount paid reflects what was collected TODAY, not lifetime!
+                  const todayAmt = Number(c.todayPaid || 0) > 0
+                    ? Number(c.todayPaid)
+                    : (loanPayments.length > 0
+                        ? loanPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+                        : (isCollectedTodayFilter ? Number(c.amountPaid || 0) : 0));
+
+                  const displayAmountPaid = isCollectedTodayFilter ? String(todayAmt) : String(c.amountPaid || 0);
 
                   const base = [
                     c.borrowerName || c.customer || "",
@@ -2628,7 +2700,7 @@ if (isLogPaymentPage) {
                     c.loanId || "",
                     String(c.disbursementAmount || c.principal || 0),
                     String(c.baseRepayment || c.totalDue || 0),
-                    String(c.amountPaid || 0),
+                    displayAmountPaid,
                     String(c.outstanding !== undefined ? c.outstanding : (c.totalDue || 0)),
                     c.status || c.emiStatus || "",
                   ];
@@ -2638,14 +2710,33 @@ if (isLogPaymentPage) {
                       const rawAgent = String(p.receivedBy || (p as any).received_by || (p as any).actor || c.assignedTo || "").trim();
                       const isWebsite = !rawAgent || /website|online|system|gateway|razorpay|cashfree|auto/i.test(rawAgent);
                       const collectorName = isWebsite ? "Website" : rawAgent;
+                      const seqLabel = isCollectedTodayFilter
+                        ? (loanPayments.length > 1 ? `Today Payment ${pIdx + 1} of ${loanPayments.length}` : "Collected Today")
+                        : `Part Payment ${pIdx + 1} of ${loanPayments.length}`;
+
+                      // For each payment row, display the transaction amount in Total Amount Paid as well if today-filter
+                      const rowBase = isCollectedTodayFilter
+                        ? [
+                            c.borrowerName || c.customer || "",
+                            formattedPhone,
+                            c.email || "",
+                            formattedMember,
+                            c.loanId || "",
+                            String(c.disbursementAmount || c.principal || 0),
+                            String(c.baseRepayment || c.totalDue || 0),
+                            String(p.amount || 0),
+                            String(c.outstanding !== undefined ? c.outstanding : (c.totalDue || 0)),
+                            c.status || c.emiStatus || "",
+                          ]
+                        : base;
 
                       csvRows.push([
-                        `${rowCounter}.${pIdx + 1}`,
-                        ...base,
-                        `Part Payment ${pIdx + 1} of ${loanPayments.length}`,
+                        loanPayments.length > 1 ? `${rowCounter}.${pIdx + 1}` : String(rowCounter),
+                        ...rowBase,
+                        seqLabel,
                         formatDate(p.receivedAt) || (p.receivedAt ? String(p.receivedAt).slice(0, 10) : "-"),
                         String(p.amount || 0),
-                        p.reference || "-",
+                        p.reference || (c.loanId ? `REF-${c.loanId}` : "-"),
                         collectorName,
                         p.status || "settled",
                       ]);
@@ -2655,15 +2746,16 @@ if (isLogPaymentPage) {
                     const isWebsite = !rawAgent || /website|online|system|gateway|razorpay|cashfree|auto/i.test(rawAgent);
                     const collectorName = isWebsite ? "Website" : rawAgent;
 
+                    const effectiveAmt = isCollectedTodayFilter ? todayAmt : (Number(c.amountPaid || 0));
                     csvRows.push([
                       String(rowCounter),
                       ...base,
-                      "No Part Payments",
+                      isCollectedTodayFilter ? "Collected Today" : "No Part Payments",
                       Number(c.amountPaid || 0) > 0 && c.lastPaymentDate ? (formatDate(c.lastPaymentDate) || "-") : "-",
-                      "0",
-                      "-",
+                      String(effectiveAmt),
+                      c.loanId ? `REF-${c.loanId}` : "-",
                       collectorName,
-                      "-",
+                      c.emiStatus || c.status || "settled",
                     ]);
                   }
                   rowCounter++;
@@ -3037,7 +3129,11 @@ if (isLogPaymentPage) {
                                   href={resolveBackendUploadUrl(item.proofUrl)}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-100/70 px-3 py-1 text-xs font-bold text-emerald-900 hover:bg-emerald-200 dark:border-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 transition shadow-xs"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    openSecureDocument(item.proofUrl);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-100/70 px-3 py-1 text-xs font-bold text-emerald-900 hover:bg-emerald-200 dark:border-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-200 transition shadow-xs cursor-pointer"
                                 >
                                   <FileCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                                   View Attached Receipt / Proof ↗
@@ -3130,6 +3226,10 @@ if (isLogPaymentPage) {
                             href={resolveBackendUploadUrl(proof.proofUrl)}
                             target="_blank"
                             rel="noreferrer"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openSecureDocument(proof.proofUrl);
+                            }}
                             className="flex items-center justify-between p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/70 dark:border-emerald-900/40 dark:bg-emerald-950/30 transition group cursor-pointer"
                           >
                             <div className="flex items-center gap-3 min-w-0">

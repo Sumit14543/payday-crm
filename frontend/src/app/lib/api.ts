@@ -32,6 +32,20 @@ function resolveBackendBaseUrl() {
   return apiBaseUrl.replace(/\/api$/i, "");
 }
 
+export function getAuthToken(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const isSuperadmin = localStorage.getItem("paydayops.auth.superadmin");
+    const user = localStorage.getItem(AUTH_STORAGE_KEY);
+    const rawUser = isSuperadmin || user;
+    if (!rawUser) return "";
+    const stored = JSON.parse(rawUser);
+    return stored.token || "";
+  } catch {
+    return "";
+  }
+}
+
 export function resolveBackendUploadBaseUrl() {
   const configuredUrl = trimTrailingSlash(String(import.meta.env.VITE_DOCUMENT_BASE_URL || ""));
   if (configuredUrl) return configuredUrl;
@@ -40,10 +54,54 @@ export function resolveBackendUploadBaseUrl() {
   return backendBaseUrl ? `${backendBaseUrl}/uploads` : "/uploads";
 }
 
-export function resolveBackendUploadUrl(path: string) {
-  const cleanPath = String(path || "").replace(/^\/+/, "").replace(/^uploads\//i, "");
-  const uploadBaseUrl = resolveBackendUploadBaseUrl();
-  return cleanPath ? `${uploadBaseUrl}/${cleanPath}` : uploadBaseUrl;
+export function resolveBackendUploadUrl(path: string, options?: { authenticated?: boolean }) {
+  const rawPath = String(path || "").trim();
+  if (!rawPath) return "";
+
+  let url = "";
+  if (/^https?:\/\//i.test(rawPath)) {
+    url = rawPath;
+  } else {
+    const cleanPath = rawPath.replace(/^\/+/, "").replace(/^uploads\//i, "");
+    const uploadBaseUrl = resolveBackendUploadBaseUrl();
+    url = cleanPath ? `${uploadBaseUrl}/${cleanPath}` : uploadBaseUrl;
+  }
+
+  if (options?.authenticated === false) return url;
+
+  const isUpload = url.includes("/uploads/");
+  if (!isUpload) return url;
+
+  if (url.includes("token=")) return url;
+
+  const token = getAuthToken();
+  if (!token) return url;
+
+  const tenantSlug = typeof window !== "undefined" ? window.location.hostname.split(".")[0] : "";
+  const separator = url.includes("?") ? "&" : "?";
+  const tenantParam = tenantSlug && !url.includes("tenant=") ? `&tenant=${encodeURIComponent(tenantSlug)}` : "";
+  return `${url}${separator}token=${encodeURIComponent(token)}${tenantParam}`;
+}
+
+export async function openSecureDocument(path: string): Promise<void> {
+  if (!path) return;
+
+  const authenticatedUrl = resolveBackendUploadUrl(path);
+  const isUploadHref = authenticatedUrl.includes("/uploads/");
+  if (!isUploadHref) {
+    window.open(authenticatedUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  try {
+    const blob = await apiGetBlob(path);
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (error) {
+    console.warn("apiGetBlob failed, falling back to direct open:", error);
+    window.open(authenticatedUrl, "_blank", "noopener,noreferrer");
+  }
 }
 
 export type ApiResponse<T> = {
@@ -127,9 +185,23 @@ function resolveBlobUrl(path: string) {
 }
 
 function extractUploadPath(value: string) {
-  if (value.startsWith("/uploads/")) return value;
+  if (value.startsWith("/uploads/")) return value.split("?")[0];
+  if (value.startsWith("uploads/")) return `/${value}`.split("?")[0];
 
-  if (!/^https?:\/\//i.test(value)) return "";
+  if (!/^https?:\/\//i.test(value)) {
+    const clean = value.replace(/^\/+/, "");
+    if (
+      clean.startsWith("payment-proofs/") ||
+      clean.startsWith("lead-documents/") ||
+      clean.startsWith("sanctions/") ||
+      clean.startsWith("sanction-acceptance/") ||
+      clean.startsWith("agreements/") ||
+      clean.startsWith("cibil/")
+    ) {
+      return `/uploads/${clean}`.split("?")[0];
+    }
+    return "";
+  }
 
   try {
     const url = new URL(value);

@@ -11,6 +11,7 @@ const FALLBACK_UPLOAD_DIRS = [
   'sanction-acceptance',
   'agreements',
   path.join('agreements', 'signed'),
+  'payment-proofs',
 ];
 
 function resolveConfiguredUploadsRoot(value) {

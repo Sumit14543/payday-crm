@@ -9,6 +9,11 @@ function getSessionCacheKey(tenantSlug, email, role) {
 }
 
 async function verifyTenantSession(req, res, next) {
+  // Static uploads only require valid token signature; skip strict single-tenant db lookup
+  const reqPath = req.path || '';
+  if (reqPath.startsWith('/uploads')) {
+    return next();
+  }
   // If user is authenticated and is not a superadmin,
   // verify they exist and are active in the currently resolved tenant database.
   if (req.user && req.user.role !== 'superadmin') {

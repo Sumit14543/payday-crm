@@ -144,16 +144,12 @@ function listPublicUsers() {
 function authOptional(req, res, next) {
   const authorization = String(req.get('authorization') || '');
   const [scheme, headerToken] = authorization.split(' ');
-  const queryToken = req.query && typeof req.query.token === 'string' ? req.query.token : '';
-  const token = headerToken || queryToken;
+  const rawQueryToken = req.query && typeof req.query.token === 'string' ? req.query.token : '';
+  const queryToken = rawQueryToken.replace(/^Bearer\s+/i, '').trim();
+  const token = (scheme === 'Bearer' && headerToken) ? headerToken : queryToken;
 
-  if (scheme === 'Bearer' && token) {
+  if (token) {
     const user = verifyToken(token);
-    if (user) {
-      req.user = user;
-    }
-  } else if (queryToken) {
-    const user = verifyToken(queryToken);
     if (user) {
       req.user = user;
     }
