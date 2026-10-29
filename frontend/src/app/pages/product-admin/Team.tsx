@@ -171,7 +171,7 @@ export function Team() {
       id: "TM-203",
       name: "Bharti Gautam",
       email: "bhartigautam@waqtfinance.com",
-      phone: "+91 92174 02922",
+      phone: "-",
       role: "Sales & Support Telecaller",
       attendance: "Present",
       clockIn: "09:00 AM",

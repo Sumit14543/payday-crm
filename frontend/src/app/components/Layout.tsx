@@ -1308,10 +1308,8 @@ export function Layout() {
                     <div className="min-w-0">
                       <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Contact Number</p>
                       <p className="text-xs font-black text-slate-900 dark:text-slate-100">
-                        {isHimanshuUser
+                        {isHimanshuUser || isBhartiUser
                           ? "-"
-                          : isBhartiUser
-                          ? "+91 92174 02922"
                           : isNandiniUser
                           ? "+91 92174 02920"
                           : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
