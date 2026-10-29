@@ -617,7 +617,7 @@ export function LoanCollection() {
 
   const openNocModal = useCallback((c: CollectionCase) => {
     if (!isCasePaidOff(c)) {
-      alert("Your loan is not paid yet!");
+      alert("This loan is not paid yet!");
       return;
     }
     setNocTargetCase(c);
