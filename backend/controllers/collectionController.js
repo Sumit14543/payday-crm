@@ -222,6 +222,14 @@ async function reopenCase(req, res) {
   }, 'Loan case reopened and balance recalculated.');
 }
 
+
+async function releaseNoc(req, res) {
+  const collectionCase = await getCaseOr404(req.params.caseId);
+  const actor = (req.user && (req.user.name || req.user.email)) || req.body?.actor || 'Collection Agent';
+  const result = await collectionModel.releaseNoc(collectionCase, req.body || {}, actor);
+  return success(res, result);
+}
+
 module.exports = {
   createCallLog,
   createFollowup,
@@ -232,4 +240,5 @@ module.exports = {
   getSummary,
   reopenCase,
   updatePtpStatus,
+  releaseNoc,
 };

@@ -782,6 +782,47 @@ async function syncOverdueLoans(options = {}) {
 }
 }
 
+
+async function releaseNoc(collectionCase, payload = {}, actor = 'Collection Agent') {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const loanIdClean = String(collectionCase.loanId || collectionCase.id || '').replace(/[^a-zA-Z0-9]/g, '');
+  const nocRef = `NOC/WF/${year}/${month}/${loanIdClean}`;
+  const notes = payload.notes || `No Objection Certificate (NOC) officially released to borrower upon full loan settlement. Reference: ${nocRef}`;
+
+  await query(`
+    INSERT INTO collection_call_logs (
+      case_id, loan_id, disposition, sub_disposition, notes, next_action_at, actor
+    ) VALUES (?, ?, ?, ?, ?, NOW(), ?)
+  `, [
+    collectionCase.id,
+    collectionCase.loanId,
+    'Settled / Paid Off',
+    'NOC Released',
+    notes,
+    actor || 'Collection Agent'
+  ]);
+
+  try {
+    await query(`
+      UPDATE collection_cases
+      SET status = 'Closed', last_contact_date = CURDATE()
+      WHERE id = ?
+    `, [collectionCase.id]);
+  } catch (err) {}
+
+  invalidateSummaryCache();
+
+  return {
+    success: true,
+    nocRef,
+    issuedAt: now.toISOString(),
+    actor,
+    message: 'NOC released and logged successfully'
+  };
+}
+
 module.exports = {
   invalidateSummaryCache,
   createCallLog,
@@ -793,4 +834,5 @@ module.exports = {
   getSummary,
   syncOverdueLoans,
   updatePtpStatus,
+  releaseNoc,
 };

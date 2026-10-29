@@ -57,6 +57,7 @@ router.post('/:caseId/call-log', requireRole(['collection']), asyncHandler(colle
 router.post('/:caseId/followups', requireRole(['collection']), asyncHandler(collectionController.createFollowup));
 router.post('/:caseId/payment', requireRole(['collection']), paymentUploadMiddleware(), asyncHandler(collectionController.createPayment));
 router.post('/:caseId/reopen', requireRole(['collection']), asyncHandler(collectionController.reopenCase));
+router.post('/:caseId/noc/release', requireRole(['collection', 'accountant', 'superadmin', 'product-admin']), asyncHandler(collectionController.releaseNoc));
 router.post('/:caseId/ptp', requireRole(['collection']), asyncHandler(collectionController.createPtp));
 router.patch('/:caseId/ptp/:ptpId', requireRole(['collection']), asyncHandler(collectionController.updatePtpStatus));
 

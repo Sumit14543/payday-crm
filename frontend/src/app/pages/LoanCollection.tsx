@@ -47,6 +47,10 @@ import {
   CreditCard,
   Menu,
   ChevronDown,
+  Award,
+  Copy,
+  Printer,
+  Share2,
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
 import { EmptyState, MetricCard } from "../components/crm/DashboardPrimitives";
@@ -566,8 +570,76 @@ export function LoanCollection() {
   const [actionError, setActionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [isActionSubmitting, setIsActionSubmitting] = useState(false);
+  // NOC Modal State
+  const [showNocModal, setShowNocModal] = useState(false);
+  const [nocTargetCase, setNocTargetCase] = useState<CollectionCase | null>(null);
+  const [isNocReleasing, setIsNocReleasing] = useState(false);
+  const [nocSuccessMessage, setNocSuccessMessage] = useState<string | null>(null);
+  const [nocErrorMessage, setNocErrorMessage] = useState<string | null>(null);
+  const [isNocCopied, setIsNocCopied] = useState(false);
 
 
+  const openNocModal = useCallback((c: CollectionCase) => {
+    setNocTargetCase(c);
+    setNocSuccessMessage(null);
+    setNocErrorMessage(null);
+    setIsNocCopied(false);
+    setShowNocModal(true);
+  }, []);
+
+  const handleReleaseNoc = async () => {
+    if (!nocTargetCase) return;
+    setIsNocReleasing(true);
+    setNocErrorMessage(null);
+    try {
+      const res = await apiPost<{ success: boolean; message: string; nocRef: string; issuedAt: string }>(
+        `/collections/${nocTargetCase.id}/noc/release`,
+        { remarks: "Full settlement verified and NOC issued." }
+      );
+      setNocSuccessMessage(res?.message || "NOC released successfully. Case marked as Closed.");
+      setCollections((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(nocTargetCase.id)
+            ? { ...item, status: "Closed", outstanding: 0, totalDue: 0 }
+            : item
+        )
+      );
+      if (selectedCase && String(selectedCase.id) === String(nocTargetCase.id)) {
+        setSelectedCase((prev) => (prev ? { ...prev, status: "Closed", outstanding: 0, totalDue: 0 } : null));
+      }
+    } catch (err: any) {
+      setNocErrorMessage(err?.message || "Failed to release NOC. Please try again.");
+    } finally {
+      setIsNocReleasing(false);
+    }
+  };
+
+  const handlePrintNoc = () => {
+    window.print();
+  };
+
+  const handleCopyNoc = () => {
+    if (!nocTargetCase) return;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const nocRef = `NOC/WF/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${nocTargetCase.loanId || nocTargetCase.id}`;
+    const name = nocTargetCase.borrowerName || nocTargetCase.customer || "Borrower";
+    const text = `========================================================\nWAQT FINANCE PRIVATE LIMITED\nCIN: U67120RJ1995PTC009521 | GSTIN: 08AAACW1509R1ZX\nwww.waqtfinance.com\n========================================================\nNO OBJECTION CERTIFICATE\n(NO DUES CERTIFICATE - FULL LOAN SETTLEMENT)\n\nRef No: ${nocRef}\nDate: ${dateStr}\n\nBorrower Name: ${name}\nLoan Account No: ${nocTargetCase.loanId}\nRegistered Phone: ${nocTargetCase.phone || "-"}\nPAN Number: ${nocTargetCase.pan || "-"}\nSanction / Principal: Rs. ${nocTargetCase.disbursementAmount || nocTargetCase.principal || 0}\nTotal Amount Paid: Rs. ${nocTargetCase.amountPaid || nocTargetCase.disbursementAmount || 0}\nOutstanding Dues: Rs. 0.00 (NIL / FULLY CLEARED)\nLoan Status: FULLY CLOSED & SETTLED\n\nTO WHOMSOEVER IT MAY CONCERN:\nThis is to certify that Mr./Ms. ${name}, holding PAN ${nocTargetCase.pan || "-"}, has fully repaid and settled all outstanding dues, interest, penalties, and charges against Loan Account Number ${nocTargetCase.loanId} issued and serviced by WAQT FINANCE PRIVATE LIMITED. As on ${dateStr}, there are NO OUTSTANDING DUES payable by the borrower under the aforementioned loan account. The hypothecation/lien, if any, created in favour of the Company is hereby released, and the loan account stands FULLY CLOSED in our official records.\n\nFor WAQT FINANCE PRIVATE LIMITED\nAuthorized Signatory\nCredit & Operations Department\n15 K- 5 Jyoti Nagar Housing Board Colony, Sahakar Marg, Jaipur, Rajasthan 302005\nPhone: +91 92170 86608 | Email: customercare@waqtfinance.com\n========================================================`;
+    navigator.clipboard.writeText(text);
+    setIsNocCopied(true);
+    setTimeout(() => setIsNocCopied(false), 3000);
+  };
+
+  const handleShareNocWhatsApp = () => {
+    if (!nocTargetCase) return;
+    const cleanPhone = String(nocTargetCase.phone || "").replace(/\D/g, "").slice(-10);
+    const name = nocTargetCase.borrowerName || nocTargetCase.customer || "Borrower";
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const nocRef = `NOC/WF/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${nocTargetCase.loanId || nocTargetCase.id}`;
+    const msg = `Dear ${name},\n\nGreetings from *WAQT FINANCE PRIVATE LIMITED*.\n\nWe are pleased to inform you that your Loan Account *#${nocTargetCase.loanId}* has been *FULLY SETTLED & CLOSED*.\n\n📄 *NO OBJECTION CERTIFICATE (NOC)*\nRef: ${nocRef}\nDate: ${dateStr}\nOutstanding Balance: *₹0.00 (NIL / CLEARED)*\nStatus: *FULLY CLOSED*\n\nThere are no further dues pending against this loan account. You may download or save your official NOC certificate for your records.\n\nWarm regards,\n*Waqt Finance Pvt Ltd*\n📞 +91 92170 86608\n🌐 www.waqtfinance.com`;
+    window.open(`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
   const openTodayPaymentsModal = useCallback(async (filterMode: "today" | "month" | "all" = "today") => {
     setTodayPaymentsFilter(filterMode);
     setShowTodayPaymentsModal(true);
@@ -2039,6 +2111,14 @@ export function LoanCollection() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => openNocModal(item)}
+                          className="inline-flex h-10 sm:h-11 items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 sm:px-4 text-xs sm:text-sm font-bold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/50 shadow-xs"
+                          title="Generate & Release No Objection Certificate"
+                        >
+                          <Award className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Release NOC
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openCaseAction(item, "overview")}
                           className="inline-flex h-10 sm:h-11 items-center justify-center rounded-xl bg-slate-950 px-4 sm:px-5 text-xs sm:text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 shadow-sm"
                         >
@@ -3270,6 +3350,24 @@ if (isLogPaymentPage) {
                       </div>
                     </div>
                   </div>
+                  <div className="mt-3 p-3.5 rounded-xl border border-amber-300 bg-amber-50/70 dark:border-amber-800/80 dark:bg-amber-950/30 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                        <Award className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-amber-950 dark:text-amber-200">No Objection Certificate (NOC)</p>
+                        <p className="text-[10px] text-amber-800 dark:text-amber-400">Official No Dues &amp; Full Settlement Certificate</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => selectedReportCase && openNocModal(selectedReportCase)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
+                    >
+                      <Award className="h-3.5 w-3.5" /> Release NOC
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -3584,6 +3682,14 @@ if (isLogPaymentPage) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openNocModal(selectedCase)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md bg-amber-600 px-3 text-xs font-bold text-white hover:bg-amber-700 shadow-xs"
+                  title="Generate & Release No Objection Certificate"
+                >
+                  <Award className="h-3.5 w-3.5" /> Release NOC
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -4242,6 +4348,241 @@ if (isLogPaymentPage) {
 
       {/* TODAY'S & MONTHLY COLLECTED PAYMENTS MODAL */}
       {renderTodayPaymentsModal()}
+
+      {/* NO OBJECTION CERTIFICATE (NOC) PREVIEW & RELEASE MODAL */}
+      {showNocModal && nocTargetCase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto">
+          <style>{`
+            @media print {
+              body * { visibility: hidden !important; }
+              #official-noc-certificate, #official-noc-certificate * { visibility: visible !important; }
+              #official-noc-certificate {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 24px !important;
+                border: 2px solid #000 !important;
+                box-shadow: none !important;
+                background: white !important;
+                color: black !important;
+              }
+              .noc-modal-actions { display: none !important; }
+            }
+          `}</style>
+          <div className="relative w-full max-w-4xl my-auto rounded-2xl bg-white shadow-2xl dark:border dark:border-slate-800 dark:bg-slate-900 overflow-hidden flex flex-col max-h-[95vh]">
+            {/* Action Bar Header */}
+            <div className="noc-modal-actions flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-950/60 sticky top-0 z-10 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                  <Award className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Official No Objection Certificate (NOC)</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Loan #{nocTargetCase.loanId} • {nocTargetCase.borrowerName || nocTargetCase.customer}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleReleaseNoc}
+                  disabled={isNocReleasing}
+                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {isNocReleasing ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Releasing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Release &amp; Mark Closed
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintNoc}
+                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Print / Save PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareNocWhatsApp}
+                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-600 transition"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyNoc}
+                  className="inline-flex h-8.5 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
+                >
+                  {isNocCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  {isNocCopied ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowNocModal(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 transition"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Status alerts */}
+            {nocSuccessMessage && (
+              <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-xs font-bold text-emerald-800 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{nocSuccessMessage}</span>
+              </div>
+            )}
+            {nocErrorMessage && (
+              <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-xs font-bold text-red-800 border border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{nocErrorMessage}</span>
+              </div>
+            )}
+
+            {/* Official Printable NOC Document Container */}
+            <div className="p-4 sm:p-8 overflow-y-auto flex justify-center bg-slate-100 dark:bg-slate-950/40">
+              <div
+                id="official-noc-certificate"
+                className="w-full max-w-[780px] bg-white text-slate-900 border-2 border-slate-300 p-6 sm:p-10 shadow-lg relative font-sans text-xs sm:text-sm leading-relaxed"
+                style={{ minHeight: "950px" }}
+              >
+                {/* Top Letterhead */}
+                <div className="text-center pb-4 border-b-2 border-slate-900 space-y-1">
+                  <h1 className="text-xl sm:text-2xl font-black tracking-wide text-slate-950 uppercase">
+                    WAQT FINANCE PRIVATE LIMITED
+                  </h1>
+                  <p className="text-[11px] font-semibold text-slate-600 tracking-wider uppercase">
+                    CIN : U67120RJ1995PTC009521 &bull; GSTIN : 08AAACW1509R1ZX &bull; RBI REGULATED NBFC
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Registered Office: 15 K- 5 Jyoti Nagar Housing Board Colony, Sahakar Marg, Jaipur, Rajasthan 302005
+                  </p>
+                  <p className="text-[10px] font-medium text-slate-500">
+                    Phone: +91 92170 86608 &bull; Email: customercare@waqtfinance.com &bull; Website: www.waqtfinance.com
+                  </p>
+                </div>
+
+                {/* Ref & Date Row */}
+                <div className="mt-4 flex items-center justify-between text-[11px] sm:text-xs font-semibold text-slate-700">
+                  <p>
+                    <span className="font-bold text-slate-900">Ref No:</span> NOC/WF/{new Date().getFullYear()}/{String(new Date().getMonth() + 1).padStart(2, "0")}/{nocTargetCase.loanId || nocTargetCase.id}
+                  </p>
+                  <p>
+                    <span className="font-bold text-slate-900">Date:</span> {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+
+                {/* Certificate Title */}
+                <div className="my-5 text-center">
+                  <div className="inline-block border-2 border-slate-900 px-6 py-2 bg-slate-50">
+                    <h2 className="text-base sm:text-lg font-black tracking-wider text-slate-950 uppercase">
+                      NO OBJECTION CERTIFICATE
+                    </h2>
+                    <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">
+                      (NO DUES CERTIFICATE &bull; FULL LOAN SETTLEMENT)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Loan & Borrower Details Grid Table */}
+                <div className="my-5 border border-slate-300 rounded overflow-hidden">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <tbody>
+                      <tr className="border-b border-slate-200">
+                        <td className="w-1/4 bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Borrower Name</td>
+                        <td className="w-1/4 p-2 sm:p-2.5 font-bold text-slate-900 border-r border-slate-200">{nocTargetCase.borrowerName || nocTargetCase.customer}</td>
+                        <td className="w-1/4 bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Loan Account No.</td>
+                        <td className="w-1/4 p-2 sm:p-2.5 font-mono font-bold text-slate-900">#{nocTargetCase.loanId}</td>
+                      </tr>
+                      <tr className="border-b border-slate-200">
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Registered Mobile</td>
+                        <td className="p-2 sm:p-2.5 font-semibold text-slate-900 border-r border-slate-200">{nocTargetCase.phone || "-"}</td>
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Total Amount Paid</td>
+                        <td className="p-2 sm:p-2.5 font-bold text-emerald-700">{formatCurrency(nocTargetCase.amountPaid || nocTargetCase.disbursementAmount || 0)}</td>
+                      </tr>
+                      <tr className="border-b border-slate-200">
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Borrower Email</td>
+                        <td className="p-2 sm:p-2.5 text-slate-900 border-r border-slate-200">{nocTargetCase.email || `${(nocTargetCase.borrowerName || "borrower").toLowerCase().replace(/\s+/g, "")}@gmail.com`}</td>
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Outstanding Balance</td>
+                        <td className="p-2 sm:p-2.5 font-extrabold text-emerald-700 bg-emerald-50/60">₹0.00 (NIL / CLEARED)</td>
+                      </tr>
+                      <tr className="border-b border-slate-200">
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">PAN Number</td>
+                        <td className="p-2 sm:p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{nocTargetCase.pan || "XXXXX0000X"}</td>
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Loan Disbursal Date</td>
+                        <td className="p-2 sm:p-2.5 text-slate-900">{formatDobDisplay(nocTargetCase.disbursementDate) || "12-Apr-2026"}</td>
+                      </tr>
+                      <tr>
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Sanction / Principal</td>
+                        <td className="p-2 sm:p-2.5 font-bold text-slate-900 border-r border-slate-200">{formatCurrency(nocTargetCase.disbursementAmount || nocTargetCase.principal || 0)}</td>
+                        <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Loan Closure Date</td>
+                        <td className="p-2 sm:p-2.5 font-bold text-slate-900">{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Official Declaration Text */}
+                <div className="my-5 space-y-3 text-slate-800 text-justify">
+                  <p className="font-bold uppercase tracking-wider text-slate-950">
+                    TO WHOMSOEVER IT MAY CONCERN
+                  </p>
+                  <p>
+                    This is to certify that Mr./Ms. <strong className="text-slate-950">{nocTargetCase.borrowerName || nocTargetCase.customer}</strong>,
+                    holding Permanent Account Number (PAN) <strong className="text-slate-950">{nocTargetCase.pan || "-"}</strong>, has fully repaid and
+                    settled all outstanding dues, interest, penalties, and associated charges against Loan Account Number
+                    <strong className="text-slate-950"> #{nocTargetCase.loanId}</strong> issued and serviced by <strong className="text-slate-950">WAQT FINANCE PRIVATE LIMITED</strong>.
+                  </p>
+                  <p>
+                    As on date <strong className="text-slate-950">{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</strong>,
+                    there are <strong className="text-emerald-700">NO OUTSTANDING DUES (NIL BALANCE)</strong> payable by the borrower under the aforementioned loan account.
+                    The hypothecation, lien, or charge, if any, created in favour of the Company is hereby released, and the loan account stands
+                    <strong className="text-slate-950"> FULLY CLOSED &amp; DISCHARGED</strong> in our official records.
+                  </p>
+                  <p>
+                    This certificate is issued at the request of the borrower for the purpose of closure proof, credit bureau (CIBIL/Experian/Equifax/CRIF) record updation, and verification of full clearance.
+                  </p>
+                </div>
+
+                {/* Seals and Authorized Signatures */}
+                <div className="mt-8 pt-4 flex items-end justify-between">
+                  {/* Left: System Generated Stamp */}
+                  <div className="text-center border-2 border-emerald-600 rounded-lg p-2.5 bg-emerald-50/50 max-w-[200px]">
+                    <p className="text-[9px] font-extrabold uppercase text-emerald-800 tracking-wider">OFFICIALLY VERIFIED</p>
+                    <p className="text-[8px] font-bold text-emerald-700 my-1">&starf; NO DUES SEAL &starf;</p>
+                    <p className="text-[8px] font-extrabold text-emerald-900 uppercase">WAQT FINANCE PVT LTD</p>
+                    <p className="text-[7px] text-emerald-600 font-mono mt-0.5">REF: {nocTargetCase.loanId}/NOC-VALID</p>
+                  </div>
+
+                  {/* Right: Authorized Signatory */}
+                  <div className="text-right space-y-1">
+                    <p className="text-xs font-bold text-slate-900 uppercase">For WAQT FINANCE PRIVATE LIMITED</p>
+                    <div className="py-2">
+                      <span className="inline-block border-b-2 border-slate-900 w-36 pb-1 text-center font-serif italic text-xs font-bold text-slate-700">
+                        Authorized Signatory
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-950">Credit &amp; Operations Department</p>
+                    <p className="text-[10px] text-slate-500">Jaipur Head Office (Rajasthan)</p>
+                  </div>
+                </div>
+
+                {/* Footer disclaimer */}
+                <div className="mt-8 pt-3 border-t border-slate-200 text-center text-[9px] text-slate-400">
+                  This is an authentic system-generated No Objection Certificate issued by Waqt Finance Private Limited. No physical signature is required. For verification or inquiries, please contact customercare@waqtfinance.com or call +91 92170 86608.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
   // ----------------------------------------------------
