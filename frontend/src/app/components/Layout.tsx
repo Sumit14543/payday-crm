@@ -169,6 +169,8 @@ export function Layout() {
   const isHimanshuUser = user?.email?.toLowerCase() === "himanshukumar@waqtfinance.com" || user?.name?.toLowerCase().includes("himanshu");
   const isKanhaiyaUser = user?.email?.toLowerCase() === "kanhiayakumar@waqtfinance.com" || user?.name?.toLowerCase().includes("kanhiya") || user?.name?.toLowerCase().includes("kanhaiya");
   const isDhamaUser = user?.email?.toLowerCase() === "durgeshdhama@waqtfinance.com" || user?.email?.toLowerCase().includes("durgeshdhama") || user?.name?.toLowerCase().includes("dhama") || user?.name?.toLowerCase().includes("durgesh");
+  const isBhartiUser = user?.email?.toLowerCase() === "bhartigautam@waqtfinance.com" || user?.email?.toLowerCase().includes("bhartigautam") || user?.name?.toLowerCase().includes("bharti") || user?.name?.toLowerCase().includes("gautam");
+  const isKajalUser = user?.name === "Kajal" || user?.email?.toLowerCase().includes("kajal");
 
   if (role === "product-admin") {
     return <ProductAdminLayout />;
@@ -683,7 +685,9 @@ export function Layout() {
                     <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                   ) : isHimanshuUser ? (
                     <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
-                  ) : isNandiniUser ? (
+                  ) : isBhartiUser ? (
+                    <img src="/bharti.jpg" alt="Bharti Gautam Profile" className="h-full w-full object-cover scale-105" />
+                ) : isNandiniUser ? (
                     <img src="/nandini.jpg" alt="Nandini Profile" className="h-full w-full object-cover scale-105" />
                   ) : user?.name === "Kajal" ? (
                     <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover scale-105" />
@@ -722,6 +726,8 @@ export function Layout() {
                     ? "Credit Manager (Testing)"
                     : isShrutiUser
                     ? "Senior Credit Manager"
+                    : isBhartiUser
+                    ? "Sales & Support Telecaller"
                     : collectionAccount
                     ? "Collection"
                     : role
@@ -745,7 +751,7 @@ export function Layout() {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <AppTooltip label={isDhamaUser ? "Durgesh Dhama Profile" : isKanhaiyaUser ? "Kanhiya Kumar Profile" : isHimanshuUser ? "Himanshu Profile" : isTestCreditUser ? "Test Credit Manager Profile" : isShrutiUser ? "Shruti Singh Profile" : "View Profile"} side="right">
+            <AppTooltip label={isDhamaUser ? "Durgesh Dhama Profile" : isKanhaiyaUser ? "Kanhiya Kumar Profile" : isHimanshuUser ? "Himanshu Profile" : isBhartiUser ? "Bharti Gautam Profile" : isNandiniUser ? "Nandini Profile" : isTestCreditUser ? "Test Credit Manager Profile" : isShrutiUser ? "Shruti Singh Profile" : "View Profile"} side="right">
               <button
                 type="button"
                 onClick={() => setShowProfileModal(true)}
@@ -979,7 +985,9 @@ export function Layout() {
                       <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                     ) : isHimanshuUser ? (
                       <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
-                    ) : isNandiniUser ? (
+                    ) : isBhartiUser ? (
+                      <img src="/bharti.jpg" alt="Bharti Gautam Profile" className="h-full w-full object-cover scale-105" />
+                  ) : isNandiniUser ? (
                       <img src="/nandini.jpg" alt="Nandini Profile" className="h-full w-full object-cover scale-105" />
                     ) : user?.name === "Kajal" ? (
                       <img src="/kajal-avatar.jpg" alt="Kajal Profile" className="h-full w-full object-cover scale-105" />
@@ -1005,6 +1013,8 @@ export function Layout() {
                             <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                           ) : isHimanshuUser ? (
                             <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
+                          ) : isBhartiUser ? (
+                            <img src="/bharti.jpg" alt="Bharti Gautam Profile" className="h-full w-full object-cover scale-105" />
                           ) : isNandiniUser ? (
                             <img src="/nandini.jpg" alt="Nandini Profile" className="h-full w-full object-cover scale-105" />
                           ) : user?.name === "Kajal" ? (
@@ -1143,6 +1153,8 @@ export function Layout() {
                       ? "/kanhaiya.jpg"
                       : isHimanshuUser
                       ? "/himanshu.jpg"
+                      : isBhartiUser
+                      ? "/bharti.jpg"
                       : isNandiniUser
                       ? "/nandini.jpg"
                       : isTestCreditUser
@@ -1205,6 +1217,8 @@ export function Layout() {
                       ? "Kanhiya Kumar"
                       : isHimanshuUser
                       ? "Himanshu"
+                      : isBhartiUser
+                      ? "Bharti Gautam"
                       : isNandiniUser
                       ? "Nandni Gupta"
                       : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
@@ -1224,6 +1238,8 @@ export function Layout() {
                     ? "Collection Executive • Debt Recovery"
                     : isHimanshuUser
                     ? "Collection Executive • Debt Recovery"
+                    : isBhartiUser
+                    ? "Sales & Support Telecaller • Retail Lending"
                     : isNandiniUser
                     ? "Sales & Support Telecaller • Retail Lending"
                     : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
@@ -1237,6 +1253,8 @@ export function Layout() {
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
                   {isDhamaUser || isKanhaiyaUser
                     ? `Collection Executive managing customer loan recovery, field collection followups, PTP tracking, and CRM collection workflows at ${branding.name}.`
+                    : isBhartiUser
+                    ? `Sales & Support professional managing loan applications, borrower qualification, documentation, and CRM workflows at ${branding.name}.`
                     : isNandiniUser
                     ? `Commerce Graduate with hands-on experience in loan sales, customer acquisition, lead qualification, and CRM documentation at ${branding.name}.`
                     : isTestCreditUser
@@ -1254,7 +1272,7 @@ export function Layout() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Official Email</p>
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                      {isNandiniUser ? "nandini@waqtmoney.in" : isTestCreditUser ? (user?.email || "test.credit@waqtmoney.in") : isShrutiUser ? (user?.email || "shrutisingh@waqtmoney.in") : user?.email}
+                      {isBhartiUser ? "bhartigautam@waqtfinance.com" : isNandiniUser ? "nandini@waqtmoney.in" : isTestCreditUser ? (user?.email || "test.credit@waqtmoney.in") : isShrutiUser ? (user?.email || "shrutisingh@waqtmoney.in") : user?.email}
                     </p>
                   </div>
                 </div>
@@ -1271,6 +1289,8 @@ export function Layout() {
                           ? "WQTM-COL-109"
                           : isHimanshuUser
                           ? "WQTM-COL-108"
+                          : isBhartiUser
+                          ? "WQTM-TEL-203"
                           : isNandiniUser
                           ? "WQTM-TEL-201"
                           : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
@@ -1290,6 +1310,8 @@ export function Layout() {
                       <p className="text-xs font-black text-slate-900 dark:text-slate-100">
                         {isHimanshuUser
                           ? "-"
+                          : isBhartiUser
+                          ? "+91 92174 02922"
                           : isNandiniUser
                           ? "+91 92174 02920"
                           : user?.email?.toLowerCase() === "prakash@waqtfinance.com"
@@ -1334,7 +1356,7 @@ export function Layout() {
                   <div className="flex flex-wrap gap-1.5">
                     {(isHimanshuUser || collectionAccount
                       ? ["Loan Recovery", "Debt Collection", "PTP Management", "Customer Communication", "Field Followups"]
-                      : isNandiniUser
+                      : isBhartiUser || isNandiniUser
                       ? ["Loan Sales", "Lead Generation", "Customer Relationship", "Excel", "Axis Bank Credit Process"]
                       : ["Credit Underwriting", "CAM Sheet Evaluation", "CIBIL Audit", "Salary Slip Analysis"]
                     ).map((skill) => (
@@ -1348,7 +1370,7 @@ export function Layout() {
 
               {/* Action Buttons */}
               <div className="mt-5 flex gap-2.5">
-                {isDhamaUser || isKanhaiyaUser || isHimanshuUser || isNandiniUser || (isShrutiUser && !isTestCreditUser) || user?.name === "Kajal" || user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
+                {isDhamaUser || isKanhaiyaUser || isHimanshuUser || isBhartiUser || isNandiniUser || (isShrutiUser && !isTestCreditUser) || user?.name === "Kajal" || user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -1358,6 +1380,8 @@ export function Layout() {
                         ? "/kanhaiya.jpg"
                         : isHimanshuUser
                         ? "/himanshu.jpg"
+                        : isBhartiUser
+                        ? "/bharti.jpg"
                         : isNandiniUser
                         ? "/nandini.jpg"
                         : isShrutiUser

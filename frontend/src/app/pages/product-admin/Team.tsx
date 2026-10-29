@@ -167,16 +167,50 @@ export function Team() {
       }
     };
 
+    const bhartiProfile: TeamMember = {
+      id: "TM-203",
+      name: "Bharti Gautam",
+      email: "bhartigautam@waqtfinance.com",
+      phone: "+91 92174 02922",
+      role: "Sales & Support Telecaller",
+      attendance: "Present",
+      clockIn: "09:00 AM",
+      performance: "Top Performer",
+      salesClosed: 14,
+      avatar: "/bharti.jpg",
+      aboutMe:
+        "Customer-focused Sales and Telecalling professional with extensive experience in loan origination, telephonic verification, lead qualification, and CRM documentation.",
+      skills: [
+        "Sales & Lead Generation",
+        "Loan Sales",
+        "Customer Relationship (CRM)",
+        "Documentation & KYC Verification",
+        "Communication Skills",
+        "Microsoft Excel"
+      ]
+    };
+
     if (telecallers.length === 0 && !loading) {
       // Fallback roster matching active telecallers
       return [
         nandiniProfile,
+        bhartiProfile,
         { id: "TM-202", name: "Kajal", email: "kajalshishodia@waqtmoney.in", phone: "+91 98760 12345", role: "Sales & Support Telecaller", attendance: "Present", clockIn: "09:15 AM", performance: "Excellent", salesClosed: 12 },
         { id: "TM-204", name: "Waqt Telecaller", email: "telecaller@waqtfinance.com", phone: "+91 98111 22233", role: "Sales & Support Telecaller", attendance: "Absent", clockIn: "—", performance: "Good", salesClosed: 12 }
       ];
     }
 
     return telecallers.map((t) => {
+      const isBharti = String(t.name || t.username || t.email || "").toLowerCase().includes("bharti");
+      if (isBharti) {
+        return {
+          ...bhartiProfile,
+          id: `TM-${t.id || "203"}`,
+          email: t.email || bhartiProfile.email,
+          attendance: t.is_on_duty ? "Present" : "Absent",
+          clockIn: t.is_on_duty ? "09:00 AM" : "—"
+        };
+      }
       const isNandini = String(t.name || t.username || "").toLowerCase().includes("nandini");
       if (isNandini) {
         return {

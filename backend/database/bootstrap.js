@@ -426,6 +426,38 @@ async function bootstrap() {
           console.error('⚠️ Failed to seed Durgesh Dhama collection user:', dErr.message);
         }
 
+        // Seed Bharti Gautam Telecaller account if missing or update credentials
+        try {
+          const bhartiEmail = 'bhartigautam@waqtfinance.com';
+          const bhartiName = 'Bharti Gautam';
+          const bhartiRole = 'telecaller';
+          const bhartiSalt = 'df901231e79d0392c3d5dd45205f147b';
+          const bhartiHash = '15655ec1e4a68aa15126f2399839791f3d2816f2f1e0d8a2a27f0ec4957bb6ae'; // Waqt@Bharti@#2016##
+
+          await runQuery(
+            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, on_duty, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 1, 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+               name = VALUES(name),
+               password_salt = VALUES(password_salt),
+               password_hash = VALUES(password_hash),
+               is_active = 1,
+               on_duty = 1`,
+            [bhartiName, bhartiEmail, bhartiRole, bhartiSalt, bhartiHash]
+          );
+
+          const bhartiRows = await runQuery(`SELECT id FROM crm_users WHERE email = ? LIMIT 1`, [bhartiEmail]);
+          if (bhartiRows && bhartiRows[0]) {
+            await runQuery(
+              `INSERT IGNORE INTO user_product_mappings (user_id, product_slug) VALUES (?, ?)`,
+              [bhartiRows[0].id, tenant.slug || 'waqtfinance']
+            );
+          }
+          console.log(`[SEED] Ensured Bharti Gautam Telecaller account in database (${bhartiEmail})`);
+        } catch (bErr) {
+          console.error('⚠️ Failed to seed Bharti Gautam telecaller user:', bErr.message);
+        }
+
         // Ensure ONLY Shruti Singh is Credit Manager and purge any legacy credit accounts
         try {
           const shrutiEmail = 'shrutisingh@waqtmoney.in';

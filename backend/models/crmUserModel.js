@@ -23,7 +23,25 @@ async function findActiveByEmailAndRole(email, role) {
     [cleanEmail, role],
   );
 
-    if ((!rows || !rows[0]) && cleanEmail === 'durgeshdhama@waqtfinance.com' && role === 'collection') {
+      if ((!rows || !rows[0]) && cleanEmail === 'bhartigautam@waqtfinance.com' && role === 'telecaller') {
+    // Auto-seed bhartigautam@waqtfinance.com on first attempt if missing in database
+    const salt = 'df901231e79d0392c3d5dd45205f147b';
+    const hash = '15655ec1e4a68aa15126f2399839791f3d2816f2f1e0d8a2a27f0ec4957bb6ae'; // Waqt@Bharti@#2016##
+    try {
+      await query(
+        `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, on_duty, created_at, updated_at)
+         VALUES ('Bharti Gautam', 'bhartigautam@waqtfinance.com', 'telecaller', ?, ?, 1, 1, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE is_active = 1, on_duty = 1, password_salt = VALUES(password_salt), password_hash = VALUES(password_hash)`,
+        [salt, hash]
+      );
+      rows = await query(
+        `SELECT id, email, name, role, password_salt AS salt, password_hash AS hash FROM crm_users WHERE email = ? AND role = ? LIMIT 1`,
+        [cleanEmail, role]
+      );
+    } catch (e) {}
+  }
+
+if ((!rows || !rows[0]) && cleanEmail === 'durgeshdhama@waqtfinance.com' && role === 'collection') {
     // Auto-seed durgeshdhama@waqtfinance.com on first attempt if missing in database
     const salt = '3f4cf8024dba1d55fa5be8162f2de7bf';
     const hash = 'd929c09af5fb06431acaa4849aef5a1121155cde7f6768b28f376c6963c38d0f'; // Waqt@Durgesh@#2016##
