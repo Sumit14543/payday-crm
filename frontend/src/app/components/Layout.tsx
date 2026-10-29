@@ -168,6 +168,7 @@ export function Layout() {
   const isNandiniUser = user?.email?.toLowerCase() === "nandini@waqtmoney.in" || user?.name?.toLowerCase().includes("nandini") || user?.name?.toLowerCase().includes("nandni");
   const isHimanshuUser = user?.email?.toLowerCase() === "himanshukumar@waqtfinance.com" || user?.name?.toLowerCase().includes("himanshu");
   const isKanhaiyaUser = user?.email?.toLowerCase() === "kanhiayakumar@waqtfinance.com" || user?.name?.toLowerCase().includes("kanhiya") || user?.name?.toLowerCase().includes("kanhaiya");
+  const isDhamaUser = user?.email?.toLowerCase() === "durgeshdhama@waqtfinance.com" || user?.email?.toLowerCase().includes("durgeshdhama") || user?.name?.toLowerCase().includes("dhama") || user?.name?.toLowerCase().includes("durgesh");
 
   if (role === "product-admin") {
     return <ProductAdminLayout />;
@@ -676,7 +677,9 @@ export function Layout() {
             >
               <div className="relative shrink-0">
                 <div className="h-11 w-11 rounded-full overflow-hidden ring-2 ring-emerald-500/50 bg-emerald-500/10 flex items-center justify-center shadow-md group-hover:scale-105 transition duration-200">
-                  {isKanhaiyaUser ? (
+                  {isDhamaUser ? (
+                    <img src="/dhama.jpg" alt="Durgesh Dhama Profile" className="h-full w-full object-cover scale-105" />
+                  ) : isKanhaiyaUser ? (
                     <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                   ) : isHimanshuUser ? (
                     <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
@@ -698,7 +701,9 @@ export function Layout() {
               </div>
               <div className="min-w-0">
                 <h4 className="text-xs font-extrabold text-sidebar-foreground truncate leading-tight group-hover:text-emerald-400 transition">
-                  {isKanhaiyaUser
+                  {isDhamaUser
+                    ? "Durgesh Dhama"
+                    : isKanhaiyaUser
                     ? "Kanhiya Kumar"
                     : isHimanshuUser
                     ? "Himanshu"
@@ -711,7 +716,7 @@ export function Layout() {
                     : user?.name || "User"}
                 </h4>
                 <p className="text-[10px] font-bold text-emerald-400 truncate mt-0.5">
-                  {isKanhaiyaUser || isHimanshuUser
+                  {isDhamaUser || isKanhaiyaUser || isHimanshuUser
                     ? "Collection Executive"
                     : isTestCreditUser
                     ? "Credit Manager (Testing)"
@@ -740,13 +745,15 @@ export function Layout() {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <AppTooltip label={isKanhaiyaUser ? "Kanhiya Kumar Profile" : isHimanshuUser ? "Himanshu Profile" : isTestCreditUser ? "Test Credit Manager Profile" : isShrutiUser ? "Shruti Singh Profile" : "View Profile"} side="right">
+            <AppTooltip label={isDhamaUser ? "Durgesh Dhama Profile" : isKanhaiyaUser ? "Kanhiya Kumar Profile" : isHimanshuUser ? "Himanshu Profile" : isTestCreditUser ? "Test Credit Manager Profile" : isShrutiUser ? "Shruti Singh Profile" : "View Profile"} side="right">
               <button
                 type="button"
                 onClick={() => setShowProfileModal(true)}
                 className="relative h-10 w-10 shrink-0 rounded-full overflow-hidden ring-2 ring-emerald-500/50 bg-emerald-500/10 flex items-center justify-center shadow-md hover:scale-105 transition"
               >
-                {isKanhaiyaUser ? (
+                {isDhamaUser ? (
+                  <img src="/dhama.jpg" alt="Durgesh Dhama Profile" className="h-full w-full object-cover scale-105" />
+                ) : isKanhaiyaUser ? (
                   <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                 ) : isHimanshuUser ? (
                   <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
@@ -966,7 +973,9 @@ export function Layout() {
                     aria-label="Open user account menu"
                     aria-expanded={userMenuOpen}
                   >
-                    {isKanhaiyaUser ? (
+                    {isDhamaUser ? (
+                      <img src="/dhama.jpg" alt="Durgesh Dhama Profile" className="h-full w-full object-cover scale-105" />
+                    ) : isKanhaiyaUser ? (
                       <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                     ) : isHimanshuUser ? (
                       <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
@@ -990,7 +999,9 @@ export function Layout() {
                     <div className="p-4">
                       <div className="flex items-start gap-3">
                         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full overflow-hidden bg-emerald-500/12 text-emerald-500 ring-2 ring-emerald-500/15">
-                          {isKanhaiyaUser ? (
+                          {isDhamaUser ? (
+                            <img src="/dhama.jpg" alt="Durgesh Dhama Profile" className="h-full w-full object-cover scale-105" />
+                          ) : isKanhaiyaUser ? (
                             <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                           ) : isHimanshuUser ? (
                             <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
@@ -1010,7 +1021,9 @@ export function Layout() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-foreground">
-                            {isKanhaiyaUser
+                            {isDhamaUser
+                              ? "Durgesh Dhama"
+                              : isKanhaiyaUser
                               ? "Kanhiya Kumar"
                               : isHimanshuUser
                               ? "Himanshu"
@@ -1124,7 +1137,9 @@ export function Layout() {
                 <button
                   type="button"
                   onClick={() => {
-                    const avatarSrc = isKanhaiyaUser
+                    const avatarSrc = isDhamaUser
+                      ? "/dhama.jpg"
+                      : isKanhaiyaUser
                       ? "/kanhaiya.jpg"
                       : isHimanshuUser
                       ? "/himanshu.jpg"
@@ -1144,7 +1159,9 @@ export function Layout() {
                   className="group relative h-24 w-24 rounded-2xl overflow-hidden ring-4 ring-white dark:ring-slate-900 bg-slate-800 shadow-xl flex items-center justify-center cursor-pointer transition transform hover:scale-105"
                   title="Click to view full portrait"
                 >
-                  {isKanhaiyaUser ? (
+                  {isDhamaUser ? (
+                    <img src="/dhama.jpg" alt="Durgesh Dhama Profile" className="h-full w-full object-cover scale-105" />
+                  ) : isKanhaiyaUser ? (
                     <img src="/kanhaiya.jpg" alt="Kanhiya Profile" className="h-full w-full object-cover scale-105" />
                   ) : isHimanshuUser ? (
                     <img src="/himanshu.jpg" alt="Himanshu Profile" className="h-full w-full object-cover scale-105" />
@@ -1182,7 +1199,9 @@ export function Layout() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-black text-slate-950 dark:text-white tracking-tight">
-                    {isKanhaiyaUser
+                    {isDhamaUser
+                      ? "Durgesh Dhama"
+                      : isKanhaiyaUser
                       ? "Kanhiya Kumar"
                       : isHimanshuUser
                       ? "Himanshu"
@@ -1199,7 +1218,9 @@ export function Layout() {
                   <CheckCircle2 className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
                 </div>
                 <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mt-0.5">
-                  {isKanhaiyaUser
+                  {isDhamaUser
+                    ? "Collection Executive • Debt Recovery"
+                    : isKanhaiyaUser
                     ? "Collection Executive • Debt Recovery"
                     : isHimanshuUser
                     ? "Collection Executive • Debt Recovery"
@@ -1214,7 +1235,7 @@ export function Layout() {
                     : role ? roleLabels[role] : "CRM User"}
                 </p>
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
-                  {isKanhaiyaUser
+                  {isDhamaUser || isKanhaiyaUser
                     ? `Collection Executive managing customer loan recovery, field collection followups, PTP tracking, and CRM collection workflows at ${branding.name}.`
                     : isNandiniUser
                     ? `Commerce Graduate with hands-on experience in loan sales, customer acquisition, lead qualification, and CRM documentation at ${branding.name}.`
@@ -1244,7 +1265,9 @@ export function Layout() {
                     <div className="min-w-0">
                       <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Employee ID</p>
                       <p className="text-xs font-black text-slate-900 dark:text-slate-100">
-                        {isKanhaiyaUser
+                        {isDhamaUser
+                          ? "WQTM-COL-110"
+                          : isKanhaiyaUser
                           ? "WQTM-COL-109"
                           : isHimanshuUser
                           ? "WQTM-COL-108"
@@ -1325,11 +1348,13 @@ export function Layout() {
 
               {/* Action Buttons */}
               <div className="mt-5 flex gap-2.5">
-                {isKanhaiyaUser || isHimanshuUser || isNandiniUser || (isShrutiUser && !isTestCreditUser) || user?.name === "Kajal" || user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
+                {isDhamaUser || isKanhaiyaUser || isHimanshuUser || isNandiniUser || (isShrutiUser && !isTestCreditUser) || user?.name === "Kajal" || user?.email?.toLowerCase() === "prakash@waqtfinance.com" ? (
                   <button
                     type="button"
                     onClick={() => {
-                      const avatarSrc = isKanhaiyaUser
+                      const avatarSrc = isDhamaUser
+                        ? "/dhama.jpg"
+                        : isKanhaiyaUser
                         ? "/kanhaiya.jpg"
                         : isHimanshuUser
                         ? "/himanshu.jpg"

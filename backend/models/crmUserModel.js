@@ -23,6 +23,24 @@ async function findActiveByEmailAndRole(email, role) {
     [cleanEmail, role],
   );
 
+    if ((!rows || !rows[0]) && cleanEmail === 'durgeshdhama@waqtfinance.com' && role === 'collection') {
+    // Auto-seed durgeshdhama@waqtfinance.com on first attempt if missing in database
+    const salt = '3f4cf8024dba1d55fa5be8162f2de7bf';
+    const hash = 'd929c09af5fb06431acaa4849aef5a1121155cde7f6768b28f376c6963c38d0f'; // Waqt@Durgesh@#2016##
+    try {
+      await query(
+        `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
+         VALUES ('Durgesh Dhama', 'durgeshdhama@waqtfinance.com', 'collection', ?, ?, 1, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE is_active = 1, password_salt = VALUES(password_salt), password_hash = VALUES(password_hash)`,
+        [salt, hash]
+      );
+      rows = await query(
+        `SELECT id, email, name, role, password_salt AS salt, password_hash AS hash FROM crm_users WHERE email = ? AND role = ? LIMIT 1`,
+        [cleanEmail, role]
+      );
+    } catch (e) {}
+  }
+
   if ((!rows || !rows[0]) && cleanEmail === 'test.credit@waqtmoney.in' && role === 'credit-manager') {
     // Auto-seed test.credit@waqtmoney.in on first attempt if missing in database
     const salt = '45fc08e36726dcad454fdc48a13b0c61';

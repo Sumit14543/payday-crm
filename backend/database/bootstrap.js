@@ -403,6 +403,29 @@ async function bootstrap() {
           console.error('⚠️ Failed to seed Kanhiya collection user:', kErr.message);
         }
 
+        // Seed Durgesh Dhama Collection Agent account if missing or update credentials
+        try {
+          const dhamaEmail = 'durgeshdhama@waqtfinance.com';
+          const dhamaName = 'Durgesh Dhama';
+          const dhamaRole = 'collection';
+          const dhamaSalt = '3f4cf8024dba1d55fa5be8162f2de7bf';
+          const dhamaHash = 'd929c09af5fb06431acaa4849aef5a1121155cde7f6768b28f376c6963c38d0f'; // Waqt@Durgesh@#2016##
+
+          await runQuery(
+            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+               name = VALUES(name),
+               password_salt = VALUES(password_salt),
+               password_hash = VALUES(password_hash),
+               is_active = 1`,
+            [dhamaName, dhamaEmail, dhamaRole, dhamaSalt, dhamaHash]
+          );
+          console.log(`[SEED] Ensured Durgesh Dhama Collection account in database (${dhamaEmail})`);
+        } catch (dErr) {
+          console.error('⚠️ Failed to seed Durgesh Dhama collection user:', dErr.message);
+        }
+
         // Ensure ONLY Shruti Singh is Credit Manager and purge any legacy credit accounts
         try {
           const shrutiEmail = 'shrutisingh@waqtmoney.in';
