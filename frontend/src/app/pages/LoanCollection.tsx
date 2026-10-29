@@ -590,7 +590,6 @@ export function LoanCollection() {
   };
   const [showNocModal, setShowNocModal] = useState(false);
   const [nocTargetCase, setNocTargetCase] = useState<CollectionCase | null>(null);
-  const [nocUnpaidWarningCase, setNocUnpaidWarningCase] = useState<CollectionCase | null>(null);
 
   const isCasePaidOff = useCallback((c: CollectionCase | null | undefined): boolean => {
     if (!c) return false;
@@ -618,7 +617,7 @@ export function LoanCollection() {
 
   const openNocModal = useCallback((c: CollectionCase) => {
     if (!isCasePaidOff(c)) {
-      setNocUnpaidWarningCase(c);
+      alert("Aapka loan abhi pay nahi hua hai!");
       return;
     }
     setNocTargetCase(c);
@@ -2392,93 +2391,10 @@ export function LoanCollection() {
 
 
   const renderNocModal = () => {
+    if (!showNocModal || !nocTargetCase) return null;
+
     return (
-      <>
-        {/* Warning Modal when loan is not fully paid */}
-        {nocUnpaidWarningCase && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-xs animate-in fade-in duration-200">
-            <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:border dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
-              <div className="flex items-start gap-3.5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 shadow-xs">
-                  <AlertCircle className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      NOC Certificate Unavailable
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setNocUnpaidWarningCase(null)}
-                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <p className="mt-1 text-sm font-semibold text-rose-600 dark:text-rose-400">
-                    Aapka loan abhi pay nahi hua hai!
-                  </p>
-                  <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    No Objection Certificate (NOC) sirf unhi loans ke liye release ki ja sakti hai jo <strong>Fully Paid Off / Closed</strong> ho chuke hon. Is account par abhi dues pending hain.
-                  </p>
-
-                  <div className="mt-3.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-950/60 space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500 dark:text-slate-400">Borrower:</span>
-                      <span className="font-bold text-slate-900 dark:text-slate-100">
-                        {nocUnpaidWarningCase.borrowerName || nocUnpaidWarningCase.customer}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500 dark:text-slate-400">Loan Account:</span>
-                      <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                        #{nocUnpaidWarningCase.loanId}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500 dark:text-slate-400">Pending Outstanding:</span>
-                      <span className="font-extrabold text-rose-600 dark:text-rose-400">
-                        ₹{Number(nocUnpaidWarningCase.outstanding !== undefined ? nocUnpaidWarningCase.outstanding : nocUnpaidWarningCase.totalDue || 0).toLocaleString("en-IN")}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500 dark:text-slate-400">Current Status:</span>
-                      <span className="inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                        {nocUnpaidWarningCase.status || nocUnpaidWarningCase.emiStatus || "Overdue / Pending"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const targetId = String(nocUnpaidWarningCase.id);
-                    setNocUnpaidWarningCase(null);
-                    setSelectedLogPaymentCaseId(targetId);
-                    navigate("/collections/log-payment");
-                  }}
-                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
-                >
-                  Log Payment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNocUnpaidWarningCase(null)}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-                >
-                  Theek Hai (Close)
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Certificate Modal */}
-        {showNocModal && nocTargetCase && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto">
         <style>{`
           @media print {
             body * { visibility: hidden !important; }
@@ -2690,8 +2606,6 @@ export function LoanCollection() {
           </div>
         </div>
       </div>
-        )}
-      </>
     );
   };
 
