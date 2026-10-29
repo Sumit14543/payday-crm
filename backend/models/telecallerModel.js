@@ -1220,6 +1220,7 @@ function mapCreditApplication(row) {
     customerDecision: row.sanctionCustomerDecision || 'pending',
     customerDecisionAt: row.sanctionCustomerDecisionAt || null,
     customerDecisionIp: row.sanctionCustomerDecisionIp || '',
+    decisionToken: row.sanctionDecisionToken || '',
     sanctionAmount: Number(row.sanctionAmount || row.loanAmount || 0),
     disbursementAmount: Number(row.disbursementAmount || 0),
     repaymentAmount: Number(row.repaymentAmount || 0),
@@ -1403,7 +1404,9 @@ async function listCreditApplications(filters = {}) {
     query(`
       SELECT id, application_id, lead_id, agreement_number, email_status, ${dateTimeSql('sent_at')} AS sent_at,
              pdf_path, whatsapp_status, whatsapp_error, ${dateTimeSql('whatsapp_sent_at')} AS whatsapp_sent_at,
-             principal_amount, disbursed_amount, repayment_amount
+             principal_amount, disbursed_amount, repayment_amount,
+             customer_decision, ${dateTimeSql('customer_decision_at')} AS customer_decision_at, customer_decision_ip,
+             decision_token, acceptance_proof_path
       FROM lead_sanctions
       ORDER BY id ASC
     `).catch(() => []),
@@ -1537,6 +1540,7 @@ async function listCreditApplications(filters = {}) {
       sanctionCustomerDecision: sanction ? sanction.customer_decision : 'pending',
       sanctionCustomerDecisionAt: sanction ? sanction.customer_decision_at : null,
       sanctionCustomerDecisionIp: sanction ? sanction.customer_decision_ip : '',
+      sanctionDecisionToken: sanction ? sanction.decision_token : '',
       sanctionAmount: sanction ? Number(sanction.principal_amount || 0) : Number(row.loanAmount || 0),
       disbursementAmount: sanction ? Number(sanction.disbursed_amount || 0) : 0,
       repaymentAmount: sanction ? Number(sanction.repayment_amount || 0) : 0,

@@ -48,11 +48,12 @@ router.get('/:id/cam-sheet', requireRole(['credit-manager', 'accountant', 'produ
 router.post('/:id/cam-sheet', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(esignController.saveLeadCamSheet));
 router.get('/:id/esign-requests/latest', requireRole(['credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(esignController.getLatestLeadEsign));
 router.post('/:id/esign-requests', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(esignController.createLeadEsign));
-router.get('/:id/sanction/latest', requireRole(['credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(sanctionController.getLatestLeadSanction));
-router.get('/:id/sanction/pdf', requireRole(['credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(sanctionController.downloadLeadSanctionPdf));
+router.get('/:id/sanction/latest', requireRole(['telecaller', 'credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(sanctionController.getLatestLeadSanction));
+router.get('/:id/sanction/pdf', requireRole(['telecaller', 'credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(sanctionController.downloadLeadSanctionPdf));
 router.post('/:id/sanction/revise', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(sanctionController.reviseLeadSanction));
 router.post('/:id/sanction/resend', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(sanctionController.resendLeadSanction));
 router.post('/:id/sanction/reject-post-sanction', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(sanctionController.rejectPostSanction));
+router.post('/:id/sanction/mark-accepted', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(sanctionController.markSanctionAcceptedByStaff));
 router.post(
   '/:id/sanction/acceptance-proof',
   requireRole(['credit-manager', 'product-admin', 'superadmin']),

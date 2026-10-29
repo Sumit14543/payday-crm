@@ -385,11 +385,41 @@ async function uploadSanctionAcceptanceProof(req, res) {
 
   const relativePath = `/uploads/sanction-acceptance/${req.file.filename}`;
   syncUploadedFile(req.file.path, relativePath);
-  const updatedSanction = await sanctionModel.updateAcceptanceProof(sanction.id, {
+  let updatedSanction = await sanctionModel.updateAcceptanceProof(sanction.id, {
     path: relativePath,
     originalFileName: req.file.originalname,
     user: req.body?.user || req.user?.name || 'Credit Manager',
   });
+
+  const leadId = lead.rawId || lead.id;
+  const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').toString().split(',')[0].trim();
+  const userAgent = req.get('user-agent') || '';
+
+  // Auto-accept sanction if pending, since valid customer acceptance proof has been uploaded
+  if (!sanction.customerDecision || sanction.customerDecision === 'pending') {
+    updatedSanction = await sanctionModel.updateCustomerDecision(sanction.id, {
+      decision: 'accepted',
+      notes: `Accepted via verified acceptance proof PDF uploaded by ${req.body?.user || req.user?.name || 'Credit Manager'}`,
+      ip: clientIp,
+      userAgent: userAgent,
+    }, leadId);
+
+    await leadModel.updateStatus(leadId, 'Approved');
+
+    await activityModel.createForLead(lead, {
+      type: 'sanction_accepted',
+      description: `Sanction ACCEPTED via verified acceptance proof uploaded by ${req.body?.user || req.user?.name || 'Credit Manager'}`,
+      user: req.body?.user || req.user?.name || 'Credit Manager',
+      metadata: {
+        sanctionId: sanction.id,
+        agreementNumber: sanction.agreementNumber,
+        customerDecision: 'accepted',
+        file: relativePath,
+        ip: clientIp,
+        decidedAt: new Date().toISOString(),
+      },
+    });
+  }
 
   await activityModel.createForLead(lead, {
     type: 'document',
@@ -486,6 +516,66 @@ async function handleCustomerSanctionDecision(req, res) {
   }
 
   const isAccept = action === 'accept' || action === 'accepted';
+  const isReject = action === 'reject' || action === 'rejected';
+
+  // If no action or unrecognized action, do NOT reject! Return confirmation page or JSON details
+  if (!isAccept && !isReject) {
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      return res.json({
+        success: true,
+        pendingDecision: true,
+        customerDecision: 'pending',
+        leadId,
+        borrower: sanction.borrower,
+        agreementNumber: sanction.agreementNumber,
+        principalAmount: sanction.principalAmount,
+        disbursedAmount: sanction.disbursedAmount,
+        repaymentAmount: sanction.repaymentAmount,
+        dueDate: sanction.dueDate,
+      });
+    }
+
+    const hostUrl = `${req.protocol}://${req.get('host')}`;
+    const acceptLink = `${hostUrl}/sanction-decision/${encodeURIComponent(token)}?action=accept`;
+    const rejectLink = `${hostUrl}/sanction-decision/${encodeURIComponent(token)}?action=reject`;
+
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Confirm Loan Sanction - Waqt Finance</title>
+        </head>
+        <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;text-align:center;padding:40px 16px;color:#0f172a;background:#f8fafc;margin:0;">
+          <div style="max-width:440px;margin:0 auto;background:#fff;padding:32px 24px;border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #e2e8f0;text-align:left;">
+            <div style="text-align:center;margin-bottom:20px;">
+              <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin:0 0 6px 0;">Loan Sanction Letter</h2>
+              <p style="font-size:13px;color:#64748b;margin:0;">Waqt Finance Private Limited</p>
+            </div>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;font-size:13px;line-height:1.7;">
+              <div><strong style="color:#475569;">Borrower:</strong> <span style="font-weight:700;color:#0f172a;">${sanction.borrower || 'Customer'}</span></div>
+              <div><strong style="color:#475569;">Agreement No:</strong> <span style="font-weight:700;color:#0f172a;">${sanction.agreementNumber}</span></div>
+              <div><strong style="color:#475569;">Sanction Amount:</strong> <span style="font-weight:800;color:#059669;font-size:15px;">₹${Number(sanction.principalAmount || 0).toLocaleString('en-IN')}</span></div>
+              <div><strong style="color:#475569;">Net Disbursed:</strong> ₹${Number(sanction.disbursedAmount || 0).toLocaleString('en-IN')}</div>
+              <div><strong style="color:#475569;">Repayment Amount:</strong> ₹${Number(sanction.repaymentAmount || 0).toLocaleString('en-IN')}</div>
+            </div>
+            <p style="font-size:13px;color:#334155;text-align:center;margin:0 0 16px 0;font-weight:600;">Please confirm your decision below:</p>
+            <div style="display:flex;gap:12px;margin-bottom:12px;">
+              <a href="${acceptLink}" style="flex:1;text-align:center;background:#059669;color:#fff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 16px;border-radius:10px;display:block;">
+                ✓ Accept Sanction
+              </a>
+              <a href="${rejectLink}" style="flex:1;text-align:center;background:#dc2626;color:#fff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 16px;border-radius:10px;display:block;">
+                ✕ Reject
+              </a>
+            </div>
+            <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0;">Your decision will be recorded directly into the loan management system.</p>
+          </div>
+        </body>
+      </html>
+    `);
+  }
+
   const newDecision = isAccept ? 'accepted' : 'rejected';
   const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').toString().split(',')[0].trim();
   const userAgent = req.get('user-agent') || '';
@@ -493,7 +583,7 @@ async function handleCustomerSanctionDecision(req, res) {
   // Update sanction customer decision in DB
   const updatedSanction = await sanctionModel.updateCustomerDecision(sanction.id, {
     decision: newDecision,
-    notes: req.body?.notes || (isAccept ? 'Accepted via email button click' : 'Rejected via email button click'),
+    notes: req.body?.notes || (isAccept ? 'Accepted via direct customer link click' : 'Rejected via direct customer link click'),
     ip: clientIp,
     userAgent: userAgent,
   }, leadId);
@@ -686,7 +776,75 @@ async function rejectPostSanction(req, res) {
   return success(res, { lead: updatedLead || lead, sanction: updatedSanction, emailTo: toEmail }, 'Loan rejected post-sanction and rejection email sent to customer.');
 }
 
+async function markSanctionAcceptedByStaff(req, res) {
+  const lead = await getLeadOr404(res, req.params.id);
+  if (!lead) return null;
+
+  const sanction = await sanctionModel.findLatestByLead(lead);
+  if (!sanction) {
+    const error = new Error('Sanction letter is required before marking acceptance.');
+    error.statusCode = 400;
+    error.publicMessage = error.message;
+    throw error;
+  }
+
+  if (sanction.customerDecision === 'accepted') {
+    return success(res, sanction, 'Sanction is already accepted.');
+  }
+
+  const staffUser = req.user?.name || req.body?.user || 'Credit Manager';
+  const staffRole = req.user?.role || 'credit-manager';
+  const reason = String(req.body?.reason || 'Verified customer acceptance via WhatsApp / Phone confirmation').trim();
+  const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').toString().split(',')[0].trim();
+  const userAgent = req.get('user-agent') || '';
+
+  const leadId = lead.rawId || lead.id;
+
+  const updatedSanction = await sanctionModel.updateCustomerDecision(sanction.id, {
+    decision: 'accepted',
+    notes: `${reason} (Marked by ${staffUser} [${staffRole}])`,
+    ip: clientIp,
+    userAgent: userAgent,
+  }, leadId);
+
+  await leadModel.updateStatus(leadId, 'Approved');
+
+  await activityModel.createForLead(lead, {
+    type: 'sanction_accepted',
+    description: `Sanction ACCEPTED - Verified by ${staffUser} (${staffRole}): ${reason}`,
+    user: staffUser,
+    metadata: {
+      sanctionId: sanction.id,
+      agreementNumber: sanction.agreementNumber,
+      customerDecision: 'accepted',
+      verifiedByStaff: staffUser,
+      staffRole,
+      reason,
+      ip: clientIp,
+      userAgent,
+      decidedAt: new Date().toISOString(),
+    },
+  });
+
+  await auditModel.create(req, {
+    action: 'lead.sanction_customer_decision_manual_override',
+    entityType: 'lead_sanction',
+    entityId: String(sanction.id),
+    lead,
+    metadata: {
+      agreementNumber: sanction.agreementNumber,
+      decision: 'accepted',
+      staffUser,
+      staffRole,
+      reason,
+    },
+  });
+
+  return success(res, updatedSanction, 'Sanction marked as accepted successfully.');
+}
+
 module.exports = {
+  markSanctionAcceptedByStaff,
   downloadLeadSanctionPdf,
   getLatestLeadSanction,
   handleCustomerSanctionDecision,

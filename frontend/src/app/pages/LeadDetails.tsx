@@ -349,6 +349,12 @@ type SanctionLetter = {
   acceptanceProofOriginalFileName: string;
   acceptanceProofUploadedAt: string | null;
   acceptanceProofUploadedBy: string;
+  customerDecision?: string;
+  customerDecisionAt?: string | null;
+  customerDecisionNotes?: string;
+  customerDecisionIp?: string;
+  customerDecisionUserAgent?: string;
+  decisionToken?: string;
   emailTo: string;
   emailStatus: string;
   emailError: string;
@@ -2779,6 +2785,8 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
   const [isAccountingHandoffSaving, setIsAccountingHandoffSaving] = useState(false);
   const [isAcceptanceProofUploading, setIsAcceptanceProofUploading] = useState(false);
   const [isSanctionResending, setIsSanctionResending] = useState(false);
+  const [isCopiedSanctionLink, setIsCopiedSanctionLink] = useState(false);
+  const [isMarkingSanctionAccepted, setIsMarkingSanctionAccepted] = useState(false);
   const [esignFeedback, setEsignFeedback] = useState("");
   const [loanAgreementFeedback, setLoanAgreementFeedback] = useState("");
   const [sanctionRevisionReason, setSanctionRevisionReason] = useState("");
@@ -3027,8 +3035,8 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
   const telecallerOptions = useMemo(() => {
     const tenantSlug = getTenantSlug();
     const defaults = tenantSlug === "geetpay"
-      ? ["nandini", "kalam", "kunal", "assign to me"]
-      : ["nandini", "kajal", "saqib", "assign to me"];
+      ? ["nandini", "bharti", "kalam", "kunal", "assign to me"]
+      : ["nandini", "kajal", "bharti", "saqib", "assign to me"];
     const assigned = /^stella/i.test(lead.assignedTo || "") ? "nandini" : lead.assignedTo;
     const uniqueNames = Array.from(new Set([...defaults, assigned].filter((name) => (
       Boolean(name) &&
@@ -3647,6 +3655,67 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
         .catch(() => undefined);
     } finally {
       setIsSanctionResending(false);
+    }
+  };
+
+  const getSanctionAcceptanceLink = (decisionToken: string) => {
+    const origin = window.location.origin || "https://payday.waqtmoney.com";
+    return `${origin}/sanction-decision/${encodeURIComponent(decisionToken)}?action=accept`;
+  };
+
+  const copySanctionAcceptanceLink = async (decisionToken?: string) => {
+    if (!decisionToken) {
+      toast.error("Sanction decision token is missing.");
+      return;
+    }
+    const link = getSanctionAcceptanceLink(decisionToken);
+    try {
+      await navigator.clipboard.writeText(link);
+      setIsCopiedSanctionLink(true);
+      setTimeout(() => setIsCopiedSanctionLink(false), 2500);
+      toast.success("Customer Acceptance Link copied to clipboard!");
+    } catch {
+      toast.error("Unable to copy link to clipboard");
+    }
+  };
+
+  const shareSanctionLinkOnWhatsApp = (sanction: SanctionLetter) => {
+    const phone = lead.phone || lead.mobile || sanction.borrowerPhone;
+    if (!phone || !sanction.decisionToken) {
+      toast.error("Customer phone or sanction token not available");
+      return;
+    }
+    const cleanPhone = String(phone).replace(/\D/g, "").slice(-10);
+    const link = getSanctionAcceptanceLink(sanction.decisionToken);
+    const customerName = lead.name || sanction.borrower || "Customer";
+    const amountStr = Number(sanction.principalAmount || 0).toLocaleString("en-IN");
+    const text = `Dear ${customerName},\n\nPlease click the link below to verify and ACCEPT your Loan Sanction Letter (Agreement: ${sanction.agreementNumber}, Loan Amount: ₹${amountStr}):\n\n👉 ${link}\n\n- Waqt Finance`;
+    const waUrl = `https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleMarkSanctionAcceptedManually = async () => {
+    if (!leadId || isMarkingSanctionAccepted) return;
+    const confirmed = window.confirm(
+      "Kya customer ne verbal/chat par sanction accept kar liya hai? Click OK to mark sanction as accepted in database and proceed to agreement eSign."
+    );
+    if (!confirmed) return;
+
+    setIsMarkingSanctionAccepted(true);
+    try {
+      const response = await apiPost<SanctionLetter>(`/leads/${encodeURIComponent(leadId)}/sanction/mark-accepted`, {
+        reason: "Customer confirmed acceptance verbally / on chat",
+        user: user?.name || "Credit Manager",
+      });
+      setLatestSanction(response);
+      setLoanAgreementFeedback("Sanction marked as accepted. You can now send loan agreement for eSign.");
+      toast.success("Sanction accepted successfully!");
+      refreshActivities();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unable to mark sanction accepted";
+      toast.error(msg);
+    } finally {
+      setIsMarkingSanctionAccepted(false);
     }
   };
 
@@ -4956,6 +5025,57 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       {apiError && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {apiError}
+        </div>
+      )}
+
+      
+      {latestSanction && latestSanction.customerDecision !== 'accepted' && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-white dark:border-amber-700 dark:bg-slate-900 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-200 text-amber-900 font-bold text-sm shadow-xs shrink-0">⚠️</span>
+              <div>
+                <h4 className="text-sm font-bold text-amber-950 dark:text-amber-200">
+                  Customer Sanction Acceptance Pending ({latestSanction.agreementNumber || 'Sanction Letter'})
+                </h4>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                  Customer ne abhi tak sanction accept nahi kiya hai. Direct link bhej kar ya call par verify karke accept karwayein:
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => copySanctionAcceptanceLink(latestSanction.decisionToken)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition cursor-pointer shadow-xs"
+                title="Copy direct acceptance link"
+              >
+                {isCopiedSanctionLink ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+                <span>{isCopiedSanctionLink ? 'Copied!' : 'Copy Direct Link'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => shareSanctionLinkOnWhatsApp(latestSanction)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition cursor-pointer shadow-xs"
+                title="Send direct link on WhatsApp"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span>Send on WhatsApp</span>
+              </button>
+              {(isCreditManagerRole || isSuperadminRole || isProductAdminRole) && (
+                <button
+                  type="button"
+                  onClick={handleMarkSanctionAcceptedManually}
+                  disabled={isMarkingSanctionAccepted}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-white dark:bg-slate-950 px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition cursor-pointer shadow-xs"
+                  title="Mark accepted verified on phone/chat"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span>{isMarkingSanctionAccepted ? 'Marking...' : '✓ Mark Accepted (Call Verified)'}</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -6347,14 +6467,61 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                         )}
                       </div>
                     ) : (
-                      <div className="rounded-xl border border-amber-300 bg-amber-500/10 p-3.5 text-center shadow-sm">
-                        <div className="flex items-center justify-center gap-2 text-amber-600 dark:text-amber-400 font-extrabold text-sm">
-                          <Clock className="h-5 w-5 text-amber-500 animate-pulse" />
-                          <span>AWAITING CUSTOMER DECISION</span>
+                      <div className="space-y-3">
+                        <div className="rounded-xl border border-amber-300 bg-amber-500/10 p-3.5 text-center shadow-sm">
+                          <div className="flex items-center justify-center gap-2 text-amber-600 dark:text-amber-400 font-extrabold text-sm">
+                            <Clock className="h-5 w-5 text-amber-500 animate-pulse" />
+                            <span>AWAITING CUSTOMER DECISION</span>
+                          </div>
+                          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            Sanction email sent. Waiting for borrower ACCEPT/REJECT response.
+                          </p>
                         </div>
-                        <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                          Sanction email sent. Waiting for borrower ACCEPT/REJECT response.
-                        </p>
+
+                        {/* Customer Direct Acceptance Link Helper */}
+                        {latestSanction.decisionToken && (
+                          <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/70 via-purple-50/30 to-white dark:from-slate-900 dark:via-indigo-950/20 dark:to-slate-900 p-3.5 shadow-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950 dark:text-indigo-200 uppercase tracking-wider">
+                                <Send className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                <span>Customer Acceptance Link</span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-100/80 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">
+                                Direct Action
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                              Agar customer email se sanction accept nahi kar pa rha hai, to ye direct link bhej kar karwayein:
+                            </p>
+
+                            <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-950 p-1.5 shadow-xs">
+                              <input
+                                type="text"
+                                readOnly
+                                value={getSanctionAcceptanceLink(latestSanction.decisionToken)}
+                                className="flex-1 bg-transparent px-2 text-xs font-mono text-slate-700 dark:text-slate-300 select-all outline-hidden truncate"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => copySanctionAcceptanceLink(latestSanction.decisionToken)}
+                                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition cursor-pointer shadow-xs"
+                                title="Copy direct acceptance link"
+                              >
+                                {isCopiedSanctionLink ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+                                <span>{isCopiedSanctionLink ? "Copied!" : "Copy Link"}</span>
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => shareSanctionLinkOnWhatsApp(latestSanction)}
+                              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition cursor-pointer"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Send Direct Link on WhatsApp</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -6407,6 +6574,17 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                           : latestSanction.emailStatus === "sent"
                             ? "Resend Sanction Email & WhatsApp"
                             : "Retry Sanction Email & WhatsApp"}
+                      </button>
+                    )}
+                    {(isCreditManagerRole || isSuperadminRole || isProductAdminRole) && latestSanction.customerDecision !== "accepted" && (
+                      <button
+                        type="button"
+                        onClick={handleMarkSanctionAcceptedManually}
+                        disabled={isMarkingSanctionAccepted}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition cursor-pointer mt-1"
+                      >
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>{isMarkingSanctionAccepted ? "Marking Accepted..." : "Mark Accepted (Verified on Call/Chat)"}</span>
                       </button>
                     )}
                     {(isCreditManagerRole || isProductAdminRole || isSuperadminRole) && lead.status !== "Lost" && lead.status !== "Converted" && (
