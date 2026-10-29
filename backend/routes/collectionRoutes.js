@@ -58,6 +58,7 @@ router.post('/:caseId/followups', requireRole(['collection']), asyncHandler(coll
 router.post('/:caseId/payment', requireRole(['collection']), paymentUploadMiddleware(), asyncHandler(collectionController.createPayment));
 router.post('/:caseId/reopen', requireRole(['collection']), asyncHandler(collectionController.reopenCase));
 router.post('/:caseId/noc/release', requireRole(['collection', 'accountant', 'superadmin', 'product-admin']), asyncHandler(collectionController.releaseNoc));
+router.post('/:caseId/noc/revoke', requireRole(['collection', 'accountant', 'superadmin', 'product-admin']), asyncHandler(collectionController.revokeNoc));
 router.post('/:caseId/ptp', requireRole(['collection']), asyncHandler(collectionController.createPtp));
 router.patch('/:caseId/ptp/:ptpId', requireRole(['collection']), asyncHandler(collectionController.updatePtpStatus));
 

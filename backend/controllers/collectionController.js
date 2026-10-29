@@ -230,6 +230,14 @@ async function releaseNoc(req, res) {
   return success(res, result);
 }
 
+
+async function revokeNoc(req, res) {
+  const collectionCase = await getCaseOr404(req.params.caseId);
+  const actor = (req.user && (req.user.name || req.user.email)) || req.body?.actor || 'Collection Agent';
+  const result = await collectionModel.revokeNoc(collectionCase, req.body || {}, actor);
+  return success(res, result);
+}
+
 module.exports = {
   createCallLog,
   createFollowup,
@@ -241,4 +249,5 @@ module.exports = {
   reopenCase,
   updatePtpStatus,
   releaseNoc,
+  revokeNoc,
 };

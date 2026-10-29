@@ -823,6 +823,40 @@ async function releaseNoc(collectionCase, payload = {}, actor = 'Collection Agen
   };
 }
 
+
+async function revokeNoc(collectionCase, payload = {}, actor = 'Collection Agent') {
+  const notes = payload.notes || 'NOC release revoked / cancelled. Case status reverted back to Active.';
+
+  await query(`
+    INSERT INTO collection_call_logs (
+      case_id, loan_id, disposition, sub_disposition, notes, next_action_at, actor
+    ) VALUES (?, ?, ?, ?, ?, NOW(), ?)
+  `, [
+    collectionCase.id,
+    collectionCase.loanId,
+    'Reopened',
+    'NOC Revoked',
+    notes,
+    actor || 'Collection Agent'
+  ]);
+
+  try {
+    await query(`
+      UPDATE collection_cases
+      SET status = 'Active', last_contact_date = CURDATE()
+      WHERE id = ?
+    `, [collectionCase.id]);
+  } catch (err) {}
+
+  invalidateSummaryCache();
+
+  return {
+    success: true,
+    actor,
+    message: 'NOC revoked successfully. Case status reverted back to Active.'
+  };
+}
+
 module.exports = {
   invalidateSummaryCache,
   createCallLog,
@@ -835,4 +869,5 @@ module.exports = {
   syncOverdueLoans,
   updatePtpStatus,
   releaseNoc,
+  revokeNoc,
 };
