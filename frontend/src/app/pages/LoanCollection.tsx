@@ -2665,20 +2665,33 @@ export function LoanCollection() {
                   className="w-full max-w-[780px] bg-white text-slate-900 border-2 border-slate-300 p-6 sm:p-10 shadow-lg relative font-sans text-xs sm:text-sm leading-relaxed"
                   style={{ minHeight: "950px" }}
                 >
-                  {/* Top Letterhead */}
-                  <div className="text-center pb-4 border-b-2 border-slate-900 space-y-1">
-                    <h1 className="text-xl sm:text-2xl font-black tracking-wide text-slate-950 uppercase">
-                      WAQT FINANCE PRIVATE LIMITED
-                    </h1>
-                    <p className="text-[11px] font-semibold text-slate-600 tracking-wider uppercase">
-                      CIN : U67120RJ1995PTC009521 &bull; GSTIN : 08AAACW1509R1ZX &bull; RBI REGULATED NBFC
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      Registered Office: 15 K- 5 Jyoti Nagar Housing Board Colony, Sahakar Marg, Jaipur, Rajasthan 302005
-                    </p>
-                    <p className="text-[10px] font-medium text-slate-500">
-                      Phone: +91 92170 86608 &bull; Email: customercare@waqtfinance.com &bull; Website: www.waqtfinance.com
-                    </p>
+                  {/* Top Letterhead with Official Waqt Finance Logo Emblem from Login Page */}
+                  <div className="pb-4 border-b-2 border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src="/screenshots/waqt_logo_emblem_transparent.png"
+                        alt="Waqt Finance Logo"
+                        className="h-12 sm:h-14 w-auto object-contain shrink-0 drop-shadow-xs"
+                      />
+                      <div>
+                        <div className="flex items-center text-xl sm:text-2xl font-black tracking-tight leading-none text-slate-900">
+                          <span className="text-red-600">WAQT</span>
+                          <span className="text-blue-700 ml-1.5">FINANCE</span>
+                        </div>
+                        <p className="text-[9px] font-extrabold tracking-[0.2em] text-slate-500 uppercase mt-0.5">
+                          WAQT FINANCE PRIVATE LIMITED
+                        </p>
+                        <p className="text-[10px] font-semibold text-slate-600 tracking-wider">
+                          CIN: U67120RJ1995PTC009521 &bull; GSTIN: 08AAACW1509R1ZX
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-center sm:text-right text-[10px] text-slate-600 space-y-0.5">
+                      <p className="font-bold text-slate-900 uppercase">RBI REGULATED NBFC</p>
+                      <p>15 K- 5 Jyoti Nagar Housing Board Colony,</p>
+                      <p>Sahakar Marg, Jaipur, Rajasthan 302005</p>
+                      <p className="font-medium text-slate-500">Phone: +91 92170 86608 &bull; www.waqtfinance.com</p>
+                    </div>
                   </div>
 
                   {/* Ref & Date Row */}
@@ -2773,11 +2786,16 @@ export function LoanCollection() {
                       <p className="text-[7px] text-emerald-600 font-mono mt-0.5">REF: {nocCustomFields?.loanId || nocTargetCase.loanId}/NOC-VALID</p>
                     </div>
 
-                    {/* Right: Authorized Signatory */}
+                    {/* Right: Authorized Signatory with Official Signature Image */}
                     <div className="text-right space-y-1">
                       <p className="text-xs font-bold text-slate-900 uppercase">For WAQT FINANCE PRIVATE LIMITED</p>
-                      <div className="py-2">
-                        <span className="inline-block border-b-2 border-slate-900 w-36 pb-1 text-center font-serif italic text-xs font-bold text-slate-700">
+                      <div className="py-1 flex flex-col items-end">
+                        <img
+                          src="/kanhiya_signature.png"
+                          alt="Authorized Signatory Signature"
+                          className="h-14 sm:h-16 w-auto object-contain max-w-[150px] -mb-2 relative z-10"
+                        />
+                        <span className="inline-block border-t-2 border-slate-900 w-44 pt-1 text-center font-serif italic text-xs font-bold text-slate-800">
                           Authorized Signatory
                         </span>
                       </div>
