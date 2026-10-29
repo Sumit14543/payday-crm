@@ -5029,54 +5029,6 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       )}
 
       
-      {latestSanction && latestSanction.customerDecision !== 'accepted' && (
-        <div className="mb-6 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-white dark:border-amber-700 dark:bg-slate-900 p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-200 text-amber-900 font-bold text-sm shadow-xs shrink-0">⚠️</span>
-              <div>
-                <h4 className="text-sm font-bold text-amber-950 dark:text-amber-200">
-                  Customer Sanction Acceptance Pending ({latestSanction.agreementNumber || 'Sanction Letter'})
-                </h4>
-                
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => copySanctionAcceptanceLink(latestSanction.decisionToken)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition cursor-pointer shadow-xs"
-                title="Copy direct acceptance link"
-              >
-                {isCopiedSanctionLink ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-                <span>{isCopiedSanctionLink ? 'Copied!' : 'Copy Direct Link'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => shareSanctionLinkOnWhatsApp(latestSanction)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition cursor-pointer shadow-xs"
-                title="Send direct link on WhatsApp"
-              >
-                <MessageSquare className="h-4 w-4" />
-                <span>Send on WhatsApp</span>
-              </button>
-              {(isCreditManagerRole || isSuperadminRole || isProductAdminRole) && (
-                <button
-                  type="button"
-                  onClick={handleMarkSanctionAcceptedManually}
-                  disabled={isMarkingSanctionAccepted}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-white dark:bg-slate-950 px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition cursor-pointer shadow-xs"
-                  title="Mark accepted verified on phone/chat"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span>{isMarkingSanctionAccepted ? 'Marking...' : '✓ Mark Accepted (Call Verified)'}</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
         <nav className="flex gap-2 overflow-x-auto">
@@ -6476,49 +6428,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                           </p>
                         </div>
 
-                        {/* Customer Direct Acceptance Link Helper */}
-                        {latestSanction.decisionToken && (
-                          <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/70 via-purple-50/30 to-white dark:from-slate-900 dark:via-indigo-950/20 dark:to-slate-900 p-3.5 shadow-xs">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950 dark:text-indigo-200 uppercase tracking-wider">
-                                <Send className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                <span>Customer Acceptance Link</span>
-                              </div>
-                              <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-100/80 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">
-                                Direct Action
-                              </span>
-                            </div>
-                            
-
-                            <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-950 p-1.5 shadow-xs">
-                              <input
-                                type="text"
-                                readOnly
-                                value={getSanctionAcceptanceLink(latestSanction.decisionToken)}
-                                className="flex-1 bg-transparent px-2 text-xs font-mono text-slate-700 dark:text-slate-300 select-all outline-hidden truncate"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => copySanctionAcceptanceLink(latestSanction.decisionToken)}
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition cursor-pointer shadow-xs"
-                                title="Copy direct acceptance link"
-                              >
-                                {isCopiedSanctionLink ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
-                                <span>{isCopiedSanctionLink ? "Copied!" : "Copy Link"}</span>
-                              </button>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => shareSanctionLinkOnWhatsApp(latestSanction)}
-                              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition cursor-pointer"
-                            >
-                              <MessageSquare className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                              <span>Send Direct Link on WhatsApp</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                        </div>
                     )}
 
                     {latestSanction.emailError && (
@@ -6572,17 +6482,19 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                             : "Retry Sanction Email & WhatsApp"}
                       </button>
                     )}
-                    {(isCreditManagerRole || isSuperadminRole || isProductAdminRole) && latestSanction.customerDecision !== "accepted" && (
+
+                    {latestSanction.customerDecision !== 'accepted' && latestSanction.decisionToken && (
                       <button
                         type="button"
-                        onClick={handleMarkSanctionAcceptedManually}
-                        disabled={isMarkingSanctionAccepted}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition cursor-pointer mt-1"
+                        onClick={() => copySanctionAcceptanceLink(latestSanction.decisionToken)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer mt-1"
+                        title="Copy direct customer acceptance link"
                       >
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                        <span>{isMarkingSanctionAccepted ? "Marking Accepted..." : "Mark Accepted (Verified on Call/Chat)"}</span>
+                        {isCopiedSanctionLink ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4 text-indigo-600" />}
+                        <span>{isCopiedSanctionLink ? "Link Copied!" : "Copy Link"}</span>
                       </button>
                     )}
+
                     {(isCreditManagerRole || isProductAdminRole || isSuperadminRole) && lead.status !== "Lost" && lead.status !== "Converted" && (
                       <button
                         type="button"
