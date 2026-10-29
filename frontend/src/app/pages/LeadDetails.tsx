@@ -5038,9 +5038,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                 <h4 className="text-sm font-bold text-amber-950 dark:text-amber-200">
                   Customer Sanction Acceptance Pending ({latestSanction.agreementNumber || 'Sanction Letter'})
                 </h4>
-                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                  Customer ne abhi tak sanction accept nahi kiya hai. Direct link bhej kar ya call par verify karke accept karwayein:
-                </p>
+                
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -6490,9 +6488,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                                 Direct Action
                               </span>
                             </div>
-                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                              Agar customer email se sanction accept nahi kar pa rha hai, to ye direct link bhej kar karwayein:
-                            </p>
+                            
 
                             <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-950 p-1.5 shadow-xs">
                               <input
