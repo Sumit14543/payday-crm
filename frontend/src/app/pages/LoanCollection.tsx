@@ -768,7 +768,7 @@ export function LoanCollection() {
     const dateStr = getCaseClosureDate(nocTargetCase);
     const nocRef = `NOC/WF/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${loanIdStr}`;
     const subject = encodeURIComponent(`No Objection Certificate (NOC) - Loan Account ${loanIdStr} - Waqt Finance Pvt Ltd`);
-    const body = encodeURIComponent(`Dear ${name},\n\nGreetings from WAQT FINANCE PRIVATE LIMITED.\n\nWe are pleased to issue your official No Objection Certificate (NOC) confirming full loan settlement.\n\n--------------------------------------------------\nNO OBJECTION CERTIFICATE (NO DUES CERTIFICATE)\n--------------------------------------------------\nRef No: ${nocRef}\nDate: ${dateStr}\nBorrower Name: ${name}\nLoan Account No: ${loanIdStr}\nRegistered Mobile: ${nocTargetCase.phone || "-"}\nPAN Number: ${nocTargetCase.pan || "-"}\nSanction Amount: Rs. ${nocTargetCase.disbursementAmount || nocTargetCase.principal || 0}\nTotal Amount Paid: Rs. ${nocTargetCase.amountPaid || nocTargetCase.disbursementAmount || 0}\nOutstanding Dues: Rs. 0.00 (NIL / FULLY CLEARED)\nStatus: FULLY CLOSED & DISCHARGED\n--------------------------------------------------\n\nThis is to certify that there are NO OUTSTANDING DUES pending against the aforementioned loan account as on ${dateStr}. The account stands fully closed in our official records.\n\nPlease retain this certificate for your records and credit bureau verification.\n\nWarm regards,\nCredit & Operations Department\nWAQT FINANCE PRIVATE LIMITED\nRegistered Office: 15 K- 5 Jyoti Nagar Housing Board Colony, Sahakar Marg, Jaipur, Rajasthan 302005\nPhone: +91 92170 86608\nEmail: customercare@waqtfinance.com\nWebsite: www.waqtfinance.com`);
+    const body = encodeURIComponent(`Dear ${name},\n\nGreetings from WAQT FINANCE PRIVATE LIMITED.\n\nWe are pleased to issue your official No Objection Certificate (NOC) confirming full loan settlement.\n\n--------------------------------------------------\nNO OBJECTION CERTIFICATE (NO DUES CERTIFICATE)\n--------------------------------------------------\nRef No: ${nocRef}\nDate: ${dateStr}\nBorrower Name: ${name}\nLoan Account No: ${loanIdStr}\nRegistered Mobile: ${nocTargetCase.phone || "-"}\nPAN Number: ${nocTargetCase.pan || "-"}\nSanction Amount: Rs. ${nocTargetCase.disbursementAmount || nocTargetCase.principal || 0}\nTotal Amount Paid: Rs. ${nocTargetCase.amountPaid || nocTargetCase.disbursementAmount || 0}\nOutstanding Dues: Rs. 0.00 (NIL / FULLY CLEARED)\nStatus: FULLY CLOSED & DISCHARGED\n--------------------------------------------------\n\nThis is to certify that there are NO OUTSTANDING DUES pending against the aforementioned loan account as on ${dateStr}. The account stands fully closed in our official records.\n\nPlease retain this certificate for your records and credit bureau verification.\n\nWarm regards,\nCredit & Operations Department\nWAQT FINANCE PRIVATE LIMITED\nOffice: BSI BUSINESS PARK, H-15, Sector 63, Noida, (UP)\nPhone: +91 92170 86608\nEmail: customercare@waqtfinance.com\nWebsite: www.waqtfinance.com`);
     window.location.href = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
   };
   const openTodayPaymentsModal = useCallback(async (filterMode: "today" | "month" | "all" = "today") => {
@@ -2494,18 +2494,13 @@ export function LoanCollection() {
                       <span className="text-red-600">WAQT</span>
                       <span className="text-blue-700 ml-1.5">FINANCE</span>
                     </div>
-                    <p className="text-[9px] font-extrabold tracking-[0.2em] text-slate-500 uppercase mt-0.5">
-                      WAQT FINANCE PRIVATE LIMITED
-                    </p>
-                    <p className="text-[10px] font-semibold text-slate-600 tracking-wider">
+                    <p className="text-[10px] font-semibold text-slate-600 tracking-wider mt-1">
                       CIN: U67120RJ1995PTC009521 &bull; GSTIN: 08AAACW1509R1ZX
                     </p>
                   </div>
                 </div>
                 <div className="text-center sm:text-right text-[10px] text-slate-600 space-y-0.5">
-                  <p className="font-bold text-slate-900 uppercase">RBI REGULATED NBFC</p>
-                  <p>15 K- 5 Jyoti Nagar Housing Board Colony,</p>
-                  <p>Sahakar Marg, Jaipur, Rajasthan 302005</p>
+                  <p className="font-semibold text-slate-800">BSI BUSINESS PARK, H-15, Sector 63, Noida, (UP)</p>
                   <p className="font-medium text-slate-500">Phone: +91 92170 86608 &bull; www.waqtfinance.com</p>
                 </div>
               </div>
@@ -2607,7 +2602,7 @@ export function LoanCollection() {
                     </span>
                   </div>
                   <p className="text-xs font-bold text-slate-950">Credit &amp; Operations Department</p>
-                  <p className="text-[10px] text-slate-500">Jaipur Head Office (Rajasthan)</p>
+                  <p className="text-[10px] text-slate-500">BSI BUSINESS PARK, Sector 63, Noida (UP)</p>
                 </div>
               </div>
 
