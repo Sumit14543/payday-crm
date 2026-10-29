@@ -617,6 +617,10 @@ export function LoanCollection() {
 
 
   const openNocModal = useCallback((c: CollectionCase) => {
+    if (!isCasePaidOff(c)) {
+      setNocUnpaidWarningCase(c);
+      return;
+    }
     setNocTargetCase(c);
     setNocSuccessMessage(null);
     setNocErrorMessage(null);
@@ -2227,10 +2231,14 @@ export function LoanCollection() {
                         <button
                           type="button"
                           onClick={() => openNocModal(item)}
-                          className="inline-flex h-10 sm:h-11 items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 sm:px-4 text-xs sm:text-sm font-bold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/50 shadow-xs"
-                          title="Preview, Edit & Issue No Objection Certificate"
+                          className={`inline-flex h-10 sm:h-11 items-center justify-center gap-1.5 rounded-xl border px-3 sm:px-4 text-xs sm:text-sm font-bold transition shadow-xs ${
+                            isCasePaidOff(item)
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                          }`}
+                          title={isCasePaidOff(item) ? "Issue NOC Certificate (Paid Off)" : "NOC (Loan Payment Pending)"}
                         >
-                          <Eye className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Preview NOC
+                          <Award className={`h-4 w-4 ${isCasePaidOff(item) ? "text-emerald-600 dark:text-emerald-400" : "text-amber-500"}`} /> NOC
                         </button>
                         <button
                           type="button"
@@ -3784,8 +3792,9 @@ if (isLogPaymentPage) {
                       type="button"
                       onClick={() => selectedReportCase && openNocModal(selectedReportCase)}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition"
+                      title="NOC Certificate"
                     >
-                      <Eye className="h-3.5 w-3.5" /> Preview NOC
+                      <Award className="h-3.5 w-3.5" /> NOC
                     </button>
                   </div>
                 </div>
@@ -4106,10 +4115,14 @@ if (isLogPaymentPage) {
                 <button
                   type="button"
                   onClick={() => openNocModal(selectedCase)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-md bg-amber-600 px-3 text-xs font-bold text-white hover:bg-amber-700 shadow-xs"
-                  title="Generate & Release No Objection Certificate"
+                  className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold shadow-xs transition ${
+                    isCasePaidOff(selectedCase)
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "bg-amber-600 hover:bg-amber-700 text-white"
+                  }`}
+                  title={isCasePaidOff(selectedCase) ? "Issue NOC Certificate" : "NOC (Loan Payment Pending)"}
                 >
-                  <Award className="h-3.5 w-3.5" /> Release NOC
+                  <Award className="h-3.5 w-3.5" /> NOC
                 </button>
                 <button
                   type="button"
