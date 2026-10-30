@@ -31,17 +31,17 @@ app.post(
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Apply general API rate limiting to all /api routes
-app.use('/api', apiLimiter);
-
-const tallyRoutes = require('./routes/tallyRoutes');
-app.use('/api/tally', tallyRoutes);
-
 const tenantMiddleware = require('./middleware/tenantMiddleware');
 const verifyTenantSession = require('./middleware/verifyTenantSession');
 app.use(tenantMiddleware);
 app.use(authOptional);
 app.use(asyncHandler(verifyTenantSession));
+
+// Apply general API rate limiting to all /api routes (differentiates authenticated users vs anonymous)
+app.use('/api', apiLimiter);
+
+const tallyRoutes = require('./routes/tallyRoutes');
+app.use('/api/tally', tallyRoutes);
 app.use(logger);
 app.use('/uploads', (req, res, next) => {
   const normalizedPath = String(req.path || '').toLowerCase().replace(/\\/g, '/');

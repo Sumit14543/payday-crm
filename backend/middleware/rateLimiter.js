@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 /**
  * Standard JSON response for rate limit violations
@@ -13,13 +13,29 @@ function createRateLimitHandler(message, retrySeconds) {
   };
 }
 
-// 1. General API rate limiter: 60 requests per 1 minute per IP
+// 1. General API rate limiter:
+// - Authenticated staff: 300 requests per 1 minute (tracked per user account so shared office Wi-Fi does not choke)
+// - Anonymous / Public visitors: 60 requests per 1 minute (strictly tracked per IP)
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 60, // Limit each IP to 60 requests per minute
+  max: (req) => {
+    if (req.user && req.user.email) {
+      return 300;
+    }
+    return 60;
+  },
+  keyGenerator: (req) => {
+    if (req.user && req.user.email) {
+      return `user:${req.user.email.toLowerCase()}`;
+    }
+    return ipKeyGenerator(req.ip);
+  },
+  validate: {
+    ip: false,
+  },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: createRateLimitHandler('Too many API requests from this IP. Please wait a minute before retrying.', 60),
+  handler: createRateLimitHandler('Too many API requests. Please wait a moment before retrying.', 60),
 });
 
 // 2. Strict Authentication rate limiter: 5 attempts per 15 minutes per IP

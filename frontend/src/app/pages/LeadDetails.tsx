@@ -2002,9 +2002,18 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
   useEffect(() => {
     if (aaSession?.status !== "PENDING") return;
+    let pollCount = 0;
+    const maxPolls = 36; // Auto-pause after 6 minutes (36 * 10s)
     const interval = setInterval(() => {
+      // Pause polling if user switched to another browser tab
+      if (typeof document !== "undefined" && document.hidden) return;
+      pollCount++;
+      if (pollCount > maxPolls) {
+        clearInterval(interval);
+        return;
+      }
       loadAaStatus();
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [aaSession?.status, loadAaStatus]);
 
