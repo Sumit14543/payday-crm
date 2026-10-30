@@ -59,7 +59,7 @@ import {
 import { NiceSelect } from "../components/ui/nice-select";
 import { EmptyState, MetricCard } from "../components/crm/DashboardPrimitives";
 import { PageLoading } from "../components/PageLoading";
-import { apiGet, apiPatch, apiPost, apiPostForm, resolveBackendUploadUrl, openSecureDocument } from "../lib/api";
+import { apiGet, apiPatch, apiPost, apiPostRead, apiPostForm, resolveBackendUploadUrl, openSecureDocument } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
 
 type CollectionCase = {
@@ -590,6 +590,7 @@ export function LoanCollection() {
   };
   const [showNocModal, setShowNocModal] = useState(false);
   const [nocTargetCase, setNocTargetCase] = useState<CollectionCase | null>(null);
+  const [nocCertificateType, setNocCertificateType] = useState<"full_paid" | "settlement">("full_paid");
 
   const isCasePaidOff = useCallback((c: CollectionCase | null | undefined): boolean => {
     if (!c) return false;
@@ -634,6 +635,13 @@ export function LoanCollection() {
       return;
     }
     setNocTargetCase(c);
+    const cStatus = String(c.status || "").trim().toLowerCase();
+    const cEmiStatus = String(c.emiStatus || "").trim().toLowerCase();
+    if (cStatus === "settled" || cEmiStatus === "settled") {
+      setNocCertificateType("settlement");
+    } else {
+      setNocCertificateType("full_paid");
+    }
     setNocSuccessMessage(null);
     setNocErrorMessage(null);
     setIsNocCopied(false);
@@ -754,8 +762,12 @@ export function LoanCollection() {
     const loanIdStr = nocCustomFields?.loanId || nocTargetCase.loanId || nocTargetCase.id;
     const now = new Date();
     const dateStr = nocCustomFields?.closureDate || now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    const nocRef = `NOC/WF/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${loanIdStr}`;
-    const msg = `Dear ${name},\n\nGreetings from *WAQT FINANCE PRIVATE LIMITED*.\n\nWe are pleased to inform you that your Loan Account *${loanIdStr}* has been *FULLY SETTLED & CLOSED*.\n\n📄 *NO OBJECTION CERTIFICATE (NOC)*\nRef: ${nocRef}\nDate: ${dateStr}\nOutstanding Balance: *${nocCustomFields?.outstandingText || "₹0.00 (NIL / CLEARED)"}*\nStatus: *FULLY CLOSED*\n\nThere are no further dues pending against this loan account. You may download or save your official NOC certificate for your records.\n\nWarm regards,\n*Waqt Finance Pvt Ltd*\n📞 +91 92170 86608\n🌐 www.waqtfinance.com`;
+    const docPrefix = nocCertificateType === "settlement" ? "SETTLEMENT/WF" : "NOC/WF";
+    const nocRef = `${docPrefix}/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${loanIdStr}`;
+    const isSettlement = nocCertificateType === "settlement";
+    const titleText = isSettlement ? "LOAN SETTLEMENT CERTIFICATE (OTS)" : "NO OBJECTION CERTIFICATE (NOC)";
+    const statusText = isSettlement ? "SETTLED UNDER OTS (FULL & FINAL)" : "FULLY CLOSED & PAID IN FULL";
+    const msg = `Dear ${name},\n\nGreetings from *WAQT FINANCE PRIVATE LIMITED*.\n\nWe are pleased to issue your official *${titleText}* confirming your Loan Account *${loanIdStr}* has been *${statusText}*.\n\n📄 *${titleText}*\nRef: ${nocRef}\nDate: ${dateStr}\nOutstanding Balance: *₹0.00 (NIL / CLEARED)*\nStatus: *${statusText}*\n\nThere are no further dues pending against this loan account. You may download or save your official certificate for your records.\n\nWarm regards,\n*Waqt Finance Pvt Ltd*\n📞 +91 92170 86608\n🌐 www.waqtfinance.com`;
     window.open(`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
@@ -766,9 +778,13 @@ export function LoanCollection() {
     const loanIdStr = nocTargetCase.loanId || nocTargetCase.id;
     const now = new Date();
     const dateStr = getCaseClosureDate(nocTargetCase);
-    const nocRef = `NOC/WF/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${loanIdStr}`;
-    const subject = encodeURIComponent(`No Objection Certificate (NOC) - Loan Account ${loanIdStr} - Waqt Finance Pvt Ltd`);
-    const body = encodeURIComponent(`Dear ${name},\n\nGreetings from WAQT FINANCE PRIVATE LIMITED.\n\nWe are pleased to issue your official No Objection Certificate (NOC) confirming full loan settlement.\n\n--------------------------------------------------\nNO OBJECTION CERTIFICATE (NO DUES CERTIFICATE)\n--------------------------------------------------\nRef No: ${nocRef}\nDate: ${dateStr}\nBorrower Name: ${name}\nLoan Account No: ${loanIdStr}\nRegistered Mobile: ${nocTargetCase.phone || "-"}\nPAN Number: ${nocTargetCase.pan || "-"}\nSanction Amount: Rs. ${nocTargetCase.disbursementAmount || nocTargetCase.principal || 0}\nTotal Amount Paid: Rs. ${nocTargetCase.amountPaid || nocTargetCase.disbursementAmount || 0}\nOutstanding Dues: Rs. 0.00 (NIL / FULLY CLEARED)\nStatus: FULLY CLOSED & DISCHARGED\n--------------------------------------------------\n\nThis is to certify that there are NO OUTSTANDING DUES pending against the aforementioned loan account as on ${dateStr}. The account stands fully closed in our official records.\n\nPlease retain this certificate for your records and credit bureau verification.\n\nWarm regards,\nCredit & Operations Department\nWAQT FINANCE PRIVATE LIMITED\nOffice: BSI BUSINESS PARK, H-15, Sector 63, Noida, (UP)\nPhone: +91 92170 86608\nEmail: customercare@waqtfinance.com\nWebsite: www.waqtfinance.com`);
+    const isSettlement = nocCertificateType === "settlement";
+    const docPrefix = isSettlement ? "SETTLEMENT/WF" : "NOC/WF";
+    const nocRef = `${docPrefix}/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${loanIdStr}`;
+    const docTitle = isSettlement ? "Loan Settlement Certificate (OTS)" : "No Objection Certificate (NOC)";
+    const subject = encodeURIComponent(`${docTitle} - Loan Account ${loanIdStr} - Waqt Finance Pvt Ltd`);
+    const statusLine = isSettlement ? "ACCOUNT SETTLED UNDER OTS (FULL & FINAL)" : "FULLY CLOSED & DISCHARGED";
+    const body = encodeURIComponent(`Dear ${name},\n\nGreetings from WAQT FINANCE PRIVATE LIMITED.\n\nWe are pleased to issue your official ${docTitle} confirming that your loan account has been settled and closed.\n\n--------------------------------------------------\n${docTitle.toUpperCase()}\n--------------------------------------------------\nRef No: ${nocRef}\nDate: ${dateStr}\nBorrower Name: ${name}\nLoan Account No: ${loanIdStr}\nRegistered Mobile: ${nocTargetCase.phone || "-"}\nPAN Number: ${nocTargetCase.pan || "-"}\nSanction Amount: Rs. ${nocTargetCase.disbursementAmount || nocTargetCase.principal || 0}\nSettlement / Amount Paid: Rs. ${nocTargetCase.amountPaid || nocTargetCase.disbursementAmount || 0}\nOutstanding Dues: Rs. 0.00 (NIL / FULLY CLEARED)\nStatus: ${statusLine}\n--------------------------------------------------\n\nThis is to certify that the borrower has paid the mutually agreed amount and there are NO OUTSTANDING DUES pending against the aforementioned loan account as on ${dateStr}. The account stands closed in our official records.\n\nPlease retain this certificate for your records and credit bureau verification.\n\nWarm regards,\nCredit & Operations Department\nWAQT FINANCE PRIVATE LIMITED\nOffice: BSI BUSINESS PARK, H-15, Sector 63, Noida, (UP)\nPhone: +91 92170 86608\nEmail: customercare@waqtfinance.com\nWebsite: www.waqtfinance.com`);
     window.location.href = `mailto:${recipientEmail}?subject=${subject}&body=${body}`;
   };
   const openTodayPaymentsModal = useCallback(async (filterMode: "today" | "month" | "all" = "today") => {
@@ -841,8 +857,8 @@ export function LoanCollection() {
     try {
       setError("");
       const [data, summaryData, repData] = await Promise.all([
-        apiPost<CollectionCase[]>("/collections/list", {}, signal),
-        apiPost<CollectionSummary>("/collections/summary/fetch", {}, signal),
+        apiPostRead<CollectionCase[]>("/collections/list", {}, signal),
+        apiPostRead<CollectionSummary>("/collections/summary/fetch", {}, signal),
         apiGet<any>("/collections/reports", signal).catch(() => null),
       ]);
       setCollections(data || []);
@@ -2431,15 +2447,44 @@ export function LoanCollection() {
 
           {/* Action Bar Header */}
           <div className="noc-modal-actions flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 sm:px-6 dark:border-slate-800 dark:bg-slate-950/60 sticky top-0 z-10 backdrop-blur-md">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                 <Award className="h-4 w-4" />
               </span>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Official No Objection Certificate (NOC)</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {nocCertificateType === "settlement" ? "Loan Settlement Certificate (OTS)" : "Official No Objection Certificate (NOC)"}
+                </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">Loan ID: {nocTargetCase.loanId} &bull; {nocTargetCase.borrowerName || nocTargetCase.customer}</p>
               </div>
             </div>
+
+            {/* Certificate Type Toggle (Option 2: Full Repayment vs OTS Settlement) */}
+            <div className="flex items-center rounded-xl bg-slate-200/80 p-1 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => setNocCertificateType("full_paid")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                  nocCertificateType === "full_paid"
+                    ? "bg-white text-emerald-700 shadow-xs dark:bg-slate-900 dark:text-emerald-400"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                }`}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Full Paid NOC
+              </button>
+              <button
+                type="button"
+                onClick={() => setNocCertificateType("settlement")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                  nocCertificateType === "settlement"
+                    ? "bg-amber-500 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                }`}
+              >
+                <Award className="h-3.5 w-3.5" /> OTS / Settlement NOC
+              </button>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -2508,7 +2553,7 @@ export function LoanCollection() {
               {/* Ref & Date Row */}
               <div className="mt-4 flex items-center justify-between text-[11px] sm:text-xs font-semibold text-slate-700">
                 <p>
-                  <span className="font-bold text-slate-900">Ref No:</span> NOC/WF/{new Date().getFullYear()}/{String(new Date().getMonth() + 1).padStart(2, "0")}/{nocTargetCase.loanId || nocTargetCase.id}
+                  <span className="font-bold text-slate-900">Ref No:</span> {nocCertificateType === "settlement" ? "SETTLEMENT" : "NOC"}/WF/{new Date().getFullYear()}/{String(new Date().getMonth() + 1).padStart(2, "0")}/{nocTargetCase.loanId || nocTargetCase.id}
                 </p>
                 <p>
                   <span className="font-bold text-slate-900">Date:</span> {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
@@ -2519,10 +2564,12 @@ export function LoanCollection() {
               <div className="my-5 text-center">
                 <div className="inline-block border-2 border-slate-900 px-6 py-2 bg-slate-50">
                   <h2 className="text-base sm:text-lg font-black tracking-wider text-slate-950 uppercase">
-                    NO OBJECTION CERTIFICATE
+                    {nocCertificateType === "settlement" ? "LOAN SETTLEMENT CERTIFICATE" : "NO OBJECTION CERTIFICATE"}
                   </h2>
                   <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">
-                    (NO DUES CERTIFICATE &bull; FULL LOAN SETTLEMENT)
+                    {nocCertificateType === "settlement"
+                      ? "(ONE-TIME SETTLEMENT &bull; FULL & FINAL DISCHARGE)"
+                      : "(NO DUES CERTIFICATE &bull; FULL LOAN SETTLEMENT)"}
                   </p>
                 </div>
               </div>
@@ -2540,14 +2587,16 @@ export function LoanCollection() {
                     <tr className="border-b border-slate-200">
                       <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Registered Mobile</td>
                       <td className="p-2 sm:p-2.5 font-semibold text-slate-900 border-r border-slate-200">{nocTargetCase.phone || "-"}</td>
-                      <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Total Amount Paid</td>
+                      <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">
+                        {nocCertificateType === "settlement" ? "Settlement Amount Paid" : "Total Amount Paid"}
+                      </td>
                       <td className="p-2 sm:p-2.5 font-bold text-emerald-700">{formatCurrency(Number(nocTargetCase.amountPaid ?? nocTargetCase.disbursementAmount ?? 0))}</td>
                     </tr>
                     <tr className="border-b border-slate-200">
                       <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Borrower Email</td>
                       <td className="p-2 sm:p-2.5 text-slate-900 border-r border-slate-200">{nocTargetCase.email || "-"}</td>
                       <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Outstanding Balance</td>
-                      <td className="p-2 sm:p-2.5 font-extrabold text-emerald-700 bg-emerald-50/60">₹0.00 (NIL / CLEARED)</td>
+                      <td className="p-2 sm:p-2.5 font-extrabold text-emerald-700 bg-emerald-50/60">₹0.00 (NIL / SETTLED)</td>
                     </tr>
                     <tr className="border-b border-slate-200">
                       <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">PAN Number</td>
@@ -2558,7 +2607,9 @@ export function LoanCollection() {
                     <tr>
                       <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Sanction / Principal</td>
                       <td className="p-2 sm:p-2.5 font-bold text-slate-900 border-r border-slate-200">{formatCurrency(Number(nocTargetCase.disbursementAmount ?? nocTargetCase.principal ?? 0))}</td>
-                      <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">Loan Closure Date</td>
+                      <td className="bg-slate-50 p-2 sm:p-2.5 font-bold text-slate-700 border-r border-slate-200">
+                        {nocCertificateType === "settlement" ? "Settlement Date" : "Loan Closure Date"}
+                      </td>
                       <td className="p-2 sm:p-2.5 font-bold text-slate-900">{getCaseClosureDate(nocTargetCase)}</td>
                     </tr>
                   </tbody>
@@ -2570,21 +2621,42 @@ export function LoanCollection() {
                 <p className="font-bold uppercase tracking-wider text-slate-950">
                   TO WHOMSOEVER IT MAY CONCERN
                 </p>
-                <p>
-                  This is to certify that Mr./Ms. <strong className="text-slate-950">{nocTargetCase.borrowerName || nocTargetCase.customer}</strong>,
-                  holding Permanent Account Number (PAN) <strong className="text-slate-950">{nocTargetCase.pan || "-"}</strong>, has fully repaid and
-                  settled all outstanding dues, interest, penalties, and associated charges against Loan Account Number
-                  <strong className="text-slate-950"> {nocTargetCase.loanId}</strong> issued and serviced by <strong className="text-slate-950">WAQT FINANCE PRIVATE LIMITED</strong>.
-                </p>
-                <p>
-                  As on date <strong className="text-slate-950">{getCaseClosureDate(nocTargetCase)}</strong>,
-                  there are <strong className="text-emerald-700">NO OUTSTANDING DUES (NIL BALANCE)</strong> payable by the borrower under the aforementioned loan account.
-                  The hypothecation, lien, or charge, if any, created in favour of the Company is hereby released, and the loan account stands
-                  <strong className="text-slate-950"> FULLY CLOSED &amp; DISCHARGED</strong> in our official records.
-                </p>
-                <p>
-                  This certificate is issued at the request of the borrower for the purpose of closure proof, credit bureau (CIBIL/Experian/Equifax/CRIF) record updation, and verification of full clearance.
-                </p>
+                {nocCertificateType === "settlement" ? (
+                  <>
+                    <p>
+                      This is to certify that Mr./Ms. <strong className="text-slate-950">{nocTargetCase.borrowerName || nocTargetCase.customer}</strong>,
+                      holding Permanent Account Number (PAN) <strong className="text-slate-950">{nocTargetCase.pan || "-"}</strong>, had availed a loan facility under Loan Account Number
+                      <strong className="text-slate-950"> {nocTargetCase.loanId}</strong> issued and serviced by <strong className="text-slate-950">WAQT FINANCE PRIVATE LIMITED</strong>.
+                    </p>
+                    <p>
+                      The aforementioned loan account has been <strong className="text-slate-950">MUTUALLY SETTLED</strong> under One-Time Settlement (OTS). The borrower has paid the agreed settlement amount of <strong className="text-emerald-700">{formatCurrency(Number(nocTargetCase.amountPaid ?? nocTargetCase.disbursementAmount ?? 0))}</strong> towards full and final closure of this loan.
+                    </p>
+                    <p>
+                      As on settlement date <strong className="text-slate-950">{getCaseClosureDate(nocTargetCase)}</strong>, there are <strong className="text-emerald-700">NO FURTHER DUES (NIL BALANCE)</strong> recoverable from the borrower against this loan account. Any hypothecation, lien, or charge created in favour of the Company is hereby released, and the account stands <strong className="text-slate-950">SETTLED &amp; CLOSED</strong> in our official records.
+                    </p>
+                    <p>
+                      This certificate is issued at the request of the borrower as evidence of final settlement and for updation of credit bureau (CIBIL/Experian/Equifax/CRIF) records.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      This is to certify that Mr./Ms. <strong className="text-slate-950">{nocTargetCase.borrowerName || nocTargetCase.customer}</strong>,
+                      holding Permanent Account Number (PAN) <strong className="text-slate-950">{nocTargetCase.pan || "-"}</strong>, has fully repaid and
+                      settled all outstanding dues, interest, penalties, and associated charges against Loan Account Number
+                      <strong className="text-slate-950"> {nocTargetCase.loanId}</strong> issued and serviced by <strong className="text-slate-950">WAQT FINANCE PRIVATE LIMITED</strong>.
+                    </p>
+                    <p>
+                      As on date <strong className="text-slate-950">{getCaseClosureDate(nocTargetCase)}</strong>,
+                      there are <strong className="text-emerald-700">NO OUTSTANDING DUES (NIL BALANCE)</strong> payable by the borrower under the aforementioned loan account.
+                      The hypothecation, lien, or charge, if any, created in favour of the Company is hereby released, and the loan account stands
+                      <strong className="text-slate-950"> FULLY CLOSED &amp; DISCHARGED</strong> in our official records.
+                    </p>
+                    <p>
+                      This certificate is issued at the request of the borrower for the purpose of closure proof, credit bureau (CIBIL/Experian/Equifax/CRIF) record updation, and verification of full clearance.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Authorized Signatures Section (Clean layout without green stamp) */}
