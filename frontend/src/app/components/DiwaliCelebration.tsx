@@ -7,10 +7,10 @@ export function DiwaliCelebration() {
 
   useEffect(() => {
     // Automatically trigger once per session during Diwali season
-    const hasSeen = sessionStorage.getItem("diwali_wishes_lottie_style_2026");
+    const hasSeen = sessionStorage.getItem("diwali_wishes_clean_v5_2026");
     if (!hasSeen) {
       setIsOpen(true);
-      sessionStorage.setItem("diwali_wishes_lottie_style_2026", "true");
+      sessionStorage.setItem("diwali_wishes_clean_v5_2026", "true");
     }
   }, []);
 
@@ -32,15 +32,23 @@ export function DiwaliCelebration() {
     resize();
     window.addEventListener("resize", resize);
 
-    // Color palettes for Radial Ray Fireworks (From User Image 1)
-    const burstPalettes = [
-      { inner: "#e11d48", outer: "#fde047", accent: "#fbbf24" }, // Ruby Pink + Gold (Left in Img 1)
-      { inner: "#10b981", outer: "#fde047", accent: "#34d399" }, // Emerald Green + Lemon (Center in Img 1)
-      { inner: "#f59e0b", outer: "#ffffff", accent: "#fef08a" }, // Radiant Gold + White (Top Right in Img 1)
-      { inner: "#f43f5e", outer: "#fbcfe8", accent: "#fda4af" }, // Rose Pink + Champagne (Right in Img 1)
-      { inner: "#06b6d4", outer: "#67e8f9", accent: "#a5f3fc" }, // Cyan + Sky
-      { inner: "#a855f7", outer: "#fde047", accent: "#c084fc" }  // Purple + Gold
+    const colors = [
+      "#fde047", "#f59e0b", "#fbbf24", "#fb923c", 
+      "#f43f5e", "#ec4899", "#a855f7", "#38bdf8", 
+      "#34d399", "#ffffff", "#fef08a"
     ];
+
+    interface Particle {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      color: string;
+      alpha: number;
+      decay: number;
+      radius: number;
+      sparkle?: boolean;
+    }
 
     interface StripedRocket {
       x: number;
@@ -53,31 +61,41 @@ export function DiwaliCelebration() {
       speed: number;
       trail: { x: number; y: number }[];
       exploded: boolean;
-      palette: typeof burstPalettes[0];
-    }
-
-    interface RadialBurst {
-      x: number;
-      y: number;
-      palette: typeof burstPalettes[0];
-      raysCount: number;
-      currentRadius: number;
-      maxRadius: number;
-      speed: number;
-      alpha: number;
-      decay: number;
-      rayLength: number;
+      color: string;
     }
 
     const rockets: StripedRocket[] = [];
-    const radialBursts: RadialBurst[] = [];
+    const particles: Particle[] = [];
+    const ambientEmbers: Particle[] = [];
+
+    // Floating celebratory sparkles around the center typography
+    const spawnEmber = () => {
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2 - 20;
+      for (let i = 0; i < 2; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 240 + 40;
+        ambientEmbers.push({
+          x: cx + Math.cos(angle) * dist,
+          y: cy + Math.sin(angle) * (dist * 0.7),
+          vx: (Math.random() - 0.5) * 0.7,
+          vy: (Math.random() - 0.5) * 0.7 - 0.2, // gentle upward drift
+          color: colors[Math.floor(Math.random() * colors.length)],
+          alpha: 1,
+          decay: Math.random() * 0.007 + 0.005,
+          radius: Math.random() * 2.4 + 1.2,
+          sparkle: Math.random() > 0.4,
+        });
+      }
+    };
 
     const createStripedRocket = (customStartX?: number, customTargetY?: number) => {
       const sx = customStartX !== undefined ? customStartX : Math.random() * (canvas.width - 240) + 120;
       const tx = sx + (Math.random() - 0.5) * 120;
-      const ty = customTargetY !== undefined ? customTargetY : Math.random() * (canvas.height * 0.42) + 50;
+      const ty = customTargetY !== undefined ? customTargetY : Math.random() * (canvas.height * 0.38) + 40;
       const speed = Math.random() * 3 + 8.5;
       const angle = Math.atan2(ty - canvas.height, tx - sx);
+      const color = colors[Math.floor(Math.random() * colors.length)];
 
       rockets.push({
         x: sx,
@@ -90,45 +108,57 @@ export function DiwaliCelebration() {
         vy: Math.sin(angle) * speed,
         trail: [],
         exploded: false,
-        palette: burstPalettes[Math.floor(Math.random() * burstPalettes.length)],
+        color,
       });
     };
 
-    const triggerBurst = (x: number, y: number, palette: typeof burstPalettes[0]) => {
-      radialBursts.push({
-        x,
-        y,
-        palette,
-        raysCount: 32,
-        currentRadius: 8,
-        maxRadius: Math.random() * 40 + 80,
-        speed: Math.random() * 2 + 3.8,
-        alpha: 1,
-        decay: 0.016,
-        rayLength: 18,
-      });
+    const explodeRocket = (rx: number, ry: number, baseColor: string) => {
+      const count = Math.floor(Math.random() * 32) + 45;
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5 + 1.2;
+        particles.push({
+          x: rx,
+          y: ry,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: Math.random() > 0.3 ? baseColor : colors[Math.floor(Math.random() * colors.length)],
+          alpha: 1,
+          decay: Math.random() * 0.015 + 0.011,
+          radius: Math.random() * 2.2 + 1,
+        });
+      }
     };
 
-    // Initial volley of 3 striped rockets
-    for (let i = 0; i < 3; i++) {
+    // Initial rockets barrage
+    for (let i = 0; i < 4; i++) {
       setTimeout(() => {
         if (isRunning) createStripedRocket();
-      }, i * 320);
+      }, i * 300);
     }
 
     let lastAutoLaunch = Date.now();
+    let lastSparkle = Date.now();
 
     const loop = () => {
       // 100% transparent clear every frame - website stays crystal clear!
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const now = Date.now();
-      if (now - lastAutoLaunch > 1100 && rockets.length < 5) {
+
+      // Launch rockets from bottom
+      if (now - lastAutoLaunch > 950 && rockets.length < 5) {
         createStripedRocket();
         lastAutoLaunch = now;
       }
 
-      // Update & Draw Rockets
+      // Continuous floating festive embers
+      if (now - lastSparkle > 75 && ambientEmbers.length < 130) {
+        spawnEmber();
+        lastSparkle = now;
+      }
+
+      // Update & Draw Striped Rockets
       for (let i = rockets.length - 1; i >= 0; i--) {
         const r = rockets[i];
         r.trail.push({ x: r.x, y: r.y });
@@ -142,7 +172,7 @@ export function DiwaliCelebration() {
           const pt = r.trail[j];
           const a = (j / r.trail.length) * 0.85;
           ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
+          ctx.arc(pt.x, pt.y, 1.8, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(251, 191, 36, ${a})`;
           ctx.fill();
         }
@@ -181,53 +211,58 @@ export function DiwaliCelebration() {
 
         if (r.vy >= 0 || r.y <= r.targetY) {
           r.exploded = true;
-          triggerBurst(r.x, r.y, r.palette);
+          explodeRocket(r.x, r.y, r.color);
           rockets.splice(i, 1);
         }
       }
 
-      // Update & Draw Radial Ray Fireworks (Image 1 Style)
-      for (let i = radialBursts.length - 1; i >= 0; i--) {
-        const b = radialBursts[i];
-        b.currentRadius += b.speed;
-        b.speed *= 0.94;
-        b.alpha -= b.decay;
+      // Update & Draw Explosion Particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+        p.vy += 0.05; // gravity
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= p.decay;
 
-        if (b.alpha <= 0) {
-          radialBursts.splice(i, 1);
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
           continue;
         }
 
         ctx.save();
-        ctx.globalAlpha = Math.max(0, b.alpha);
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 9;
+        ctx.fill();
+        ctx.restore();
+      }
 
-        const step = (Math.PI * 2) / b.raysCount;
-        for (let j = 0; j < b.raysCount; j++) {
-          const a = j * step;
-          const isEven = j % 2 === 0;
+      // Update & Draw Ambient Sparkler Embers
+      for (let i = ambientEmbers.length - 1; i >= 0; i--) {
+        const e = ambientEmbers[i];
+        e.x += e.vx;
+        e.y += e.vy;
+        e.alpha -= e.decay;
 
-          const startR = b.currentRadius;
-          const endR = b.currentRadius + (isEven ? b.rayLength * 1.3 : b.rayLength * 0.8);
-
-          const sx = b.x + Math.cos(a) * startR;
-          const sy = b.y + Math.sin(a) * startR;
-          const ex = b.x + Math.cos(a) * endR;
-          const ey = b.y + Math.sin(a) * endR;
-
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(ex, ey);
-          ctx.strokeStyle = isEven ? b.palette.inner : b.palette.outer;
-          ctx.lineWidth = isEven ? 2.4 : 1.5;
-          ctx.stroke();
-
-          // Sparkle tip on ray
-          ctx.beginPath();
-          ctx.arc(ex, ey, isEven ? 2 : 1.2, 0, Math.PI * 2);
-          ctx.fillStyle = b.palette.accent;
-          ctx.fill();
+        if (e.alpha <= 0) {
+          ambientEmbers.splice(i, 1);
+          continue;
         }
 
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, e.alpha);
+        ctx.beginPath();
+        const r = e.sparkle && Math.random() > 0.4 ? e.radius * 1.4 : e.radius;
+        ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = e.color;
+        ctx.shadowColor = e.color;
+        ctx.shadowBlur = 8;
+        ctx.fill();
         ctx.restore();
       }
 
@@ -238,24 +273,12 @@ export function DiwaliCelebration() {
 
     animationFrameId = requestAnimationFrame(loop);
 
-    (window as any).__fireDiwaliRockets = () => {
-      for (let i = 0; i < 5; i++) {
-        setTimeout(() => createStripedRocket(), i * 180);
-      }
-    };
-
     return () => {
       isRunning = false;
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", resize);
     };
   }, [isOpen]);
-
-  const handleLaunchMore = () => {
-    if (typeof (window as any).__fireDiwaliRockets === "function") {
-      (window as any).__fireDiwaliRockets();
-    }
-  };
 
   return (
     <>
@@ -270,13 +293,14 @@ export function DiwaliCelebration() {
         <span className="tracking-widest uppercase font-serif">Happy Diwali</span>
       </button>
 
-      {/* FULL SCREEN TRANSPARENT OVERLAY (No solid background, CRM dashboard is clearly visible!) */}
+      {/* FULL SCREEN PURE TRANSPARENT FROSTED-GLASS OVERLAY */}
+      {/* NO orange card, NO buttons, Website is clearly visible through soft blur! */}
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/35 backdrop-blur-[4px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/30 backdrop-blur-[5px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
         >
-          {/* Transparent Fireworks Canvas */}
+          {/* Fireworks & Rockets Canvas */}
           <canvas
             ref={canvasRef}
             className="absolute inset-0 z-10 w-full h-full pointer-events-none"
@@ -295,121 +319,97 @@ export function DiwaliCelebration() {
             <X className="h-5 w-5" />
           </button>
 
-          {/* Centerpiece: Scalloped Saffron/Gold Diwali Arch with 3 Diyas & Rotating Rangoli */}
+          {/* LEFT SIDE DECORATED DIYA */}
+          <div className="absolute left-6 sm:left-14 top-1/2 -translate-y-1/2 hidden md:flex flex-col items-center pointer-events-none opacity-90 scale-110">
+            <div
+              className="h-7 w-4.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_22px_#f59e0b] animate-pulse"
+              style={{ animationDuration: "0.5s" }}
+            />
+            <div className="h-3.5 w-14 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow-[0_4px_16px_rgba(245,158,11,0.6)] -mt-0.5" />
+          </div>
+
+          {/* RIGHT SIDE DECORATED DIYA */}
+          <div className="absolute right-6 sm:right-14 top-1/2 -translate-y-1/2 hidden md:flex flex-col items-center pointer-events-none opacity-90 scale-110">
+            <div
+              className="h-7 w-4.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_22px_#f59e0b] animate-pulse"
+              style={{ animationDuration: "0.6s" }}
+            />
+            <div className="h-3.5 w-14 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow-[0_4px_16px_rgba(245,158,11,0.6)] -mt-0.5" />
+          </div>
+
+          {/* CENTER: PURE FLOATING TYPOGRAPHY (Zero Card, Zero Orange Box, Zero Buttons) */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative z-20 flex flex-col items-center justify-center text-center max-w-lg pointer-events-auto"
+            className="relative z-20 flex flex-col items-center justify-center text-center max-w-2xl px-6 pointer-events-auto"
           >
-            {/* Rotating Colorful Rangoli Mandala behind the Emblem */}
-            <div
-              className="absolute -top-16 w-80 h-80 pointer-events-none opacity-45"
-              style={{ animation: "spin 35s linear infinite" }}
-            >
-              <svg viewBox="0 0 200 200" className="w-full h-full">
-                <defs>
-                  <linearGradient id="petalGradReact" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#ec4899" />
-                    <stop offset="50%" stopColor="#f59e0b" />
-                    <stop offset="100%" stopColor="#3b82f6" />
-                  </linearGradient>
-                </defs>
-                <g transform="translate(100,100)">
-                  <g stroke="#fbbf24" strokeWidth="1" fill="url(#petalGradReact)" opacity="0.8">
-                    {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((deg) => (
-                      <path
-                        key={deg}
-                        d="M0,0 Q-15,-45 0,-70 Q15,-45 0,0"
-                        transform={`rotate(${deg})`}
-                      />
-                    ))}
-                  </g>
-                  <circle cx="0" cy="0" r="22" fill="#d97706" stroke="#fde047" strokeWidth="2" />
-                  <circle cx="0" cy="0" r="12" fill="#ef4444" />
-                  <circle cx="0" cy="0" r="5" fill="#fef08a" />
-                </g>
-              </svg>
-            </div>
+            {/* Top Text: W I S H I N G   Y O U   A */}
+            <p className="text-xs sm:text-sm font-semibold tracking-[0.45em] uppercase text-amber-200 drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)] mb-1">
+              W I S H I N G &nbsp; Y O U &nbsp; A
+            </p>
 
-            {/* The Scalloped Festive Diwali Arch Badge */}
-            <div className="relative w-[340px] sm:w-[380px] pt-8 pb-4 px-6 rounded-[36px] bg-gradient-to-b from-[#ea580c] via-[#c2410c] to-[#7c2d12] border-2 border-amber-300 shadow-[0_0_45px_rgba(245,158,11,0.65)] backdrop-blur-md">
-              
-              <div className="absolute top-3 left-4 text-amber-200 text-xs">✦</div>
-              <div className="absolute top-3 right-4 text-amber-200 text-xs">✦</div>
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-widest border border-amber-200 shadow">
-                FESTIVAL OF LIGHTS
+            {/* Serif 'Happy' */}
+            <h2
+              className="text-4xl sm:text-6xl font-normal tracking-wide text-[#fff9eb] drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] mt-1 mb-0"
+              style={{ fontFamily: "'Cinzel', 'Playfair Display', Georgia, serif" }}
+            >
+              Happy
+            </h2>
+
+            {/* Glowing Golden Script 'Diwali' */}
+            <div className="relative my-0 py-1">
+              {/* Star sparkles */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span className="absolute -top-3 -left-10 text-2xl text-yellow-300 animate-pulse drop-shadow-[0_0_8px_#fde047]">✦</span>
+                <span className="absolute -top-5 right-4 text-xl text-pink-400 animate-ping drop-shadow-[0_0_8px_#f43f5e]" style={{ animationDuration: "3s" }}>✨</span>
+                <span className="absolute -bottom-1 -left-8 text-base text-cyan-300 animate-pulse drop-shadow-[0_0_6px_#06b6d4]">✦</span>
+                <span className="absolute -bottom-2 right-8 text-2xl text-amber-400 animate-pulse drop-shadow-[0_0_10px_#f59e0b]">✨</span>
+                <span className="absolute top-1/2 -right-12 text-lg text-emerald-400 animate-ping drop-shadow-[0_0_6px_#10b981]" style={{ animationDuration: "2.5s" }}>✦</span>
               </div>
 
-              {/* Crisp Serif 'HAPPY' */}
-              <p className="text-xl sm:text-2xl font-bold tracking-[0.25em] text-[#fff8e7] uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] font-serif mb-0">
-                HAPPY
-              </p>
-
-              {/* Crisp Script 'Diwali' */}
               <h1
-                className="text-6xl sm:text-7xl font-bold text-[#fffbeb] drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] leading-[0.95] my-1 select-none"
-                style={{ fontFamily: "'Great Vibes', 'Dancing Script', 'Brush Script MT', cursive" }}
+                className="text-8xl sm:text-[9.5rem] md:text-[10.5rem] font-bold leading-[0.9] select-none text-[#ffc837]"
+                style={{
+                  fontFamily: "'Great Vibes', 'Dancing Script', 'Brush Script MT', cursive",
+                  textShadow: `
+                    0 0 14px #ffe57f,
+                    0 0 28px #ffb300,
+                    0 0 45px #ff8f00,
+                    0 0 70px #ff6f00,
+                    0 4px 20px rgba(0, 0, 0, 0.95)
+                  `,
+                  transform: "rotate(-3deg)",
+                }}
               >
                 Diwali
               </h1>
-
-              {/* Three Clay Diyas Array at Base of Arch (From User Image 2) */}
-              <div className="mt-4 flex items-end justify-center gap-6 sm:gap-8 pt-1">
-                {/* Left Diya */}
-                <div className="flex flex-col items-center">
-                  <div
-                    className="h-4 w-3 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_12px_#f59e0b] animate-pulse"
-                    style={{ animationDuration: "0.5s" }}
-                  />
-                  <div className="h-2.5 w-8 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow -mt-0.5" />
-                </div>
-
-                {/* Center Grand Diya (Elevated) */}
-                <div className="flex flex-col items-center -translate-y-1 scale-110">
-                  <div
-                    className="h-5 w-3.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_16px_#f59e0b] animate-pulse"
-                    style={{ animationDuration: "0.4s" }}
-                  />
-                  <div className="h-3 w-10 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/90 shadow-[0_3px_10px_rgba(245,158,11,0.6)] -mt-0.5" />
-                </div>
-
-                {/* Right Diya */}
-                <div className="flex flex-col items-center">
-                  <div
-                    className="h-4 w-3 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_12px_#f59e0b] animate-pulse"
-                    style={{ animationDuration: "0.6s" }}
-                  />
-                  <div className="h-2.5 w-8 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow -mt-0.5" />
-                </div>
-              </div>
-
             </div>
 
-            {/* High-Contrast Legible Wish Tagline Below Badge */}
-            <p className="mt-5 text-[15px] sm:text-[17px] font-semibold text-[#fffbeb] tracking-wide drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)]">
+            {/* Center Glowing Diya with Horizontal Golden Rays */}
+            <div className="mt-4 sm:mt-6 flex items-center justify-center w-full max-w-xs sm:max-w-md gap-4">
+              <div className="h-[1.5px] flex-1 bg-gradient-to-r from-transparent via-amber-400 to-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
+              
+              {/* Center Diya */}
+              <div className="relative flex flex-col items-center px-1">
+                <div
+                  className="h-5 w-3.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-yellow-100 shadow-[0_0_18px_#f59e0b] animate-pulse"
+                  style={{ animationDuration: "0.5s" }}
+                />
+                <div className="h-3 w-10 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow-[0_3px_10px_rgba(245,158,11,0.6)] -mt-0.5" />
+              </div>
+
+              <div className="h-[1.5px] flex-1 bg-gradient-to-l from-transparent via-amber-400 to-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
+            </div>
+
+            {/* Bottom Subtitle: Crisp High-Contrast Legibility */}
+            <p className="mt-6 text-[15px] sm:text-[17px] font-medium text-[#fffbeb] tracking-wide drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)]">
               May your life shine with happiness and prosperity
             </p>
 
-            {/* Action Buttons */}
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={handleLaunchMore}
-                className="flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 px-5 py-2.5 text-xs font-black text-slate-950 shadow-[0_0_20px_rgba(245,158,11,0.6)] hover:scale-105 active:scale-95 transition cursor-pointer"
-              >
-                <span>🚀</span>
-                <span>Fire Striped Rockets</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-2 rounded-full border border-amber-300 bg-black/50 px-5 py-2.5 text-xs font-bold text-amber-200 shadow hover:bg-black/70 transition cursor-pointer backdrop-blur-sm"
-              >
-                <span>Continue to CRM</span>
-              </button>
-            </div>
-
+            {/* Subtle dismiss instruction */}
+            <p className="mt-8 text-[11px] text-amber-200/50 tracking-widest uppercase drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
+              Click anywhere to continue
+            </p>
           </div>
-
         </div>
       )}
     </>
