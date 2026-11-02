@@ -1,3 +1,4 @@
+import { PartialDataNotice } from "../../components/PartialDataNotice";
 import React, { useState, useEffect, useMemo } from "react";
 import { apiGet } from "../../lib/api";
 
@@ -316,6 +317,7 @@ export function RevenueAnalytics() {
 
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-[1600px] mx-auto min-h-screen">
+      <PartialDataNotice rows={leads} />
       
       {/* PAGE HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">

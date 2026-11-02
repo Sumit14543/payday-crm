@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -63,7 +63,12 @@ export function Customers() {
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [totalItems, setTotalItems] = useState(0);
+  const [apiStats, setApiStats] = useState({ totalCustomers: 0, totalPrincipal: 0, avgPrincipal: 0 });
+  const requestRef = useRef<AbortController | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [scoreFilter, setScoreFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
@@ -71,27 +76,41 @@ export function Customers() {
   const [selectedCust, setSelectedCust] = useState<CustomerRecord | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchLeads = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
+    setLoadError("");
+    const params = new URLSearchParams({ page: String(currentPage), limit: String(ITEMS_PER_PAGE), score: scoreFilter, sortBy, status: "Converted", view: "customer-portfolio" });
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
     try {
-      const data = await apiGet<any[]>("/leads");
-      if (Array.isArray(data)) {
-        setLeads(data);
-      }
+      const data = await apiGet<any[]>(`/leads?${params}`, controller.signal);
+      setLeads(data);
+      setTotalItems((data as any).pagination?.total ?? data.length);
+      if ((data as any).stats) setApiStats((data as any).stats);
+      const pages = (data as any).pagination?.totalPages || 1;
+      if (currentPage > pages) setCurrentPage(pages);
     } catch (err) {
-      console.error("Failed to load customer leads:", err);
+      if (!controller.signal.aborted) setLoadError(err instanceof Error ? err.message : "Unable to load customers");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, []);
+  }, [currentPage, debouncedSearch, scoreFilter, sortBy]);
 
   useEffect(() => {
-    fetchLeads();
+    void fetchLeads();
+    return () => requestRef.current?.abort();
   }, [fetchLeads]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, scoreFilter, sortBy, viewMode]);
+  }, [debouncedSearch, scoreFilter, sortBy, viewMode]);
 
   const handleCopy = (text: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -101,30 +120,7 @@ export function Customers() {
   };
 
   const customersList = useMemo<CustomerRecord[]>(() => {
-    // Filter leads that represent active running loans (disbursed or converted or active)
-    const activeLeads = leads.filter((l) =>
-      ["converted", "disbursed", "active"].includes(String(l.status || "").toLowerCase())
-    );
-
-    if (activeLeads.length === 0 && !loading) {
-      // Fallback mock customer catalog matching user's screenshot (Abhinav Chouhan, Abhishek Kumar, Ajit Deka, etc.)
-      return [
-        { id: "CUST-2751", rawId: 2751, name: "ABHINAV CHOUHAN", email: "abhinav.chouhan@gmail.com", phone: "+91 98765 11111", cibil: "740", kyc: "Verified", principalAmount: 35000, principalFormatted: "₹35,000", totalPaid: "₹0", nextDueDate: "2026-08-20", bank: "HDFC Bank", status: "Active Loan", pan: "ABCDE1234F" },
-        { id: "CUST-748", rawId: 748, name: "ABHISHEK KUMAR", email: "abhishek.k@yahoo.com", phone: "+91 98760 22222", cibil: "748", kyc: "Verified", principalAmount: 50000, principalFormatted: "₹50,000", totalPaid: "₹5,000", nextDueDate: "2026-08-25", bank: "ICICI Bank", status: "Active Loan", pan: "BCDEF2345G" },
-        { id: "CUST-3021", rawId: 3021, name: "AJIT DEKA", email: "ajit.deka@gmail.com", phone: "+91 98765 43210", cibil: "N/A", kyc: "Verified", principalAmount: 6000, principalFormatted: "₹6,000", totalPaid: "₹0", nextDueDate: "2026-08-20", bank: "HDFC Bank", status: "Active Loan", pan: "CDEFG3456H" },
-        { id: "CUST-2186", rawId: 2186, name: "AJIT DEKA", email: "ajit.deka2@gmail.com", phone: "+91 98765 43211", cibil: "N/A", kyc: "Verified", principalAmount: 6000, principalFormatted: "₹6,000", totalPaid: "₹0", nextDueDate: "2026-08-22", bank: "SBI Bank", status: "Active Loan", pan: "DEFGH4567I" },
-        { id: "CUST-977", rawId: 977, name: "AKARSH SHARMA", email: "akarsh.sharma@gmail.com", phone: "+91 98123 33333", cibil: "755", kyc: "Verified", principalAmount: 30000, principalFormatted: "₹30,000", totalPaid: "₹6,000", nextDueDate: "2026-08-15", bank: "SBI Bank", status: "Active Loan", pan: "EFGHI5678J" },
-        { id: "CUST-961", rawId: 961, name: "AMIT KUMAR", email: "amit.kumar1@gmail.com", phone: "+91 98321 44444", cibil: "710", kyc: "Verified", principalAmount: 55000, principalFormatted: "₹55,000", totalPaid: "₹11,000", nextDueDate: "2026-08-28", bank: "Axis Bank", status: "Active Loan", pan: "FGHIJ6789K" },
-        { id: "CUST-868", rawId: 868, name: "AMIT KUMAR", email: "amit.kumar2@gmail.com", phone: "+91 98321 44445", cibil: "710", kyc: "Verified", principalAmount: 55000, principalFormatted: "₹55,000", totalPaid: "₹0", nextDueDate: "2026-08-30", bank: "Axis Bank", status: "Active Loan", pan: "GHIJK7890L" },
-        { id: "CUST-954", rawId: 954, name: "ANKIT KUMAR", email: "ankit.kumar@gmail.com", phone: "+91 98456 55555", cibil: "760", kyc: "Verified", principalAmount: 80000, principalFormatted: "₹80,000", totalPaid: "₹16,000", nextDueDate: "2026-08-22", bank: "Kotak Bank", status: "Active Loan", pan: "HIJKL8901M" },
-        { id: "CUST-2661", rawId: 2661, name: "ANKIT RAJ SINGH", email: "ankit.raj@gmail.com", phone: "+91 98987 66666", cibil: "695", kyc: "Verified", principalAmount: 25000, principalFormatted: "₹25,000", totalPaid: "₹0", nextDueDate: "2026-08-18", bank: "PNB Bank", status: "Active Loan", pan: "IJKLM9012N" },
-        { id: "CUST-2882", rawId: 2882, name: "ANKIT SRIVASTAV", email: "ankit.s1@gmail.com", phone: "+91 98234 77777", cibil: "735", kyc: "Verified", principalAmount: 40000, principalFormatted: "₹40,000", totalPaid: "₹8,000", nextDueDate: "2026-08-24", bank: "IndusInd Bank", status: "Active Loan", pan: "JKLMN0123O" },
-        { id: "CUST-2721", rawId: 2721, name: "ANKIT SRIVASTAV", email: "ankit.s2@gmail.com", phone: "+91 98234 77778", cibil: "735", kyc: "Verified", principalAmount: 40000, principalFormatted: "₹40,000", totalPaid: "₹0", nextDueDate: "2026-08-26", bank: "Bank of Baroda", status: "Active Loan", pan: "KLMNO1234P" },
-        { id: "CUST-951", rawId: 951, name: "ANMOL SHARMA", email: "anmol.sharma@gmail.com", phone: "+91 98111 88888", cibil: "725", kyc: "Verified", principalAmount: 45000, principalFormatted: "₹45,000", totalPaid: "₹9,000", nextDueDate: "2026-08-30", bank: "HDFC Bank", status: "Active Loan", pan: "LMNOP2345Q" }
-      ];
-    }
-
-    return activeLeads.map((c) => {
+    return leads.map((c) => {
       const pAmt = Number(c.principal || c.approvedAmount || c.loanAmount || 0);
       return {
         id: `CUST-${c.rawId || c.id}`,
@@ -133,12 +129,12 @@ export function Customers() {
         email: c.email || "N/A",
         phone: c.phone || c.mobile || "N/A",
         cibil: c.creditScore ? String(c.creditScore) : "N/A",
-        kyc: "Verified",
+        kyc: "Not available",
         principalAmount: pAmt,
         principalFormatted: pAmt > 0 ? formatCurrency(pAmt) : "₹0",
-        totalPaid: "₹0",
-        nextDueDate: c.nextDueDate || "2026-08-25",
-        bank: c.bankName || "HDFC Bank",
+        totalPaid: c.totalRepaid !== undefined ? formatCurrency(Number(c.totalRepaid)) : "N/A",
+        nextDueDate: c.nextDueDate || "N/A",
+        bank: c.bankName || "N/A",
         status: "Active Loan",
         pan: c.panNumber || c.pan || "N/A",
         aadhaar: c.aadhaarMasked || "N/A"
@@ -146,44 +142,10 @@ export function Customers() {
     });
   }, [leads, loading]);
 
-  const filteredCustomers = useMemo(() => {
-    let list = customersList.filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
-    );
-
-    if (scoreFilter === "700plus") {
-      list = list.filter(c => c.cibil !== "N/A" && Number(c.cibil) >= 700);
-    } else if (scoreFilter === "below700") {
-      list = list.filter(c => c.cibil !== "N/A" && Number(c.cibil) < 700);
-    }
-
-    if (sortBy === "limit") {
-      list.sort((a, b) => b.principalAmount - a.principalAmount);
-    } else if (sortBy === "name") {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    return list;
-  }, [customersList, searchQuery, scoreFilter, sortBy]);
-
-  const totalPages = Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE) || 1;
-  const paginatedCustomers = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredCustomers.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredCustomers, currentPage]);
-
-  // Calculate dynamic metrics for Top KPI Grid
-  const kpis = useMemo(() => {
-    const totalCustomers = filteredCustomers.length;
-    const verifiedKYC = filteredCustomers.filter(c => c.kyc === "Verified").length;
-    const kycRate = totalCustomers > 0 ? Math.round((verifiedKYC / totalCustomers) * 100) : 100;
-    const totalPrincipal = filteredCustomers.reduce((sum, c) => sum + c.principalAmount, 0);
-    const avgPrincipal = totalCustomers > 0 ? Math.round(totalPrincipal / totalCustomers) : 0;
-
-    return { totalCustomers, kycRate, totalPrincipal, avgPrincipal };
-  }, [filteredCustomers]);
+  const filteredCustomers = customersList;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
+  const paginatedCustomers = customersList;
+  const kpis = { totalCustomers: apiStats.totalCustomers, totalPrincipal: apiStats.totalPrincipal, avgPrincipal: apiStats.avgPrincipal };
 
   const getInitials = (name: string) => {
     if (!name) return "C";
@@ -226,7 +188,7 @@ export function Customers() {
               </span>
             </div>
             <h1 className="text-xl font-black text-slate-950 dark:text-white tracking-tight flex items-center gap-2 mt-0.5">
-              <span>Active Customer Loans Portfolio</span>
+              <span>Customer Portfolio</span>
               <Users className="w-5 h-5 text-indigo-500" />
             </h1>
           </div>
@@ -277,16 +239,16 @@ export function Customers() {
           {
             label: "Active Running Loans",
             value: loading ? "..." : kpis.totalCustomers,
-            desc: "Active borrower accounts",
+            desc: "Customer accounts",
             icon: Users,
             accentClasses: "border border-blue-200/90 dark:border-blue-900/60 border-t-4 border-t-blue-500 border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900",
             iconBg: "bg-blue-100/80 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-700/60 shadow-xs",
             numColor: "text-blue-700 dark:text-blue-400"
           },
           {
-            label: "Total Principal Book",
+            label: "Application Amount",
             value: loading ? "..." : formatCurrency(kpis.totalPrincipal),
-            desc: "Combined active principal amount",
+            desc: "Amounts on converted applications",
             icon: DollarSign,
             accentClasses: "border border-purple-200/90 dark:border-purple-900/60 border-t-4 border-t-purple-500 border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-white dark:from-purple-950/40 dark:via-slate-900 dark:to-slate-900",
             iconBg: "bg-purple-100/80 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-700/60 shadow-xs",
@@ -294,17 +256,17 @@ export function Customers() {
           },
           {
             label: "KYC Verified Rate",
-            value: loading ? "..." : `${kpis.kycRate}%`,
-            desc: "Identity & Aadhaar checked",
+            value: "N/A",
+            desc: "Verification data unavailable in this view",
             icon: ShieldCheck,
             accentClasses: "border border-emerald-200/90 dark:border-emerald-900/60 border-t-4 border-t-emerald-500 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900",
             iconBg: "bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/60 shadow-xs",
             numColor: "text-emerald-700 dark:text-emerald-400"
           },
           {
-            label: "Avg Principal / Loan",
+            label: "Avg Amount / Customer",
             value: loading ? "..." : formatCurrency(kpis.avgPrincipal),
-            desc: "Average loan principal size",
+            desc: "Average amount on converted applications",
             icon: Sparkles,
             accentClasses: "border border-amber-200/90 dark:border-amber-900/60 border-t-4 border-t-amber-500 border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white dark:from-amber-950/40 dark:via-slate-900 dark:to-slate-900",
             iconBg: "bg-amber-100/80 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-700/60 shadow-xs",
@@ -376,11 +338,12 @@ export function Customers() {
             className="h-10 px-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-extrabold text-slate-700 dark:text-slate-250 outline-none cursor-pointer focus:border-indigo-500 transition"
           >
             <option value="name">Sort by Name (A-Z)</option>
-            <option value="limit">Sort by Principal Amount (Highest)</option>
+            <option value="limit">Sort by Total Borrowed (Highest)</option>
           </select>
         </div>
       </div>
 
+      {loadError && <div role="alert" className="p-3 text-sm text-red-600">{loadError}</div>}
       {loading ? (
         <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-400 dark:text-slate-550">
           <span className="w-6 h-6 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
@@ -389,7 +352,7 @@ export function Customers() {
       ) : filteredCustomers.length === 0 ? (
         <div className="py-20 text-center bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl">
           <AlertCircle className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-          <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">No Active Customers Found</h3>
+          <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">No Customers Found</h3>
           <p className="text-[10px] font-extrabold text-slate-400 mt-1">No customer records match your current search or filter parameters</p>
         </div>
       ) : viewMode === "grid" ? (
@@ -447,7 +410,7 @@ export function Customers() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/50">
-                      <span className="text-slate-500 dark:text-slate-400">Principal Amount</span>
+                      <span className="text-slate-500 dark:text-slate-400">Total Borrowed</span>
                       <span className="text-indigo-600 dark:text-indigo-400 font-black text-xs">
                         {cust.principalFormatted}
                       </span>
@@ -468,9 +431,9 @@ export function Customers() {
           {totalPages > 1 && (
             <div className="p-4 border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 backdrop-blur-md shadow-xs">
               <span className="text-xs font-extrabold text-slate-500 dark:text-slate-400">
-                Showing <span className="text-slate-900 dark:text-white font-black">{Math.min(filteredCustomers.length, (currentPage - 1) * ITEMS_PER_PAGE + 1)}</span> to{" "}
-                <span className="text-slate-900 dark:text-white font-black">{Math.min(filteredCustomers.length, currentPage * ITEMS_PER_PAGE)}</span> of{" "}
-                <span className="text-slate-900 dark:text-white font-black">{filteredCustomers.length}</span> active loans
+                Showing <span className="text-slate-900 dark:text-white font-black">{Math.min(totalItems, (currentPage - 1) * ITEMS_PER_PAGE + 1)}</span> to{" "}
+                <span className="text-slate-900 dark:text-white font-black">{Math.min(totalItems, currentPage * ITEMS_PER_PAGE)}</span> of{" "}
+                <span className="text-slate-900 dark:text-white font-black">{totalItems}</span> customers
               </span>
 
               <div className="flex items-center gap-2">
@@ -484,7 +447,7 @@ export function Customers() {
                 </button>
 
                 <div className="flex items-center gap-1">
-                  {[...Array(totalPages)].map((_, i) => (
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, index) => Math.min(Math.max(currentPage - 3, 0), Math.max(totalPages - 5, 0)) + index).map((i) => (
                     <button
                       key={i}
                       onClick={() => setCurrentPage(i + 1)}
@@ -523,7 +486,7 @@ export function Customers() {
                   <th className="px-5 py-4">Contact Details</th>
                   <th className="px-5 py-4">CIBIL Score</th>
                   <th className="px-5 py-4">KYC Status</th>
-                  <th className="px-5 py-4">Principal Amount</th>
+                  <th className="px-5 py-4">Total Borrowed</th>
                   <th className="px-5 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -582,9 +545,9 @@ export function Customers() {
           {totalPages > 1 && (
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-950/40">
               <span className="text-xs font-extrabold text-slate-500 dark:text-slate-400">
-                Showing <span className="text-slate-900 dark:text-white font-black">{Math.min(filteredCustomers.length, (currentPage - 1) * ITEMS_PER_PAGE + 1)}</span> to{" "}
-                <span className="text-slate-900 dark:text-white font-black">{Math.min(filteredCustomers.length, currentPage * ITEMS_PER_PAGE)}</span> of{" "}
-                <span className="text-slate-900 dark:text-white font-black">{filteredCustomers.length}</span> active loans
+                Showing <span className="text-slate-900 dark:text-white font-black">{Math.min(totalItems, (currentPage - 1) * ITEMS_PER_PAGE + 1)}</span> to{" "}
+                <span className="text-slate-900 dark:text-white font-black">{Math.min(totalItems, currentPage * ITEMS_PER_PAGE)}</span> of{" "}
+                <span className="text-slate-900 dark:text-white font-black">{totalItems}</span> customers
               </span>
 
               <div className="flex items-center gap-2">
@@ -598,7 +561,7 @@ export function Customers() {
                 </button>
 
                 <div className="flex items-center gap-1">
-                  {[...Array(totalPages)].map((_, i) => (
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, index) => Math.min(Math.max(currentPage - 3, 0), Math.max(totalPages - 5, 0)) + index).map((i) => (
                     <button
                       key={i}
                       onClick={() => setCurrentPage(i + 1)}
@@ -719,11 +682,11 @@ export function Customers() {
                   {/* Active Loan Summary */}
                   <div>
                     <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">
-                      Active Loan Sanction
+                      Customer Loan Summary
                     </h4>
                     <div className="p-5 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent border border-indigo-500/20 dark:border-indigo-500/30 rounded-2xl space-y-3.5">
                       <div className="flex items-center justify-between text-xs font-bold">
-                        <span className="text-slate-500 dark:text-slate-400">Principal Loan Amount</span>
+                        <span className="text-slate-500 dark:text-slate-400">Total Borrowed</span>
                         <span className="text-indigo-600 dark:text-indigo-400 font-black text-base">{selectedCust.principalFormatted}</span>
                       </div>
                       <div className="flex items-center justify-between text-xs font-bold">

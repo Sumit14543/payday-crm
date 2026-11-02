@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -34,17 +34,16 @@ export function Leads() {
   const navigate = useNavigate();
   const { search } = useLocation();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [leads, setLeads] = useState<any[]>(() => {
-    const cached = sessionStorage.getItem("product_admin_leads_cache");
-    return cached ? JSON.parse(cached) : [];
-  });
-  const [loading, setLoading] = useState(() => {
-    const cached = sessionStorage.getItem("product_admin_leads_cache");
-    return !cached;
-  });
+  const [leads, setLeads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState({ total: 0, fresh: 0, contacted: 0, sentToCredit: 0, rejected: 0 });
+  const requestRef = useRef<AbortController | null>(null);
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState<"all" | "today" | "yesterday" | "custom">("all");
+  const [dateFilter, setDateFilter] = useState<"all" | "today" | "yesterday" | "this_month" | "custom">("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
@@ -103,39 +102,60 @@ export function Leads() {
     return params.get("status") || "all";
   }, [search]);
 
-  const fetchLeads = () => {
-    if (!sessionStorage.getItem("product_admin_leads_cache")) {
-      setLoading(true);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchLeads = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    setLoadError("");
+    const params = new URLSearchParams({ page: String(currentPage), limit: String(ITEMS_PER_PAGE), includeStats: "true", summaryScope: "date", view: "admin-leads" });
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (sourceFilter !== "all") params.set("source", sourceFilter);
+    const tenant = getTenantSlug();
+    if (tenant === "geetpay") params.set("tenantSource", "geetpay");
+    if (tenant === "waqtfinance") params.set("excludeSourceSystem", "geetpay");
+    const dateKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+    if (dateFilter === "today" || dateFilter === "yesterday") {
+      const day = new Date();
+      if (dateFilter === "yesterday") day.setDate(day.getDate() - 1);
+      params.set("fromDate", dateKey(day));
+      params.set("toDate", dateKey(day));
+    } else if (dateFilter === "this_month") {
+      const day = new Date();
+      day.setDate(1);
+      params.set("fromDate", dateKey(day));
+      params.set("toDate", dateKey(new Date(day.getFullYear(), day.getMonth() + 1, 0)));
+    } else if (dateFilter === "custom") {
+      if (startDate) params.set("fromDate", startDate);
+      if (endDate) params.set("toDate", endDate);
     }
-    apiGet<any[]>("/leads")
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setLeads(data);
-          sessionStorage.setItem("product_admin_leads_cache", JSON.stringify(data));
-        }
-      })
-      .catch((err) => console.error("Failed to load leads list:", err))
-      .finally(() => setLoading(false));
-  };
+    try {
+      const data = await apiGet<any[]>(`/leads?${params}`, controller.signal);
+      setLeads(data);
+      setTotalItems((data as any).pagination?.total ?? data.length);
+      if ((data as any).stats) setStats((data as any).stats);
+      const totalPages = (data as any).pagination?.totalPages || 1;
+      if (currentPage > totalPages) setCurrentPage(totalPages);
+      setSelectedLeads([]);
+    } catch (err) {
+      if (!controller.signal.aborted) setLoadError(err instanceof Error ? err.message : "Unable to load leads");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [currentPage, debouncedSearch, statusFilter, sourceFilter, dateFilter, startDate, endDate]);
 
   useEffect(() => {
-    fetchLeads();
-  }, []);
+    void fetchLeads();
+    return () => requestRef.current?.abort();
+  }, [fetchLeads]);
 
   const mappedLeads = useMemo(() => {
-    if (leads.length === 0 && !loading) {
-      return [
-        { id: "LD-1082", name: "Rahul Sharma", phone: "9876543210", pan: "ABCDE1234F", city: "Mumbai", state: "Maharashtra", employment: "Salaried", salary: "₹45,000", loanAmount: "₹25,000", source: "Website", assignedTo: "Kajal", status: "New Lead", date: "2026-07-15" },
-        { id: "LD-1081", name: "Amit Patel", phone: "9876501234", pan: "FGHIJ5678K", city: "Ahmedabad", state: "Gujarat", employment: "Self-Employed", salary: "₹60,000", loanAmount: "₹50,000", source: "Partner API", assignedTo: "Jyoti", status: "Contacted", date: "2026-07-14" },
-        { id: "LD-1080", name: "Jyoti Singh", phone: "9812345678", pan: "LMNOP9012Q", city: "Delhi", state: "Delhi", employment: "Salaried", salary: "₹35,000", loanAmount: "₹15,000", source: "Direct Telecall", assignedTo: "Nandini", status: "Approved", date: "2026-07-14" },
-        { id: "LD-1079", name: "Vikram Malhotra", phone: "9988776655", pan: "RSTUV3456W", city: "Bangalore", state: "Karnataka", employment: "Salaried", salary: "₹85,000", loanAmount: "₹75,000", source: "Mobile App", assignedTo: "Waqt Telecaller", status: "Disbursed", date: "2026-07-13" },
-        { id: "LD-1078", name: "Sumit Kumar", phone: "9823456789", pan: "JKLMN3456P", city: "Noida", state: "Uttar Pradesh", employment: "Salaried", salary: "₹30,000", loanAmount: "₹10,000", source: "Website", assignedTo: "Unassigned", status: "Not Interested", date: "2026-07-12" },
-        { id: "LD-1077", name: "Neha Sharma", phone: "9512345678", pan: "POIUY9876T", city: "Pune", state: "Maharashtra", employment: "Salaried", salary: "₹55,005", loanAmount: "₹40,000", source: "Website", assignedTo: "Kajal", status: "KYC Pending", date: "2026-07-11" },
-        { id: "LD-1076", name: "Rajesh Gupta", phone: "9900887766", pan: "ZXCVB8765Q", city: "Kolkata", state: "West Bengal", employment: "Self-Employed", salary: "₹70,000", loanAmount: "₹30,000", source: "Direct Telecall", assignedTo: "Jyoti", status: "Blacklisted", date: "2026-07-10" },
-        { id: "LD-1075", name: "Kunal Kapoor", phone: "9123456789", pan: "ASDFG4321R", city: "Lucknow", state: "Uttar Pradesh", employment: "Salaried", salary: "₹40,000", loanAmount: "₹20,000", source: "Partner API", assignedTo: "Nandini", status: "Rejected", date: "2026-07-09" }
-      ];
-    }
-
     return leads.map(l => ({
       id: l.id,
       name: l.name || "N/A",
@@ -154,153 +174,14 @@ export function Leads() {
     }));
   }, [leads, loading]);
 
-  const filteredLeads = useMemo(() => {
-    return mappedLeads.filter((lead) => {
-      const matchesSearch =
-        lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        lead.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        lead.phone.includes(searchQuery) ||
-        lead.city.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesStatus =
-        statusFilter === "all" ||
-        lead.status.toLowerCase() === statusFilter.toLowerCase() ||
-        (statusFilter === "New Lead" && (lead.status === "New" || lead.status === "New Lead")) ||
-        (statusFilter === "KYC Pending" && (lead.status === "KYC Pending" || lead.status === "Documents Pending" || lead.status === "Document Collection"));
-
-      const matchesSource = sourceFilter === "all" || lead.source.toLowerCase() === sourceFilter.toLowerCase();
-
-      const matchesDate = (() => {
-        if (dateFilter === "all") return true;
-        if (!lead.date || lead.date === "N/A") return false;
-        
-        const leadDateStr = lead.date; 
-        
-        const getLocalDateString = (d: Date) => {
-          const year = d.getFullYear();
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-        const todayStr = getLocalDateString(new Date());
-        
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = getLocalDateString(yesterday);
-
-        if (dateFilter === "today") {
-          return leadDateStr === todayStr;
-        }
-        if (dateFilter === "yesterday") {
-          return leadDateStr === yesterdayStr;
-        }
-        if (dateFilter === "this_month") {
-          const now = new Date();
-          const year = now.getFullYear();
-          const month = String(now.getMonth() + 1).padStart(2, '0');
-          return leadDateStr.startsWith(`${year}-${month}`);
-        }
-        if (dateFilter === "custom") {
-          if (!startDate && !endDate) return true;
-          if (startDate && leadDateStr < startDate) return false;
-          if (endDate && leadDateStr > endDate) return false;
-          return true;
-        }
-        return true;
-      })();
-
-      const tenantSlug = getTenantSlug();
-      const leadSource = String(lead.sourceSystem || lead.source || "").toLowerCase();
-      let matchesTenant = true;
-      if (tenantSlug === "waqtfinance") {
-        if (leadSource === "geetpay") matchesTenant = false;
-      } else if (tenantSlug === "geetpay") {
-        if (leadSource !== "geetpay") matchesTenant = false;
-      }
-
-      return matchesSearch && matchesStatus && matchesSource && matchesDate && matchesTenant;
-    });
-  }, [mappedLeads, searchQuery, statusFilter, sourceFilter, dateFilter, startDate, endDate]);
-
-  // Reset page to 1 when search query, filter or date range changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, sourceFilter, dateFilter, startDate, endDate]);
+  }, [debouncedSearch, statusFilter, sourceFilter, dateFilter, startDate, endDate]);
 
-  const totalItems = filteredLeads.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
-
-  const paginatedLeads = useMemo(() => {
-    return filteredLeads.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredLeads, startIndex]);
-
-  const dateFilteredLeads = useMemo(() => {
-    return mappedLeads.filter((lead) => {
-      if (dateFilter === "all") return true;
-      if (!lead.date || lead.date === "N/A") return false;
-      
-      const leadDateStr = lead.date; 
-      
-      const getLocalDateString = (d: Date) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-      const todayStr = getLocalDateString(new Date());
-      
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = getLocalDateString(yesterday);
-
-      if (dateFilter === "today") {
-        return leadDateStr === todayStr;
-      }
-      if (dateFilter === "yesterday") {
-        return leadDateStr === yesterdayStr;
-      }
-      if (dateFilter === "this_month") {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        return leadDateStr.startsWith(`${year}-${month}`);
-      }
-      if (dateFilter === "custom") {
-        if (!startDate && !endDate) return true;
-        if (startDate && leadDateStr < startDate) return false;
-        if (endDate && leadDateStr > endDate) return false;
-        return true;
-      }
-      return true;
-    });
-  }, [mappedLeads, dateFilter, startDate, endDate]);
-
-  const stats = useMemo(() => {
-    const total = dateFilteredLeads.length;
-    const fresh = dateFilteredLeads.filter(l => 
-      l.status.toLowerCase() === "new" || 
-      l.status.toLowerCase() === "new lead"
-    ).length;
-    const contacted = dateFilteredLeads.filter(l => 
-      l.status.toLowerCase() === "contacted" || 
-      l.status.toLowerCase() === "interested" || 
-      l.status.toLowerCase() === "kyc pending" || 
-      l.status.toLowerCase() === "documents pending" || 
-      l.status.toLowerCase() === "document collection"
-    ).length;
-    const sentToCredit = dateFilteredLeads.filter(l => 
-      l.assignedTo === "Credit Manager"
-    ).length;
-    const rejected = dateFilteredLeads.filter(l => 
-      l.status.toLowerCase() === "rejected" || 
-      l.status.toLowerCase() === "blacklisted" || 
-      l.status.toLowerCase() === "lost"
-    ).length;
-
-    return { total, fresh, contacted, sentToCredit, rejected };
-  }, [dateFilteredLeads]);
+  const paginatedLeads = mappedLeads;
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -323,20 +204,9 @@ export function Leads() {
   const handleDeleteLead = (id: string) => {
     if (window.confirm(`Are you sure you want to delete lead ${id}?`)) {
       apiDelete(`/leads/${id}`)
-        .then(() => {
-          setLeads((prev) => {
-            const updated = prev.filter((l) => l.id !== id);
-            sessionStorage.setItem("product_admin_leads_cache", JSON.stringify(updated));
-            return updated;
-          });
-        })
+        .then(() => { void fetchLeads(); })
         .catch((err) => {
-          console.error("Failed to delete lead:", err);
-          setLeads((prev) => {
-            const updated = prev.filter((l) => l.id !== id);
-            sessionStorage.setItem("product_admin_leads_cache", JSON.stringify(updated));
-            return updated;
-          });
+          toast.error(err instanceof Error ? err.message : "Unable to delete lead");
         });
     }
   };
@@ -417,7 +287,6 @@ export function Leads() {
             }
             return l;
           });
-          sessionStorage.setItem("product_admin_leads_cache", JSON.stringify(updated));
           return updated;
         });
         fetchLeads();
@@ -486,6 +355,8 @@ export function Leads() {
           </button>
         </div>
       </div>
+
+      {loadError && <div role="alert" className="p-3 text-sm text-red-600">{loadError}</div>}
 
       {/* Metrics Cards Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">

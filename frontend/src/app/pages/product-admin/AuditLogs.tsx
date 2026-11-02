@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   ShieldAlert, 
   Search, 
@@ -63,92 +63,89 @@ export function AuditLogs() {
   const [geoCache, setGeoCache] = useState<Record<string, GeoData>>({});
   const [geoLoading, setGeoLoading] = useState<Record<string, boolean>>({});
 
+  const logsRequest = useRef<AbortController | null>(null);
+  const geoResults = useRef<Record<string, GeoData>>({});
+
   const fetchLogs = () => {
+    logsRequest.current?.abort();
+    const controller = new AbortController();
+    logsRequest.current = controller;
     setLoading(true);
-    apiGet<AuditLog[]>("/dashboard/audit-logs")
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setLogs(data);
-          extractAndFetchIps(data);
-        }
-        setLoading(false);
+    apiGet<AuditLog[]>("/dashboard/audit-logs", controller.signal)
+      .then(data => {
+        if (!controller.signal.aborted && Array.isArray(data)) setLogs(data);
       })
-      .catch((err) => {
-        console.error("Failed to load audit logs:", err);
-        setLoading(false);
+      .catch(err => {
+        if (!controller.signal.aborted) console.error("Failed to load audit logs:", err);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
   };
 
   useEffect(() => {
-    let active = true;
     fetchLogs();
-    return () => { active = false; };
+    return () => logsRequest.current?.abort();
   }, []);
 
-  const extractAndFetchIps = async (logData: AuditLog[]) => {
-    const uniqueIps = Array.from(
-      new Set(
-        logData
-          .map(l => cleanIp(l.ipAddress))
-          .filter(Boolean)
-      )
-    );
-    
-    for (const ip of uniqueIps) {
-      if (!geoCache[ip] && !geoLoading[ip]) {
-        setGeoLoading(prev => ({ ...prev, [ip]: true }));
-        
-        let fetched = false;
+  useEffect(() => {
+    const controller = new AbortController();
+    const ips = Array.from(new Set(logs.map(log => cleanIp(log.ipAddress)).filter(Boolean)))
+      .filter(ip => !geoResults.current[ip]);
+    let next = 0;
+    setGeoLoading({});
 
-        // Primary: Backend GeoIP service (/api/dashboard/ip-geo?ip=...)
+    const worker = async () => {
+      while (!controller.signal.aborted && next < ips.length) {
+        const ip = ips[next++];
+        const lookup = new AbortController();
+        const cancel = () => lookup.abort();
+        controller.signal.addEventListener("abort", cancel, { once: true });
+        // Covers both the backend lookup and its existing browser fallback.
+        const timer = setTimeout(cancel, 10_000);
+        setGeoLoading(prev => ({ ...prev, [ip]: true }));
+        let result: GeoData | undefined;
         try {
-          const res = await apiGet<{ ip: string; geo: GeoData }>(`/dashboard/ip-geo?ip=${encodeURIComponent(ip)}`);
-          if (res && res.geo) {
-            setGeoCache(prev => ({
-              ...prev,
-              [ip]: {
-                city: res.geo.city || "India",
-                region: res.geo.region || "",
-                country: res.geo.country || "India",
-                isp: res.geo.isp || "Telecom Network",
-                status: "success"
-              }
-            }));
-            fetched = true;
+          try {
+            const res = await apiGet<{ ip: string; geo: GeoData }>(
+              `/dashboard/ip-geo?ip=${encodeURIComponent(ip)}`, lookup.signal, { timeoutMs: 10_000 });
+            if (res?.geo) result = {
+              city: res.geo.city || "India", region: res.geo.region || "",
+              country: res.geo.country || "India", isp: res.geo.isp || "Telecom Network", status: "success",
+            };
+          } catch (error) {
+            if (!lookup.signal.aborted) console.warn(`Backend geo fetch failed for ${ip}:`, error);
+          }
+          if (!result && !lookup.signal.aborted && !isLocalOrPrivateIp(ip)) {
+            const response = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, { signal: lookup.signal });
+            if (response.ok) {
+              const data = await response.json();
+              if (data?.success) result = {
+                city: data.city || "India", region: data.region || "",
+                country: data.country || "India", isp: data.connection?.isp || "ISP", status: "success",
+              };
+            }
+          }
+          if (result && !lookup.signal.aborted) {
+            geoResults.current[ip] = result;
+            // Keep only IPs still present in the current 150-row audit feed.
+            setGeoCache(prev => ({ ...prev, [ip]: result! }));
           }
         } catch (error) {
-          console.warn(`Backend geo fetch failed for ${ip}:`, error);
+          if (!lookup.signal.aborted) console.warn(`Geo fetch failed for ${ip}:`, error);
+        } finally {
+          clearTimeout(timer);
+          controller.signal.removeEventListener("abort", cancel);
+          if (!controller.signal.aborted) setGeoLoading(prev => ({ ...prev, [ip]: false }));
         }
-
-        // Secondary Fallback: ipwho.is (HTTPS)
-        if (!fetched && !isLocalOrPrivateIp(ip)) {
-          try {
-            const fallbackRes = await fetch(`https://ipwho.is/${ip}`);
-            if (fallbackRes.ok) {
-              const fallbackData = await fallbackRes.json();
-              if (fallbackData && fallbackData.success) {
-                setGeoCache(prev => ({
-                  ...prev,
-                  [ip]: {
-                    city: fallbackData.city || "India",
-                    region: fallbackData.region || "",
-                    country: fallbackData.country || "India",
-                    isp: fallbackData.connection?.isp || "ISP",
-                    status: "success"
-                  }
-                }));
-              }
-            }
-          } catch (fbErr) {
-            console.error(`Fallback geo fetch failed for IP ${ip}:`, fbErr);
-          }
-        }
-
-        setGeoLoading(prev => ({ ...prev, [ip]: false }));
-        await new Promise(r => setTimeout(r, 80));
       }
-    }
-  };
+    };
+    const visibleIps = new Set(logs.map(log => cleanIp(log.ipAddress)));
+    for (const ip of Object.keys(geoResults.current)) if (!visibleIps.has(ip)) delete geoResults.current[ip];
+    setGeoCache({ ...geoResults.current });
+    void Promise.all(Array.from({ length: Math.min(3, ips.length) }, worker));
+    return () => controller.abort();
+  }, [logs]);
 
   const getActionColor = (action: string) => {
     const act = action.toLowerCase();

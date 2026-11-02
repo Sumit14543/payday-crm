@@ -1,3 +1,4 @@
+import { PartialDataNotice } from "../components/PartialDataNotice";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -219,6 +220,7 @@ export function AnalyticsReports() {
 
   return (
     <div className="w-full min-w-0 bg-slate-50/50 dark:bg-slate-950 min-h-screen pb-12">
+      <PartialDataNotice rows={rawLeads} />
       {/* Header Section */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-6 sm:px-6 lg:px-8 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

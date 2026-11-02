@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -53,7 +53,7 @@ import { apiGet } from "../lib/api";
 import { canRoleAccessPath, isCollectionAccount, roleLabels, useAuth, roleHomeRoutes, type UserRole } from "../lib/auth";
 import { useSmartPolling } from "../lib/useSmartPolling";
 import { ThemeToggle } from "./ThemeToggle";
-import { ProductAdminLayout } from "./ProductAdminLayout";
+const ProductAdminLayout = lazy(() => import("./ProductAdminLayout").then(module => ({ default: module.ProductAdminLayout })));
 import { AppTooltip } from "./ui/app-tooltip";
 import {
   Dialog,
@@ -173,7 +173,7 @@ export function Layout() {
   const isKajalUser = user?.name === "Kajal" || user?.email?.toLowerCase().includes("kajal");
 
   if (role === "product-admin") {
-    return <ProductAdminLayout />;
+    return <Suspense fallback={<PageLoading />}><ProductAdminLayout /></Suspense>;
   }
 
   const collectionAccount = role === "collection" || isCollectionAccount(user);

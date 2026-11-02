@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import { apiGet, apiGetBlob, apiPost, apiDelete } from "../../lib/api";
 import { ConfirmationModal } from "../../components/ui/ConfirmationModal";
-import { getTenantSlug } from "../../lib/tenant";
 
 type CreditApplication = {
   id: string;
@@ -56,6 +55,11 @@ export function CreditApplications() {
   const [applications, setApplications] = useState<CreditApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [totalItems, setTotalItems] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [kpis, setKpis] = useState({ total: 0, inReview: 0, sanctionSent: 0, agreementPending: 0, sentToAccountant: 0 });
+  const requestRef = useRef<AbortController | null>(null);
   const [selectedApp, setSelectedApp] = useState<CreditApplication | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -63,26 +67,55 @@ export function CreditApplications() {
   const [copiedText, setCopiedText] = useState<{ text: string; type: string } | null>(null);
   const [dateFilter, setDateFilter] = useState<"today" | "yesterday" | "this_month" | "all">("all");
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchApplications = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
-    try {
-      const data = await apiGet<{ items: CreditApplication[] }>("/leads/credit-applications-v2?page=1&pageSize=500");
-      const items = Array.isArray(data) ? data : data?.items || [];
-      setApplications(items);
-    } catch (err) {
-      console.error("Failed to fetch credit applications:", err);
-    } finally {
-      setLoading(false);
+    setLoadError("");
+    const params = new URLSearchParams({ page: String(currentPage), pageSize: String(ITEMS_PER_PAGE), includeAdminStats: "true", searchFields: "admin-list" });
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (priorityFilter !== "all") params.set("priority", priorityFilter);
+    if (statusFilter !== "all") params.set("statusSearch", statusFilter);
+    const dateKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+    if (dateFilter !== "all") {
+      const day = new Date();
+      if (dateFilter === "yesterday") day.setDate(day.getDate() - 1);
+      let to = dateKey(day);
+      if (dateFilter === "this_month") {
+        day.setDate(1);
+        to = dateKey(new Date(day.getFullYear(), day.getMonth() + 1, 0));
+      }
+      params.set("fromDate", dateKey(day));
+      params.set("toDate", to);
     }
-  }, []);
+    try {
+      const data = await apiGet<{ items: CreditApplication[]; pagination: { page: number; totalItems: number }; adminStats: typeof kpis }>(`/leads/credit-applications-v2?${params}`, controller.signal);
+      if (!Array.isArray(data.items) || !data.pagination || !data.adminStats) throw new Error("Incomplete credit pagination response");
+      setApplications(data.items);
+      setTotalItems(data.pagination.totalItems);
+      setKpis(data.adminStats);
+      if (data.pagination.page !== currentPage) setCurrentPage(data.pagination.page);
+    } catch (err) {
+      if (!controller.signal.aborted) setLoadError(err instanceof Error ? err.message : "Unable to load credit applications");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [currentPage, debouncedSearch, statusFilter, priorityFilter, dateFilter]);
 
   useEffect(() => {
-    fetchApplications();
+    void fetchApplications();
+    return () => requestRef.current?.abort();
   }, [fetchApplications]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeProduct, searchQuery, statusFilter, priorityFilter, dateFilter]);
+  }, [activeProduct, debouncedSearch, statusFilter, priorityFilter, dateFilter]);
 
   const handleCopy = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
@@ -110,195 +143,6 @@ export function CreditApplications() {
       setIsDeletingApp(false);
     }
   };
-
-  // Fallback data when API returns empty
-  const productFilteredList = useMemo(() => {
-    const list = applications;
-    if (list.length === 0 && !loading) {
-      return [
-        {
-          id: "WAQT-MN-PD-002429",
-          name: "KAMAL HEERANI",
-          email: "kamal@gmail.com",
-          phone: "+91 98765 43210",
-          loanAmount: 10000,
-          priority: "Low",
-          status: "Qualified",
-          assignedTo: "Accountant",
-          createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-          stage: "Agreement Pending eSign",
-          decisionNotes: "Pre-qualification checked. Aadhaar and PAN verified. Income statement checks verified."
-        },
-        {
-          id: "WAQTFN-PD-1782295291202",
-          name: "SIRAJUL AMEEN MOHAMED ASFAR HAMEED",
-          email: "sirajul.ameen@gmail.com",
-          phone: "+91 98760 12345",
-          loanAmount: 40000,
-          priority: "Low",
-          status: "Qualified",
-          assignedTo: "Accountant",
-          createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-          stage: "Sent to Accountant",
-          decisionNotes: "CIBIL report fetched (Score: 742). Bank statements analysed. Recommended for approval by Underwriter."
-        },
-        {
-          id: "WAQTFN-PD-1779804083296",
-          name: "VARAHALA BABU PAILA",
-          email: "varahala.babu@yahoo.com",
-          phone: "+91 91234 56789",
-          loanAmount: 15000,
-          priority: "Low",
-          status: "Qualified",
-          assignedTo: "Accountant",
-          createdAt: new Date(Date.now() - 3600000 * 6).toISOString(),
-          stage: "Sanction Sent",
-          decisionNotes: "Sanction letter generated and sent to borrower via email/WhatsApp."
-        },
-        {
-          id: "WAQT-MN-PD-002600",
-          name: "LAKHAN",
-          email: "lakhan.finance@gmail.com",
-          phone: "+91 95000 12345",
-          loanAmount: 100000,
-          priority: "Medium",
-          status: "Qualified",
-          assignedTo: "Accountant",
-          createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
-          stage: "Sanction Sent",
-          decisionNotes: "High value loan file. Multiple income streams verified. Approved by Senior Credit Manager."
-        },
-        {
-          id: "WAQT-MN-PD-002594",
-          name: "HEMANT RAI DOGRA",
-          email: "hemant.rai@gmail.com",
-          phone: "+91 98980 98980",
-          loanAmount: 12000,
-          priority: "Low",
-          status: "Qualified",
-          assignedTo: "Credit Manager",
-          createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
-          stage: "In Review",
-          decisionNotes: "Currently undergoing manual verification of salary slips and employment verification."
-        },
-        {
-          id: "WAQT-MN-PD-002611",
-          name: "ABHISHEK KUMAR",
-          email: "abhishek.kr@gmail.com",
-          phone: "+91 98888 77777",
-          loanAmount: 25000,
-          priority: "High",
-          status: "Qualified",
-          assignedTo: "Credit Manager",
-          createdAt: new Date(Date.now() - 3600000 * 14).toISOString(),
-          stage: "In Review",
-          decisionNotes: "Urgent check. Customer requested quick payout. Bank verification pending final check."
-        },
-        {
-          id: "WAQT-MN-PD-002612",
-          name: "SHWETA PATEL",
-          email: "shweta.patel@gmail.com",
-          phone: "+91 97777 66666",
-          loanAmount: 30000,
-          priority: "Medium",
-          status: "Qualified",
-          assignedTo: "Accountant",
-          createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-          stage: "Disbursed",
-          decisionNotes: "Agreement signed, handoff to accountant completed, payout successful."
-        },
-        {
-          id: "WAQT-MN-PD-002613",
-          name: "SUNIL DUTT",
-          email: "sunil.dutt@gmail.com",
-          phone: "+91 96666 55555",
-          loanAmount: 5000,
-          priority: "Low",
-          status: "Rejected",
-          assignedTo: "Credit Manager",
-          createdAt: new Date(Date.now() - 3600000 * 26).toISOString(),
-          stage: "Rejected",
-          decisionNotes: "CIBIL score is too low (512) and high debt-to-income ratio."
-        },
-        {
-          id: "WAQT-MN-PD-002614",
-          name: "RAGHAV SHARMA",
-          email: "raghav.sharma@gmail.com",
-          phone: "+91 95555 44444",
-          loanAmount: 20000,
-          priority: "High",
-          status: "Qualified",
-          assignedTo: "Accountant",
-          createdAt: new Date(Date.now() - 3600000 * 28).toISOString(),
-          stage: "Sent to Accountant",
-          decisionNotes: "Awaiting borrower digital signature on eSign portal. Reminders sent via SMS."
-        },
-        {
-          id: "WAQT-MN-PD-002615",
-          name: "MEENA KUMARI",
-          email: "meena.kumari@gmail.com",
-          phone: "+91 94444 33333",
-          loanAmount: 15000,
-          priority: "Urgent",
-          status: "Qualified",
-          assignedTo: "Credit Manager",
-          createdAt: new Date(Date.now() - 3600000 * 30).toISOString(),
-          stage: "In Review",
-          decisionNotes: "Urgent business capital requirement. Income and bank statements verified."
-        }
-      ];
-    }
-    return list;
-  }, [applications, loading]);
-
-  // Helper to check if a date string falls inside selected preset
-  const isDateInPreset = useCallback((dateStr?: string | null, preset: string = "all") => {
-    if (preset === "all" || !dateStr) return preset === "all";
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return false;
-
-    const getLocalDateString = (dateObj: Date) => {
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    const targetDateStr = getLocalDateString(d);
-    const today = new Date();
-    const todayStr = getLocalDateString(today);
-
-    if (preset === "today") {
-      return targetDateStr === todayStr;
-    }
-    if (preset === "yesterday") {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      return targetDateStr === getLocalDateString(yesterday);
-    }
-    if (preset === "this_month") {
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      return targetDateStr.startsWith(`${year}-${month}`);
-    }
-    return true;
-  }, []);
-
-  // Filter application list based on selected timeframe
-  const dateFilteredList = useMemo(() => {
-    if (dateFilter === "all") return productFilteredList;
-    return productFilteredList.filter((app) => {
-      return (
-        isDateInPreset(app.submittedAt, dateFilter) ||
-        isDateInPreset(app.createdAt, dateFilter) ||
-        isDateInPreset(app.sanctionSentAt, dateFilter) ||
-        isDateInPreset(app.loanAgreementSentAt, dateFilter) ||
-        isDateInPreset((app as any).loanAgreementSignedAt, dateFilter) ||
-        isDateInPreset(app.accountingHandoffAt, dateFilter) ||
-        isDateInPreset(app.updatedAt, dateFilter)
-      );
-    });
-  }, [productFilteredList, dateFilter, isDateInPreset]);
 
   const formatReceivedTime = (dateStr?: string) => {
     if (!dateStr) return "N/A";
@@ -330,78 +174,8 @@ export function CreditApplications() {
     return `${diffDays}d ago`;
   };
 
-  // Search & Stage Filter with Newest Incoming Leads First (createdAt DESC)
-  const filteredList = useMemo(() => {
-    return dateFilteredList
-      .filter((app) => {
-        const nameMatch = (app.name || "").toLowerCase().includes(searchQuery.toLowerCase());
-        const idMatch = (app.id || "").toLowerCase().includes(searchQuery.toLowerCase());
-        const emailMatch = (app.email || "").toLowerCase().includes(searchQuery.toLowerCase());
-        const phoneMatch = (app.phone || "").toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesSearch = nameMatch || idMatch || emailMatch || phoneMatch;
-
-        const matchesStatus = statusFilter === "all" ||
-          (app.stage || "").toLowerCase().includes(statusFilter.toLowerCase()) ||
-          (app.status || "").toLowerCase().includes(statusFilter.toLowerCase());
-
-        const matchesPriority = priorityFilter === "all" || app.priority.toLowerCase() === priorityFilter.toLowerCase();
-
-        const tenantSlug = getTenantSlug();
-        const leadSource = String((app as any).sourceSystem || (app as any).source || "").toLowerCase();
-        let matchesTenant = true;
-        if (tenantSlug === "waqtfinance") {
-          if (leadSource === "geetpay") matchesTenant = false;
-        } else if (tenantSlug === "geetpay") {
-          if (leadSource !== "geetpay") matchesTenant = false;
-        }
-
-        return matchesSearch && matchesStatus && matchesPriority && matchesTenant;
-      })
-      .sort((a, b) => {
-        const tA = new Date(a.submittedAt || a.createdAt || (a as any).date || 0).getTime();
-        const tB = new Date(b.submittedAt || b.createdAt || (b as any).date || 0).getTime();
-        return tB - tA;
-      });
-  }, [dateFilteredList, searchQuery, statusFilter, priorityFilter]);
-
-  // Calculate top KPIs dynamically for the selected timeframe
-  const kpis = useMemo(() => {
-    const targetList = dateFilter === "all" ? productFilteredList : dateFilteredList;
-    const total = targetList.length;
-    const inReview = targetList.filter(app => {
-      const stage = (app.stage || "").toLowerCase();
-      return stage === "in review" || stage.includes("review");
-    }).length;
-    
-    const sanctionSent = targetList.filter(app => {
-      const stage = (app.stage || "").toLowerCase();
-      const isSanction = stage === "sanction sent" || Boolean(app.sanctionId) || app.sanctionEmailStatus === "sent";
-      if (dateFilter === "all") return isSanction;
-      return isSanction && isDateInPreset(app.sanctionSentAt || app.updatedAt || app.submittedAt, dateFilter);
-    }).length;
-
-    const agreementPending = targetList.filter(app => {
-      const stage = (app.stage || "").toLowerCase();
-      const isPendingEsign = stage === "agreement pending esign" || app.loanAgreementStatus === "sent" || (Boolean(app.loanAgreementId) && app.loanAgreementStatus !== "signed");
-      if (dateFilter === "all") return isPendingEsign;
-      return isPendingEsign && isDateInPreset(app.loanAgreementSentAt || (app as any).loanAgreementSignedAt || app.updatedAt, dateFilter);
-    }).length;
-
-    const sentToAccountant = targetList.filter(app => {
-      const stage = (app.stage || "").toLowerCase();
-      const isSentAccountant = stage === "sent to accountant" || Boolean(app.accountingHandoffAt);
-      if (dateFilter === "all") return isSentAccountant;
-      return isSentAccountant && isDateInPreset(app.accountingHandoffAt || app.updatedAt, dateFilter);
-    }).length;
-
-    return { total, inReview, sanctionSent, agreementPending, sentToAccountant };
-  }, [productFilteredList, dateFilteredList, dateFilter, isDateInPreset]);
-
-  const totalPages = Math.ceil(filteredList.length / ITEMS_PER_PAGE) || 1;
-  const paginatedList = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredList.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredList, currentPage]);
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
+  const paginatedList = applications;
 
   const getInitials = (name: string) => {
     if (!name) return "?";
@@ -448,6 +222,7 @@ export function CreditApplications() {
       transition={{ duration: 0.3 }}
       className="space-y-6"
     >
+      {loadError && <div role="alert" className="p-3 text-sm text-red-600">{loadError}</div>}
       {/* Description Box & Date Pill Filter */}
       <div className="relative overflow-hidden bg-white/90 dark:bg-slate-900/90 border border-indigo-500/25 dark:border-indigo-500/35 p-4.5 rounded-2xl backdrop-blur-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm">
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
@@ -652,7 +427,7 @@ export function CreditApplications() {
       <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/80 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-105 dark:border-slate-800 flex items-center justify-between bg-slate-50/20 dark:bg-slate-950/5">
           <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">Credit Ledger</h2>
-          <span className="text-[10px] font-bold text-slate-400">{filteredList.length} files total</span>
+          <span className="text-[10px] font-bold text-slate-400">{totalItems} files total</span>
         </div>
 
         {loading ? (
@@ -660,7 +435,7 @@ export function CreditApplications() {
             <span className="w-6 h-6 rounded-full border-2 border-indigo-650 border-t-transparent animate-spin" />
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Syncing verification files...</span>
           </div>
-        ) : filteredList.length === 0 ? (
+        ) : totalItems === 0 ? (
           <div className="py-24 text-center">
             <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" />
             <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">No Applications Found</h3>
@@ -796,7 +571,7 @@ export function CreditApplications() {
         {/* Pagination Footer */}
         {totalPages > 1 && (
           <div className="p-4 border-t border-slate-100 dark:border-slate-805 flex items-center justify-between bg-slate-50/20 dark:bg-slate-950/10 text-xs font-bold text-slate-550">
-            <span>Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredList.length)} of {filteredList.length} entries</span>
+            <span>Showing {totalItems ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0} to {Math.min(currentPage * ITEMS_PER_PAGE, totalItems)} of {totalItems} entries</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}

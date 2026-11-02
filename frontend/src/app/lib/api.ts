@@ -110,11 +110,111 @@ export type ApiResponse<T> = {
   message?: string;
 };
 
-export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+type ReadOptions = { timeoutMs?: number };
+
+async function readWithDeadline<T>(read: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal, options: ReadOptions = {}): Promise<T> {
+  signal?.throwIfAborted();
+  const timeoutMs = options.timeoutMs ?? 60_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid read timeout");
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const cancelled = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      controller.abort(signal?.reason);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => {
+      const error = new Error("Data request timed out. Please refresh and try again.");
+      error.name = "TimeoutError";
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    const data = await Promise.race([read(controller.signal), cancelled]);
+    controller.signal.throwIfAborted();
+    return data;
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+export async function apiGet<T>(path: string, signal?: AbortSignal, options?: ReadOptions): Promise<T> {
   const separator = path.includes("?") ? "&" : "?";
   const url = `${API_BASE_URL}${path}${separator}_t=${Date.now()}`;
-  const response = await fetch(url, { headers: authHeaders(path), signal });
-  return readApiResponse<T>(response, path);
+  return readWithDeadline(async requestSignal => {
+    const response = await fetch(url, { headers: authHeaders(path), signal: requestSignal });
+    return readApiResponse<T>(response, path);
+  }, signal, options);
+}
+
+// These POST endpoints only read data. Financial writes keep their existing
+// request behavior, since a client timeout cannot establish whether a write ran.
+export async function apiPostRead<T>(path: "/collections/list" | "/collections/summary/fetch", body: unknown, signal?: AbortSignal, options?: ReadOptions): Promise<T> {
+  return readWithDeadline(requestSignal => apiPost<T>(path, body, requestSignal), signal, options);
+}
+
+export type Pagination = { page: number; limit: number; total: number; totalPages: number };
+
+// Complete lists for reports and existing aggregate views. Tables should use
+// apiGet with a single server page instead.
+export async function apiGetAll<T extends unknown[]>(path: string, signal?: AbortSignal): Promise<T> {
+  // Every page must belong to the same effective request identity. Do not join
+  // one user's/tenant's first page with pages fetched after a session switch.
+  const identity = () => {
+    const headers = authHeaders(path) as Record<string, string>;
+    return JSON.stringify([headers.Authorization, headers["X-Tenant-Slug"], headers["X-User-Email"], headers["X-User-Name"], headers["X-User-Role"]]);
+  };
+  const initialIdentity = identity();
+  const assertSameIdentity = () => {
+    if (identity() !== initialIdentity) throw new Error("Session changed while exporting. Please start the export again.");
+  };
+  const readPage = async (url: string) => {
+    assertSameIdentity();
+    const rows = await apiGet<T>(url, signal);
+    assertSameIdentity();
+    return rows;
+  };
+  const [pathname, query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  params.delete("pageSize");
+  params.set("page", "1");
+  params.set("limit", pathname === "/loans" ? "5000" : "500");
+  const first = await readPage(`${pathname}?${params}`);
+  if (!Array.isArray(first)) throw new Error("API returned an invalid list response");
+  const meta = (first as T & { pagination?: Pagination }).pagination;
+  if (!meta) return first;
+  if (!Number.isSafeInteger(meta.totalPages) || meta.totalPages > 200 || !Number.isSafeInteger(meta.total) || meta.total < 0 || meta.total > 100_000) {
+    throw new Error("Too many records to load. Please narrow the report filters.");
+  }
+  const pages: unknown[][] = [first];
+  // At most two page requests at a time to limit pressure on the DB pool.
+  for (let page = 2; page <= meta.totalPages; page += 2) {
+    const batch = await Promise.all(Array.from({ length: Math.min(2, meta.totalPages - page + 1) }, (_, index) => {
+      const nextParams = new URLSearchParams(params);
+      nextParams.set("page", String(page + index));
+      return readPage(`${pathname}?${nextParams}`);
+    }));
+    for (const rows of batch) {
+      const pagination = (rows as T & { pagination?: Pagination }).pagination;
+      if (!Array.isArray(rows) || !pagination || pagination.total !== meta.total) {
+        throw new Error("The data changed while loading. Please refresh and try again.");
+      }
+      pages.push(rows);
+    }
+  }
+  const result = pages.flat() as T;
+  if (result.length !== meta.total) throw new Error("Incomplete data received. Please refresh and try again.");
+  const ids = result.map((row: any) => row?.rawId ?? row?.id);
+  if (ids.every(id => id !== undefined) && new Set(ids.map(String)).size !== result.length) {
+    throw new Error("The data changed while loading. Please refresh and try again.");
+  }
+  const stats = (first as any).stats;
+  if (stats) Object.defineProperty(result, 'stats', { value: stats });
+  return result;
 }
 
 export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {

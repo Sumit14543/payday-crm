@@ -1,6 +1,5 @@
 import React, { lazy } from "react";
 import { createBrowserRouter } from "react-router-dom";
-import { Layout } from "./components/Layout";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { RequireAuth, RequireRole } from "./lib/auth";
 
@@ -31,6 +30,7 @@ function lazyRetry<T extends React.ComponentType<any>>(factory: () => Promise<{ 
   });
 }
 
+const Layout = lazyRetry(() => import("./components/Layout").then((module) => ({ default: module.Layout })));
 const AccountantPanel = lazyRetry(() => import("./pages/AccountantPanel").then((module) => ({ default: module.AccountantPanel })));
 const CreditApplications = lazyRetry(() => import("./pages/CreditApplications").then((module) => ({ default: module.CreditApplications })));
 const CreditManagerPanel = lazyRetry(() => import("./pages/CreditManagerPanel").then((module) => ({ default: module.CreditManagerPanel })));

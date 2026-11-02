@@ -43,6 +43,11 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
+              const moduleId = id.replace(/\\/g, '/');
+              if (moduleId.includes('/node_modules/clsx/')) return 'vendor-utils';
+              if (/\/node_modules\/(react|react-dom|react-is|scheduler|use-sync-external-store)\//.test(moduleId)) {
+                return 'vendor-react';
+              }
               if (id.includes('recharts') || id.includes('d3-')) {
                 return 'vendor-recharts';
               }

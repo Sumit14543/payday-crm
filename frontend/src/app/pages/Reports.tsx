@@ -1,3 +1,4 @@
+import { PartialDataNotice } from "../components/PartialDataNotice";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Activity, AlertTriangle, Banknote, Briefcase, Calendar, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, DollarSign, Download, FileSpreadsheet, FileText, IndianRupee, Phone, Search, Send, ShieldAlert, ShieldCheck, UserPlus, Users, Printer, RefreshCw, Repeat } from "lucide-react";
@@ -1490,6 +1491,7 @@ export function Reports() {
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+      <PartialDataNotice rows={leads} />
       <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Telecaller Reports</h2>

@@ -1,3 +1,4 @@
+import { PartialDataNotice } from "../components/PartialDataNotice";
 import { type ComponentType, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { getTenantBranding } from "../lib/tenant";
@@ -4241,6 +4242,8 @@ export function Dashboard() {
 
   return (
     <div className="w-full min-w-0">
+      <PartialDataNotice rows={leads} />
+      <PartialDataNotice rows={loans} />
       <header className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

@@ -97,7 +97,7 @@ export function ProductAdminLayout() {
   useEffect(() => {
     let active = true;
 
-    apiGet<any[]>("/leads")
+    apiGet<any[]>("/leads?page=1&limit=10")
       .then((data) => {
         if (active && Array.isArray(data) && data.length > 0) {
           const sorted = [...data].sort((a, b) => {

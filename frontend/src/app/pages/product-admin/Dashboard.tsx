@@ -1,3 +1,4 @@
+import { PartialDataNotice } from "../../components/PartialDataNotice";
 import Chart from "react-apexcharts";
 import React, { useState, useEffect, useMemo } from "react";
 import { Link, useOutletContext, useNavigate } from "react-router-dom";
@@ -632,6 +633,8 @@ export function Dashboard() {
 
   return (
     <div className="min-w-0 font-sans text-slate-800 dark:text-slate-200 pb-10 -mt-5 space-y-6">
+      <PartialDataNotice rows={leads} />
+      <PartialDataNotice rows={loansList} />
       
       {/* Full-width Responsive Operations Console Dashboard */}
       <div className="space-y-8 min-w-0">

@@ -25,7 +25,7 @@ import {
   Banknote,
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
-import { apiGet, apiPostForm } from "../lib/api";
+import { apiGet, apiGetAll, apiPostForm } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
 import { useAuth } from "../lib/auth";
 
@@ -704,6 +704,8 @@ export function LoanManagement() {
       const pagination = (data as any)?.pagination;
       if (pagination && typeof pagination.total === "number") {
         setTotalCount(pagination.total);
+        const lastPage = Math.max(1, pagination.totalPages || 1);
+        if (currentPage > lastPage) setCurrentPage(lastPage);
       } else {
         setTotalCount(data.length);
       }
@@ -757,20 +759,10 @@ export function LoanManagement() {
       }
       params.set("limit", "5000"); // full export with all active filters
 
-      let exportData: Loan[] = [];
-      try {
-        exportData = await apiGet<Loan[]>(`/loans?${params.toString()}`);
-      } catch (e) {
-        console.warn("apiGet full export failed, falling back to loaded loans:", e);
-      }
-
-      if (!exportData || !exportData.length) {
-        if (loans && loans.length) {
-          exportData = loans;
-        } else {
-          alert("No loans available to export with current filters.");
-          return;
-        }
+      const exportData = await apiGetAll<Loan[]>(`/loans?${params.toString()}`);
+      if (!exportData.length) {
+        alert("No loans available to export with current filters.");
+        return;
       }
 
       // Parse and sort loans strictly using the active UI sort criteria
