@@ -3250,21 +3250,36 @@ if (isLogPaymentPage) {
                         ? (loanPayments.length > 1 ? `Today Payment ${pIdx + 1} of ${loanPayments.length}` : "Collected Today")
                         : `Part Payment ${pIdx + 1} of ${loanPayments.length}`;
 
-                      // For each payment row, display the transaction amount in Total Amount Paid as well if today-filter
-                      const rowBase = isCollectedTodayFilter
-                        ? [
+                      // For secondary part payments (pIdx > 0), don't duplicate loan-level totals
+                      // (Disbursed Amount, Total Due, Total Amount Paid, Outstanding)
+                      // so that sum of columns in Excel is exact and not multiplied by number of part payments
+                      const rowBase = pIdx === 0
+                        ? (isCollectedTodayFilter
+                            ? [
+                                c.borrowerName || c.customer || "",
+                                formattedPhone,
+                                c.email || "",
+                                formattedMember,
+                                c.loanId || "",
+                                String(c.disbursementAmount || c.principal || 0),
+                                String(c.baseRepayment || c.totalDue || 0),
+                                String(p.amount || 0),
+                                String(c.outstanding !== undefined ? c.outstanding : (c.totalDue || 0)),
+                                c.status || c.emiStatus || "",
+                              ]
+                            : base)
+                        : [
                             c.borrowerName || c.customer || "",
                             formattedPhone,
                             c.email || "",
                             formattedMember,
                             c.loanId || "",
-                            String(c.disbursementAmount || c.principal || 0),
-                            String(c.baseRepayment || c.totalDue || 0),
-                            String(p.amount || 0),
-                            String(c.outstanding !== undefined ? c.outstanding : (c.totalDue || 0)),
+                            "0", // Disbursed Amount (0 on subsequent rows to prevent double counting in Excel)
+                            "0", // Total Due (0 on subsequent rows to prevent double counting in Excel)
+                            isCollectedTodayFilter ? String(p.amount || 0) : "0", // Total Amount Paid (0 on subsequent rows to prevent double counting in Excel)
+                            "0", // Outstanding Balance (0 on subsequent rows to prevent double counting in Excel)
                             c.status || c.emiStatus || "",
-                          ]
-                        : base;
+                          ];
 
                       csvRows.push([
                         loanPayments.length > 1 ? `${rowCounter}.${pIdx + 1}` : String(rowCounter),
