@@ -22,26 +22,37 @@ function resolveConfiguredUploadsRoot(value) {
     : path.resolve(APP_ROOT, configuredValue);
 }
 
+const os = require('os');
 const CONFIGURED_UPLOADS_ROOT = resolveConfiguredUploadsRoot(process.env.UPLOADS_DIR);
 
 function prepareUploadsRoot(candidateRoot) {
-  fs.mkdirSync(candidateRoot, { recursive: true });
-  fs.accessSync(candidateRoot, fs.constants.W_OK);
-  return candidateRoot;
+  try {
+    fs.mkdirSync(candidateRoot, { recursive: true });
+    fs.accessSync(candidateRoot, fs.constants.W_OK);
+    return candidateRoot;
+  } catch (error) {
+    return null;
+  }
 }
 
 function resolveUploadsRoot() {
-  try {
-    return prepareUploadsRoot(CONFIGURED_UPLOADS_ROOT);
-  } catch (error) {
-    if (CONFIGURED_UPLOADS_ROOT === DEFAULT_UPLOADS_ROOT) throw error;
+  const primary = prepareUploadsRoot(CONFIGURED_UPLOADS_ROOT);
+  if (primary) return primary;
 
-    console.warn(
-      `UPLOADS_DIR is not writable (${CONFIGURED_UPLOADS_ROOT}); falling back to ${DEFAULT_UPLOADS_ROOT}. ` +
-      `Original error: ${error.code || error.message}`
-    );
-    return prepareUploadsRoot(DEFAULT_UPLOADS_ROOT);
+  if (CONFIGURED_UPLOADS_ROOT !== DEFAULT_UPLOADS_ROOT) {
+    const fallback = prepareUploadsRoot(DEFAULT_UPLOADS_ROOT);
+    if (fallback) return fallback;
   }
+
+  const tmpFallback = path.join(os.tmpdir(), 'payday-uploads');
+  const tmpPrepared = prepareUploadsRoot(tmpFallback);
+  if (tmpPrepared) {
+    console.warn(`[uploads] Primary uploads not writable, using fallback directory: ${tmpPrepared}`);
+    return tmpPrepared;
+  }
+
+  console.warn(`[uploads] Could not verify write permissions on ${DEFAULT_UPLOADS_ROOT}, continuing without crashing.`);
+  return DEFAULT_UPLOADS_ROOT;
 }
 
 const UPLOADS_ROOT = resolveUploadsRoot();

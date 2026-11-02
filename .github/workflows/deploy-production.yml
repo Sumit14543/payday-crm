@@ -124,6 +124,8 @@ jobs:
             fi
 
             echo "Restarting background Node app on port 8081..."
+            chmod 777 uploads 2>/dev/null || chmod 775 uploads 2>/dev/null || true
+            chmod -R 777 uploads 2>/dev/null || true
             fuser -k 8081/tcp || npx --yes kill-port 8081 || true
             mkdir -p tmp
             touch tmp/restart.txt || true
@@ -131,6 +133,7 @@ jobs:
             [ ! -f app.js ] || touch app.js || true
             [ ! -f passenger_wsgi.py ] || touch passenger_wsgi.py || true
             PORT=8081 nohup node index.js </dev/null > node_production.log 2>&1 &
+            disown
             sleep 5
             echo "=== Node Production Log ==="
             cat node_production.log || true
@@ -141,7 +144,9 @@ jobs:
               echo "Testing backend on port 8083 was not running. Starting it now..."
               if [ -d /home/waqtmoney/public_html/testing-api ]; then
                 cd /home/waqtmoney/public_html/testing-api
+                chmod 777 uploads 2>/dev/null || true
                 PORT=8083 nohup node index.js </dev/null > node_testing.log 2>&1 &
+                disown
                 cd /home/waqtmoney/public_html/payday-api
               fi
             else

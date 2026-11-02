@@ -16,6 +16,10 @@ function loadEnv(filePath = path.join(__dirname, '..', '.env'), override = true)
       const key = trimmed.slice(0, separatorIndex).trim();
       const value = trimmed.slice(separatorIndex + 1).trim().replace(/^["']|["']$/g, '');
 
+      if (key === 'PORT' && process.env.PORT) {
+        return;
+      }
+
       if (override || process.env[key] === undefined) {
         process.env[key] = value;
       }
