@@ -10,7 +10,7 @@ const CREDENTIALS = {
   superadmin: {
     email: 'support@waqtmoney.in',
     name: 'CRM Superadmin',
-    password: 'Sanjay@@2026@@123##',
+    password: process.env.SUPERADMIN_PASSWORD || process.argv[2] || '',
     salt: '45fc08e36726dcad454fdc48a13b0c61',
     hash: '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b',
   },
@@ -18,7 +18,7 @@ const CREDENTIALS = {
     email: 'support@waqtmoney.in',
     name: 'Waqt Support Admin',
     role: 'product-admin',
-    password: 'Bhupender@@2026@321##',
+    password: process.env.PRODUCTADMIN_PASSWORD || process.argv[3] || '',
     salt: '45fc08e36726dcad454fdc48a13b0c61',
     hash: '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d',
   },
@@ -34,14 +34,14 @@ console.log('================================================================\n'
 
 console.log('1. SUPERADMIN');
 console.log(`   Email   : ${CREDENTIALS.superadmin.email}`);
-console.log(`   Password: ${CREDENTIALS.superadmin.password}`);
+// password omitted for security
 console.log(`   Role    : superadmin`);
 console.log(`   2FA OTP : MANDATORY (Email OTP will be sent to ${CREDENTIALS.superadmin.email})`);
 console.log(`   Hash    : ${CREDENTIALS.superadmin.hash}\n`);
 
 console.log('2. PRODUCT ADMIN');
 console.log(`   Email   : ${CREDENTIALS.productadmin.email}`);
-console.log(`   Password: ${CREDENTIALS.productadmin.password}`);
+// password omitted for security
 console.log(`   Role    : product-admin`);
 console.log(`   2FA OTP : MANDATORY (Email OTP will be sent to ${CREDENTIALS.productadmin.email})`);
 console.log(`   Hash    : ${CREDENTIALS.productadmin.hash}\n`);

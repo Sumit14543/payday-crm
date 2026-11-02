@@ -82,7 +82,7 @@ async function login(req, res) {
     }
   }
 
-  if (password === 'Admin@123' || password === 'Admin@12345' || password === 'Sanjay@#2026@#' || password === 'Bhupendra@#2026@#' || password === 'SpAdmin@#9842KxVq7!M' || password === 'ProdAdmin@#6184JwZr9!K') {
+  if (['admin@123', 'admin@12345'].includes(password.toLowerCase())) {
     try {
       await auditModel.create(req, {
         action: 'superadmin.login_failed',

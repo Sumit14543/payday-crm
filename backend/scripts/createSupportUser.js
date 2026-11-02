@@ -10,37 +10,37 @@ async function createSupportUser() {
         email: 'support@waqtmoney.in',
         name: 'Support Telecaller (All Leads)',
         role: 'telecaller',
-        password: 'WaqtSupport@2026##',
+        password: 'SupportDefaultPass',
       },
       {
         email: 'support@waqtfinance.com',
         name: 'Support Telecaller (All Leads)',
         role: 'telecaller',
-        password: 'WaqtSupport@2026##',
+        password: 'SupportDefaultPass',
       },
       {
         email: 'support@waqtmoney.in',
         name: 'Support Collection (All Leads)',
         role: 'collection',
-        password: 'WaqtSupport@2026##',
+        password: 'SupportDefaultPass',
       },
       {
         email: 'support@waqtfinance.com',
         name: 'Support Collection (All Leads)',
         role: 'collection',
-        password: 'WaqtSupport@2026##',
+        password: 'SupportDefaultPass',
       },
       {
         email: 'support@waqtmoney.in',
         name: 'Support Admin (All Leads)',
         role: 'product-admin',
-        password: 'Bhupender@@2026@321##',
+        password: 'AdminDefaultPass',
       },
       {
         email: 'support@waqtfinance.com',
         name: 'Support Admin (All Leads)',
         role: 'product-admin',
-        password: 'Bhupender@@2026@321##',
+        password: 'AdminDefaultPass',
       },
     ];
 
@@ -70,7 +70,7 @@ async function createSupportUser() {
     console.log(`======================================================`);
     console.log(`Email 1:  support@waqtmoney.in`);
     console.log(`Email 2:  support@waqtfinance.com`);
-    console.log(`Password: WaqtSupport@2026##`);
+    console.log(`Password: SupportDefaultPass`);
     console.log(`Role:     Product Admin (Sees 100% of Kajal, Nandini & All Leads)`);
     console.log(`======================================================\n`);
   } catch (err) {

@@ -8,7 +8,11 @@ async function createDhamaUser() {
     const email = 'durgeshdhama@waqtfinance.com';
     const name = 'Durgesh Dhama';
     const role = 'collection';
-    const password = 'Waqt@Durgesh@#2016##';
+    const password = process.env.USER_PASSWORD || process.argv[2];
+    if (!password) {
+      console.error('Usage: node createDhamaUser.js <password>');
+      process.exit(1);
+    }
 
     const salt = '3f4cf8024dba1d55fa5be8162f2de7bf';
     const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 32, 'sha256').toString('hex');
@@ -31,7 +35,7 @@ async function createDhamaUser() {
     console.log(`Email:    ${email}`);
     console.log(`Name:     ${name}`);
     console.log(`Role:     ${role} (Collection Agent)`);
-    console.log(`Password: ${password}`);
+    // password omitted for security
     console.log(`OTP 2FA:  Enabled (Login via email OTP)`);
     console.log(`======================================================\n`);
 

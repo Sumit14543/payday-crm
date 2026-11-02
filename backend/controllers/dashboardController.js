@@ -4,8 +4,9 @@ const dashboardModel = require('../models/dashboardModel');
 const auditModel = require('../models/auditModel');
 const { getClientIp, isPrivateIp } = require('../utils/getIp');
 const { success } = require('../utils/http');
+const { createTenantCache } = require('../utils/tenantCache');
 
-const geoMemoryCache = new Map();
+const geoMemoryCache = createTenantCache(24 * 60 * 60 * 1000, 2000);
 
 function fetchUrl(urlStr) {
   return new Promise((resolve) => {
@@ -46,47 +47,44 @@ async function resolveIpGeo(ip) {
     };
   }
 
-  if (geoMemoryCache.has(cleanIp)) {
-    return geoMemoryCache.get(cleanIp);
-  }
+  const cached = geoMemoryCache.get(cleanIp);
+  if (cached) return cached;
+  return geoMemoryCache.getOrLoad(cleanIp, async () => {
+    // Provider 1: ip-api.com
+    let data = await fetchUrl(`http://ip-api.com/json/${encodeURIComponent(cleanIp)}`);
+    if (data && data.status === 'success') {
+      const result = {
+        city: data.city || 'Unknown City',
+        region: data.regionName || data.region || '',
+        country: data.country || 'India',
+        isp: data.isp || data.org || 'ISP',
+        isLocal: false,
+      };
+      return result;
+    }
 
-  // Provider 1: ip-api.com
-  let data = await fetchUrl(`http://ip-api.com/json/${encodeURIComponent(cleanIp)}`);
-  if (data && data.status === 'success') {
-    const result = {
-      city: data.city || 'Unknown City',
-      region: data.regionName || data.region || '',
-      country: data.country || 'India',
-      isp: data.isp || data.org || 'ISP',
+    // Provider 2: ipwho.is
+    data = await fetchUrl(`https://ipwho.is/${encodeURIComponent(cleanIp)}`);
+    if (data && data.success) {
+      const result = {
+        city: data.city || 'Unknown City',
+        region: data.region || '',
+        country: data.country || 'India',
+        isp: data.connection?.isp || 'ISP',
+        isLocal: false,
+      };
+      return result;
+    }
+
+    const fallback = {
+      city: 'India',
+      region: '',
+      country: 'India',
+      isp: 'Telecom Network',
       isLocal: false,
     };
-    geoMemoryCache.set(cleanIp, result);
-    return result;
-  }
-
-  // Provider 2: ipwho.is
-  data = await fetchUrl(`https://ipwho.is/${encodeURIComponent(cleanIp)}`);
-  if (data && data.success) {
-    const result = {
-      city: data.city || 'Unknown City',
-      region: data.region || '',
-      country: data.country || 'India',
-      isp: data.connection?.isp || 'ISP',
-      isLocal: false,
-    };
-    geoMemoryCache.set(cleanIp, result);
-    return result;
-  }
-
-  const fallback = {
-    city: 'India',
-    region: '',
-    country: 'India',
-    isp: 'Telecom Network',
-    isLocal: false,
-  };
-  geoMemoryCache.set(cleanIp, fallback);
-  return fallback;
+    return fallback;
+  });
 }
 
 async function getStats(req, res) {

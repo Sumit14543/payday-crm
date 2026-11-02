@@ -18,6 +18,7 @@ async function listCustomers(req, res) {
       total: customers.total !== undefined ? customers.total : customers.length,
       totalPages: customers.totalPages || 1,
     },
+    stats: customers.stats,
     message: 'OK',
   });
 }

@@ -243,9 +243,9 @@ async function getTallyVouchers(req, res) {
       req.query.api_key ||
       req.query.apiKey;
 
-    const validKey = process.env.TALLY_API_KEY || 'WAQT-TALLY-SECRET-KEY-2026';
+    const validKey = process.env.TALLY_API_KEY;
 
-    if (apiKey !== validKey) {
+    if (!validKey || apiKey !== validKey) {
       return res.status(401).json({
         status: false,
         count: 0,

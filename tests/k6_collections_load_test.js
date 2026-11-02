@@ -24,6 +24,7 @@ export const options = {
     },
   },
   thresholds: {
+    checks: ['rate==1'],
     // 95% of all collection requests must complete under 1500ms
     http_req_duration: ['p(95)<2000'],
     // 95% of list requests should complete under 1000ms
@@ -35,8 +36,9 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.TARGET_URL || 'https://testing-api.waqtmoney.com';
-const AUTH_TOKEN = __ENV.AUTH_TOKEN || '';
+import { BASE_URL, AUTH_TOKEN, validateEnvironment } from "./k6/runtime.js";
+
+export function setup() { validateEnvironment(); }
 
 export default function () {
   const headers = {

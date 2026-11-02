@@ -992,6 +992,7 @@ export function Reports() {
         collections={collections}
         auditLogs={auditLogs}
         reloansData={reloansReportData}
+        loansList={loansList}
         isLoading={isLoading}
         apiError={apiError}
         selectedPeriod={selectedPeriod}
@@ -1774,6 +1775,7 @@ function SingleReportView({
   collections,
   auditLogs,
   reloansData = [],
+  loansList = [],
   isLoading,
   apiError,
   selectedPeriod,
@@ -1789,6 +1791,7 @@ function SingleReportView({
   collections: CollectionReportRow[];
   auditLogs: AuditLog[];
   reloansData?: ReloanReportItem[];
+  loansList?: any[];
   isLoading: boolean;
   apiError: string;
   selectedPeriod: string;
@@ -1880,9 +1883,11 @@ function SingleReportView({
   const summaryCards = useMemo(() => {
     const { start, end } = getPeriodRange(selectedPeriod);
     const filterByDate = (dateVal: any) => {
+      if (selectedPeriod === "alltime" || selectedPeriod === "all") return true;
       if (!dateVal) return false;
-      const d = new Date(dateVal);
-      return !Number.isNaN(d.getTime()) && d >= start && d <= end;
+      const d = parseDate(typeof dateVal === "string" ? dateVal : dateVal?.toISOString ? dateVal.toISOString() : String(dateVal));
+      if (!d) return false;
+      return d >= start && d <= end;
     };
 
     const pLeads = leads.filter(l => filterByDate(l.createdDate));
@@ -1926,11 +1931,12 @@ function SingleReportView({
       pCollections = collections.filter(c => filterByDate(c.disbursementDate || c.dueDate));
     }
 
-    let pTransfers = (loansList.length > 0 ? loansList : (accountantReport?.recentTransfers || [])).filter(t => filterByDate(t.disbursedDate || t.disbursedAt || t.startDate || t.dueDate));
+    const safeLoans = Array.isArray(loansList) ? loansList : [];
+    let pTransfers = (safeLoans.length > 0 ? safeLoans : (accountantReport?.recentTransfers || [])).filter(t => filterByDate(t.disbursedDate || t.disbursedAt || t.startDate || t.disbursementDate || t.createdAt || t.dueDate));
     if (reportType === "due-report") {
       pTransfers = collections.filter(c => filterByDate(c.dueDate));
     } else if (reportType === "disbursement-report") {
-      pTransfers = (loansList.length > 0 ? loansList : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate));
+      pTransfers = (safeLoans.length > 0 ? safeLoans : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate || c.createdAt));
     }
     const pInterest = (interestReports?.reports.accruedInterest || []).filter(i => filterByDate(i.dueDate));
     const pCustomerInterest = (interestReports?.reports.customerMonthWise || []).filter(c => {
@@ -2014,8 +2020,8 @@ function SingleReportView({
         ];
       }
       case "disbursement-report": {
-        const totalDisbursed = pTransfers.reduce((sum, t) => sum + Number(t.disbursedAmount || t.disbursementAmount || 0), 0);
-        const totalRepay = pTransfers.reduce((sum, t) => sum + Number(t.loanRepayAmount || t.repaymentAmount || (t as any).baseRepayment || (t as any).totalDue || 0), 0);
+        const totalDisbursed = pTransfers.reduce((sum, t) => sum + Number(t.disbursementAmount || t.disbursedAmount || t.principal || t.amount || 0), 0);
+        const totalRepay = pTransfers.reduce((sum, t) => sum + Number(t.repaymentAmount || t.loanRepayAmount || (t as any).baseRepayment || (t as any).totalDue || (t as any).totalAmount || 0), 0);
         return [
           { label: "Disbursed Count", value: String(pTransfers.length), note: "Loans disbursed in period", color: "blue", icon: "FileText" },
           { label: "Total Disbursed", value: formatCurrency(totalDisbursed), note: "Funded volume", color: "emerald", icon: "Banknote" },
@@ -2034,7 +2040,7 @@ function SingleReportView({
         ];
       }
       case "due-report": {
-        const totalRepay = pTransfers.reduce((sum, t) => sum + Number(t.repaymentAmount || 0), 0);
+        const totalRepay = pTransfers.reduce((sum, t) => sum + Number(t.repaymentAmount || t.loanRepayAmount || (t as any).totalDue || (t as any).outstanding || (t as any).totalAmount || 0), 0);
         return [
           { label: "Due Accounts", value: String(pTransfers.length), note: "Accounts with active dues", color: "blue", icon: "Users" },
           { label: "Total Amount Due", value: formatCurrency(totalRepay), note: "Repayments expected", color: "amber", icon: "DollarSign" },
@@ -2240,6 +2246,7 @@ function SingleReportView({
     const { start, end } = getPeriodRange(selectedPeriod);
 
     const filterByDate = (dateVal: any) => {
+      if (selectedPeriod === "alltime" || selectedPeriod === "all") return true;
       if (!dateVal) return false;
       const d = parseDate(typeof dateVal === "string" ? dateVal : dateVal?.toISOString ? dateVal.toISOString() : String(dateVal));
       if (!d) return false;
@@ -2280,11 +2287,12 @@ function SingleReportView({
       periodCollections = collections.filter(c => filterByDate(c.disbursementDate || c.dueDate));
     }
 
-    let periodTransfers = (loansList.length > 0 ? loansList : (accountantReport?.recentTransfers || [])).filter(t => filterByDate(t.disbursedDate || t.disbursedAt || t.startDate || t.dueDate));
+    const safePeriodLoans = Array.isArray(loansList) ? loansList : [];
+    let periodTransfers = (safePeriodLoans.length > 0 ? safePeriodLoans : (accountantReport?.recentTransfers || [])).filter(t => filterByDate(t.disbursedDate || t.disbursedAt || t.startDate || t.disbursementDate || t.createdAt || t.dueDate));
     if (reportType === "due-report") {
       periodTransfers = collections.filter(c => filterByDate(c.dueDate));
     } else if (reportType === "disbursement-report") {
-      periodTransfers = (loansList.length > 0 ? loansList : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate));
+      periodTransfers = (safePeriodLoans.length > 0 ? safePeriodLoans : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate || c.createdAt));
     }
     const periodInterest = (interestReports?.reports.accruedInterest || []).filter(i => filterByDate(i.dueDate));
     const periodCustomerInterest = (interestReports?.reports.customerMonthWise || []).filter(c => {
@@ -2372,9 +2380,9 @@ function SingleReportView({
           customer: row.customer || row.customerName || row.borrowerName || "Customer",
           loanId: row.id || row.loanId,
           sanctionAmount: formatCurrency(row.principal || row.sanctionAmount || row.loanAmount || row.disbursedAmount || row.disbursementAmount || 0),
-          disbursed: formatCurrency(row.disbursedAmount || row.disbursementAmount),
-          repayment: formatCurrency(row.loanRepayAmount || row.repaymentAmount || (row as any).baseRepayment || row.totalDue),
-          disbursedOn: formatDate(row.disbursedDate || row.disbursedAt || row.startDate || row.disbursementDate),
+          disbursed: formatCurrency(row.disbursedAmount || row.disbursementAmount || row.principal || row.amount || 0),
+          repayment: formatCurrency(row.loanRepayAmount || row.repaymentAmount || (row as any).baseRepayment || row.totalDue || row.totalAmount || 0),
+          disbursedOn: formatDate(row.disbursedDate || row.disbursedAt || row.startDate || row.disbursementDate || row.createdAt),
           dueDate: formatDate(row.repaymentDate || row.dueDate),
         }));
         break;
@@ -2395,12 +2403,12 @@ function SingleReportView({
 
       case "due-report":
         rawData = periodTransfers.map(row => ({
-          customer: row.customerName || row.borrowerName || "Customer",
-          loanId: row.loanId,
-          disbursed: formatCurrency(row.disbursementAmount),
-          repayment: formatCurrency(row.repaymentAmount || row.totalDue),
-          balance: formatCurrency(row.balance !== undefined ? row.balance : row.outstanding),
-          dueDate: formatDate(row.dueDate),
+          customer: row.customerName || row.customer || row.borrowerName || "Customer",
+          loanId: row.loanId || row.id,
+          disbursed: formatCurrency(row.disbursementAmount || row.disbursedAmount || row.principal || row.amount || 0),
+          repayment: formatCurrency(row.repaymentAmount || row.loanRepayAmount || row.totalDue || row.totalAmount || 0),
+          balance: formatCurrency(row.balance !== undefined ? row.balance : (row.outstanding !== undefined ? row.outstanding : row.totalDue)),
+          dueDate: formatDate(row.dueDate || row.repaymentDate),
         }));
         break;
 

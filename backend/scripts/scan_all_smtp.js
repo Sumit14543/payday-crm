@@ -28,7 +28,7 @@ async function scan() {
         secure: isSecure,
         auth: {
           user: 'sanction@waqtmoney.com',
-          pass: 'Waqt@money@2026##'
+          pass: process.env.SMTP_PASSWORD || ''
         },
         tls: { rejectUnauthorized: false },
         connectionTimeout: 5000,

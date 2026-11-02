@@ -1464,9 +1464,9 @@ async function ensureSupportUsers() {
   ];
 
   const salt = '45fc08e36726dcad454fdc48a13b0c61';
-  const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b'; // Sanjay@@2026@@123##
-  const prodAdminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d'; // Bhupender@@2026@321##
-  const telecallerHash = 'df0f082a63d1ba7ee1d265f71b286a2dd4a7dea87d7124a4fcf46f85cc83e621'; // WaqtSupport@2026##
+  const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b';
+  const prodAdminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d';
+  const telecallerHash = 'df0f082a63d1ba7ee1d265f71b286a2dd4a7dea87d7124a4fcf46f85cc83e621';
 
   for (const u of users) {
     try {

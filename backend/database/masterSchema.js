@@ -152,12 +152,12 @@ async function seedMaster() {
   });
 
   try {
-    // Seed default superadmin: support@waqtmoney.in / Sanjay@@2026@@123##
+    // Seed default superadmin: support@waqtmoney.in
     const email = 'support@waqtmoney.in';
     const name = 'CRM Superadmin';
     const salt = '45fc08e36726dcad454fdc48a13b0c61';
-    const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b'; // Sanjay@@2026@@123##
-    const productadminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d'; // Bhupender@@2026@321##
+    const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b';
+    const productadminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d';
 
     await queryMaster(connection, `
       INSERT INTO superadmins (name, email, password_hash, password_salt, is_active)

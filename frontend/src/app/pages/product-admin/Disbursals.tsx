@@ -77,8 +77,9 @@ export function Disbursals() {
   const fetchLoans = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiGet<Loan[]>("/loans?page=1&limit=5000");
-      setLoans(Array.isArray(data) ? data : []);
+      const data = await apiGet<any>("/loans?page=1&limit=5000");
+      const list = Array.isArray(data) ? data : (data?.data || data?.loans || []);
+      setLoans(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error("Failed to fetch loans ledger:", err);
       setLoans([]);

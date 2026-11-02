@@ -134,7 +134,7 @@ export function Dashboard() {
     apiGet<any>("/leads?page=1&pageSize=50")
       .then((data) => {
         if (active) {
-          const list = Array.isArray(data) ? data : (data?.leads || data?.items || []);
+          const list = Array.isArray(data) ? data : (data?.data || data?.leads || data?.items || []);
           setLeads(list);
           setLeadsLoading(false);
         }
@@ -148,7 +148,7 @@ export function Dashboard() {
     apiGet<any>("/collections")
       .then((data) => {
         if (active) {
-          const list = Array.isArray(data) ? data : (data?.items || data?.cases || []);
+          const list = Array.isArray(data) ? data : (data?.data || data?.items || data?.cases || []);
           setCollections(list);
           setCollectionsLoading(false);
         }
@@ -175,7 +175,7 @@ export function Dashboard() {
     apiGet<any>("/loans?page=1&limit=5000&pageSize=5000")
       .then((data) => {
         if (active) {
-          const list = Array.isArray(data) ? data : (data?.loans || data?.items || []);
+          const list = Array.isArray(data) ? data : (data?.data || data?.loans || data?.items || []);
           setLoansList(list);
           setLoansLoading(false);
         }

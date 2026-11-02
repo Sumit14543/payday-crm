@@ -30,7 +30,7 @@ async function runAllTests() {
     host: 'smtp.hostinger.com',
     port: 465,
     secure: true,
-    auth: { user: 'sanction@waqtmoney.com', pass: 'Waqt@money@2026##' }
+    auth: { user: 'sanction@waqtmoney.com', pass: process.env.SMTP_PASSWORD || '' }
   });
 
   // Test 2: sanction@waqtmoney.com on mail.waqtmoney.com
@@ -38,7 +38,7 @@ async function runAllTests() {
     host: 'mail.waqtmoney.com',
     port: 465,
     secure: true,
-    auth: { user: 'sanction@waqtmoney.com', pass: 'Waqt@money@2026##' }
+    auth: { user: 'sanction@waqtmoney.com', pass: process.env.SMTP_PASSWORD || '' }
   });
 
   // Test 3: support@waqtmoney.in on Hostinger
@@ -46,7 +46,7 @@ async function runAllTests() {
     host: 'smtp.hostinger.com',
     port: 465,
     secure: true,
-    auth: { user: 'support@waqtmoney.in', pass: 'Supportwaqtmoney@123' }
+    auth: { user: 'support@waqtmoney.in', pass: process.env.SMTP_PASSWORD || '' }
   });
 }
 

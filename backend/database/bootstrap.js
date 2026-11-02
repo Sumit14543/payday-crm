@@ -408,8 +408,8 @@ async function bootstrap() {
           const dhamaEmail = 'durgeshdhama@waqtfinance.com';
           const dhamaName = 'Durgesh Dhama';
           const dhamaRole = 'collection';
-          const dhamaSalt = '3f4cf8024dba1d55fa5be8162f2de7bf';
-          const dhamaHash = 'd929c09af5fb06431acaa4849aef5a1121155cde7f6768b28f376c6963c38d0f'; // Waqt@Durgesh@#2016##
+          const dhamaSalt = '58482613b1d10b9e3f61aa9d949ebd10';
+          const dhamaHash = 'b61a5861778021a9a36c14c100fb80c6db1e42428bbbed33d3958d792346eab9';
 
           await runQuery(
             `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
@@ -432,7 +432,7 @@ async function bootstrap() {
           const bhartiName = 'Bharti Gautam';
           const bhartiRole = 'telecaller';
           const bhartiSalt = 'df901231e79d0392c3d5dd45205f147b';
-          const bhartiHash = '15655ec1e4a68aa15126f2399839791f3d2816f2f1e0d8a2a27f0ec4957bb6ae'; // Waqt@Bharti@#2016##
+          const bhartiHash = '15655ec1e4a68aa15126f2399839791f3d2816f2f1e0d8a2a27f0ec4957bb6ae';
 
           await runQuery(
             `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, on_duty, created_at, updated_at)
@@ -464,7 +464,7 @@ async function bootstrap() {
           const shrutiName = 'Shruti Singh';
           const shrutiRole = 'credit-manager';
           const shrutiSalt = '45fc08e36726dcad454fdc48a13b0c61';
-          const shrutiHash = '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537'; // Shruti@@waqtmoney##
+          const shrutiHash = '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537';
 
           await runQuery(
             `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
@@ -489,7 +489,7 @@ async function bootstrap() {
           const testCreditName = 'Test Credit Manager';
           const testCreditRole = 'credit-manager';
           const testCreditSalt = '45fc08e36726dcad454fdc48a13b0c61';
-          const testCreditHash = 'fd48197a6617817987d647982073a67e087f35747808b9bb23b5fb4ee3253a68'; // WaqtTest@2026##
+          const testCreditHash = 'fd48197a6617817987d647982073a67e087f35747808b9bb23b5fb4ee3253a68';
 
           await runQuery(
             `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)

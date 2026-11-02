@@ -14,7 +14,7 @@ async function getAccessToken(forceRefresh = false) {
   }
 
   const apiUser = config.crif.apiUser || 'waqtit3@gmail.com';
-  const apiPassword = config.crif.apiPassword || 'Waqt@#@#08#@';
+  const apiPassword = config.crif.apiPassword || '';
 
   if (!apiUser || !apiPassword) {
     console.log('[CRIF AA] API credentials missing, using sandbox mock token.');

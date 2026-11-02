@@ -17,7 +17,7 @@ async function seedTestingDummyData() {
     }
 
     // -------------------------------------------------------------------------
-    // 1. SEED TEST USERS (Password: WaqtTest@2026##)
+    // 1. SEED TEST USERS (Password: TestDefaultPass@123)
     // -------------------------------------------------------------------------
     const testUsers = [
       { email: 'test.telecaller@waqtmoney.in', name: 'Test Telecaller Agent', role: 'telecaller' },
@@ -29,7 +29,7 @@ async function seedTestingDummyData() {
 
     for (const u of testUsers) {
       const salt = crypto.randomBytes(16).toString('hex');
-      const hash = crypto.pbkdf2Sync('WaqtTest@2026##', salt, 120000, 32, 'sha256').toString('hex');
+      const hash = crypto.pbkdf2Sync('TestDefaultPass@123', salt, 120000, 32, 'sha256').toString('hex');
       const existing = await query('SELECT id FROM crm_users WHERE email = ? AND role = ?', [u.email, u.role]);
 
       if (existing.length > 0) {

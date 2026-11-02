@@ -8,7 +8,11 @@ async function createBhartiUser() {
     const email = 'bhartigautam@waqtfinance.com';
     const name = 'Bharti Gautam';
     const role = 'telecaller';
-    const password = 'Waqt@Bharti@#2016##';
+    const password = process.env.USER_PASSWORD || process.argv[2];
+    if (!password) {
+      console.error('Usage: node createBhartiUser.js <password>');
+      process.exit(1);
+    }
 
     const salt = 'df901231e79d0392c3d5dd45205f147b';
     const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 32, 'sha256').toString('hex');
@@ -41,7 +45,7 @@ async function createBhartiUser() {
     console.log(`Email:    ${email}`);
     console.log(`Name:     ${name}`);
     console.log(`Role:     ${role} (Sales & Support Telecaller)`);
-    console.log(`Password: ${password}`);
+    // password omitted for security
     console.log(`OTP 2FA:  Enabled (Login via email OTP)`);
     console.log(`======================================================\n`);
 

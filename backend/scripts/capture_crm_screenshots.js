@@ -166,7 +166,7 @@ async function capture() {
         role: 'telecaller',
         roleLabel: 'Telecaller',
         email: 'telecaller@waqtfinance.com',
-        password: 'Admin@123',
+        password: process.env.ADMIN_PASSWORD || '',
         screenshots: [
           { path: 'dashboard_telecaller.png', url: 'http://localhost:3000/' },
           { path: 'leads_list.png', url: 'http://localhost:3000/leads' }
@@ -176,7 +176,7 @@ async function capture() {
         role: 'credit-manager',
         roleLabel: 'Credit Manager',
         email: 'shrutisingh@waqtmoney.in',
-        password: 'Shruti@@waqtmoney##',
+        password: process.env.CREDIT_MANAGER_PASSWORD || '',
         screenshots: [
           { path: 'credit_manager_panel.png', url: 'http://localhost:3000/credit-manager' },
           { path: 'credit_applications.png', url: 'http://localhost:3000/credit-applications' }
@@ -186,7 +186,7 @@ async function capture() {
         role: 'accountant',
         roleLabel: 'Accountant',
         email: 'account@waqtfinance.com',
-        password: 'Admin@123',
+        password: process.env.ADMIN_PASSWORD || '',
         screenshots: [
           { path: 'accountant_panel.png', url: 'http://localhost:3000/accountant' },
           { path: 'loan_management.png', url: 'http://localhost:3000/loan-management' }
@@ -196,7 +196,7 @@ async function capture() {
         role: 'collection',
         roleLabel: 'Collection',
         email: 'collection@waqtfinance.com',
-        password: 'Admin@123',
+        password: process.env.ADMIN_PASSWORD || '',
         screenshots: [
           { path: 'collection_panel.png', url: 'http://localhost:3000/collections' }
         ]
@@ -205,7 +205,7 @@ async function capture() {
         role: 'superadmin',
         roleLabel: 'Superadmin',
         email: 'admin@paydaycrm.com',
-        password: 'Admin@123',
+        password: process.env.ADMIN_PASSWORD || '',
         screenshots: [
           { path: 'superadmin_dashboard.png', url: 'http://localhost:3000/superadmin' }
         ]
@@ -214,7 +214,7 @@ async function capture() {
         role: 'product-admin',
         roleLabel: 'Product Admin',
         email: 'productadmin@paydaycrm.com',
-        password: 'Admin@123',
+        password: process.env.ADMIN_PASSWORD || '',
         screenshots: [
           { path: 'product_admin_dashboard.png', url: 'http://localhost:3000/' },
           { path: 'pipeline_view.png', url: 'http://localhost:3000/pipeline' },

@@ -1,4 +1,5 @@
 const { query } = require('../config/db');
+const { createTenantCache } = require('../utils/tenantCache');
 
 const DEFAULT_DOCUMENT_CHECKS = [
   { key: 'pan', label: 'PAN captured and name matched' },
@@ -351,200 +352,191 @@ async function ensureDefaultDocumentChecks(lead) {
   `, [leadId, applicationId, item.key, item.label])));
 }
 
-let workbenchCache = {
-  support: { timestamp: 0, data: null },
-  normal: { timestamp: 0, data: null },
-};
 const WORKBENCH_CACHE_TTL_MS = 15 * 1000; // 15 seconds
+const workbenchCache = createTenantCache(WORKBENCH_CACHE_TTL_MS);
 
 function invalidateWorkbenchCache() {
-  workbenchCache.support.data = null;
-  workbenchCache.normal.data = null;
+  workbenchCache.clear();
 }
 
 async function listTelecallerWorkbench(options = {}) {
   const isSupport = Boolean(options && (options.isSupportUser || options.isSupport));
   const cacheKey = isSupport ? 'support' : 'normal';
 
-  if (workbenchCache[cacheKey].data && (Date.now() - workbenchCache[cacheKey].timestamp < WORKBENCH_CACHE_TTL_MS)) {
-    return workbenchCache[cacheKey].data;
-  }
+  const cached = workbenchCache.get(cacheKey);
+  if (cached) return cached;
+  return workbenchCache.getOrLoad(cacheKey, async () => {
 
-  try {
-    const leadModel = require('./leadModel');
-    if (leadModel && typeof leadModel.autoAssignUnassignedLeads === 'function') {
-      await leadModel.autoAssignUnassignedLeads();
+    try {
+      const leadModel = require('./leadModel');
+      if (leadModel && typeof leadModel.autoAssignUnassignedLeads === 'function') {
+        await leadModel.autoAssignUnassignedLeads();
+      }
+    } catch (e) {
+      // Ignore error
     }
-  } catch (e) {
-    // Ignore error
-  }
 
-  const whereClause = isSupport ? '' : "WHERE la.created_at >= '2026-09-04'";
+    const whereClause = isSupport ? '' : "WHERE la.created_at >= '2026-09-04'";
 
-  const baseRows = await query(`
-    SELECT
-      COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS id,
-      CAST(la.id AS CHAR) AS rawId,
-      COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
-      COALESCE(la.email, '') AS email,
-      la.mobile AS phone,
-      la.loan_amount AS loanAmount,
-      ${sourceDisplaySql()} AS source,
-      ${sourceSystemSql()} AS sourceSystem,
-      COALESCE(la.source_lead_id, '') AS sourceLeadId,
-      COALESCE(la.source_application_id, '') AS sourceApplicationId,
-      COALESCE(la.source_status, '') AS sourceStatus,
-      CASE la.status
-        WHEN 'draft' THEN 'New'
-        WHEN 'submitted' THEN 'Contacted'
-        WHEN 'review' THEN 'Document Collection'
-        WHEN 'documents_pending' THEN 'Documents Pending'
-        WHEN 'not_connected' THEN 'Not Connected'
-        WHEN 'approved' THEN 'Qualified'
-        WHEN 'rejected' THEN 'Lost'
-        WHEN 'disbursed' THEN 'Converted'
-        WHEN 'closed' THEN 'Closed'
-        WHEN 'send_to_credit' THEN 'Send to Credit Manager'
-        ELSE 'New'
-      END AS status,
-      COALESCE(NULLIF(la.priority, ''), CASE
-        WHEN la.loan_amount >= 200000 THEN 'High'
-        WHEN la.loan_amount >= 50000 THEN 'Medium'
-        ELSE 'Low'
-      END) AS priority,
-      COALESCE(NULLIF(la.assigned_to, ''), 'Unassigned') AS assignedTo,
-      CASE
-        WHEN la.assigned_to IS NULL OR la.assigned_to = '' THEN 'Intake Queue'
-        ELSE 'Telecaller'
-      END AS assignedRole,
-      ${dateTimeSql('la.created_at')} AS createdAt,
-      ${dateTimeSql('la.created_at')} AS createdDate,
-      0 AS creditScore,
-      COALESCE(la.employment_status, 'Pending review') AS employmentStatus,
-      COALESCE(la.monthly_income, 0) AS monthlyIncome,
-      COALESCE(la.city, '') AS city,
-      COALESCE(la.pan_number, '') AS panNumber,
-      COALESCE(la.loan_type, '') AS loanType,
-      COALESCE(la.selfie_image, '') AS selfieImage
-    FROM loan_applications la
-    ${whereClause}
-    ORDER BY la.created_at DESC, la.id DESC
-  `);
+    const baseRows = await query(`
+      SELECT
+        COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS id,
+        CAST(la.id AS CHAR) AS rawId,
+        COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
+        COALESCE(la.email, '') AS email,
+        la.mobile AS phone,
+        la.loan_amount AS loanAmount,
+        ${sourceDisplaySql()} AS source,
+        ${sourceSystemSql()} AS sourceSystem,
+        COALESCE(la.source_lead_id, '') AS sourceLeadId,
+        COALESCE(la.source_application_id, '') AS sourceApplicationId,
+        COALESCE(la.source_status, '') AS sourceStatus,
+        CASE la.status
+          WHEN 'draft' THEN 'New'
+          WHEN 'submitted' THEN 'Contacted'
+          WHEN 'review' THEN 'Document Collection'
+          WHEN 'documents_pending' THEN 'Documents Pending'
+          WHEN 'not_connected' THEN 'Not Connected'
+          WHEN 'approved' THEN 'Qualified'
+          WHEN 'rejected' THEN 'Lost'
+          WHEN 'disbursed' THEN 'Converted'
+          WHEN 'closed' THEN 'Closed'
+          WHEN 'send_to_credit' THEN 'Send to Credit Manager'
+          ELSE 'New'
+        END AS status,
+        COALESCE(NULLIF(la.priority, ''), CASE
+          WHEN la.loan_amount >= 200000 THEN 'High'
+          WHEN la.loan_amount >= 50000 THEN 'Medium'
+          ELSE 'Low'
+        END) AS priority,
+        COALESCE(NULLIF(la.assigned_to, ''), 'Unassigned') AS assignedTo,
+        CASE
+          WHEN la.assigned_to IS NULL OR la.assigned_to = '' THEN 'Intake Queue'
+          ELSE 'Telecaller'
+        END AS assignedRole,
+        ${dateTimeSql('la.created_at')} AS createdAt,
+        ${dateTimeSql('la.created_at')} AS createdDate,
+        0 AS creditScore,
+        COALESCE(la.employment_status, 'Pending review') AS employmentStatus,
+        COALESCE(la.monthly_income, 0) AS monthlyIncome,
+        COALESCE(la.city, '') AS city,
+        COALESCE(la.pan_number, '') AS panNumber,
+        COALESCE(la.loan_type, '') AS loanType,
+        COALESCE(la.selfie_image, '') AS selfieImage
+      FROM loan_applications la
+      ${whereClause}
+      ORDER BY la.created_at DESC, la.id DESC
+    `);
 
-  if (!baseRows || !baseRows.length) return [];
+    if (!baseRows || !baseRows.length) return [];
 
-  // Execute secondary data lookups concurrently via Promise.all
-  const [callLogs, followups, docCounts, handoffs, mobileDups, panDups] = await Promise.all([
-    query(`
-      SELECT lcl.application_id, lcl.lead_id, lcl.disposition, ${dateTimeSql('lcl.created_at')} AS created_at
-      FROM lead_call_logs lcl
-      INNER JOIN (
-        SELECT MAX(id) AS max_id
-        FROM lead_call_logs
-        GROUP BY COALESCE(NULLIF(application_id, ''), lead_id)
-      ) latest ON lcl.id = latest.max_id
-    `).catch(() => []),
+    // Execute secondary data lookups concurrently via Promise.all
+    const [callLogs, followups, docCounts, handoffs, mobileDups, panDups] = await Promise.all([
+      query(`
+        SELECT lcl.application_id, lcl.lead_id, lcl.disposition, ${dateTimeSql('lcl.created_at')} AS created_at
+        FROM lead_call_logs lcl
+        INNER JOIN (
+          SELECT MAX(id) AS max_id
+          FROM lead_call_logs
+          GROUP BY COALESCE(NULLIF(application_id, ''), lead_id)
+        ) latest ON lcl.id = latest.max_id
+      `).catch(() => []),
 
-    query(`
-      SELECT lf.application_id, lf.lead_id, ${dateTimeSql('lf.due_at')} AS due_at
-      FROM lead_followups lf
-      WHERE lf.status IN ('open', 'scheduled')
-      ORDER BY lf.due_at ASC
-    `).catch(() => []),
+      query(`
+        SELECT lf.application_id, lf.lead_id, ${dateTimeSql('lf.due_at')} AS due_at
+        FROM lead_followups lf
+        WHERE lf.status IN ('open', 'scheduled')
+        ORDER BY lf.due_at ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT application_id, COUNT(*) AS total_count, SUM(status = 'verified') AS verified_count
-      FROM lead_document_checks
-      GROUP BY application_id
-    `).catch(() => []),
+      query(`
+        SELECT application_id, COUNT(*) AS total_count, SUM(status = 'verified') AS verified_count
+        FROM lead_document_checks
+        GROUP BY application_id
+      `).catch(() => []),
 
-    query(`
-      SELECT lch.application_id, lch.lead_id, lch.status, ${dateTimeSql('lch.submitted_at')} AS submitted_at,
-             lch.submitted_by, lch.reviewed_by, ${dateTimeSql('lch.reviewed_at')} AS reviewed_at,
-             lch.decision, lch.decision_notes
-      FROM lead_credit_handoffs lch
-      INNER JOIN (
-        SELECT MAX(id) AS max_id
-        FROM lead_credit_handoffs
-        GROUP BY COALESCE(NULLIF(application_id, ''), lead_id)
-      ) latest ON lch.id = latest.max_id
-    `).catch(() => []),
+      query(`
+        SELECT lch.application_id, lch.lead_id, lch.status, ${dateTimeSql('lch.submitted_at')} AS submitted_at,
+               lch.submitted_by, lch.reviewed_by, ${dateTimeSql('lch.reviewed_at')} AS reviewed_at,
+               lch.decision, lch.decision_notes
+        FROM lead_credit_handoffs lch
+        INNER JOIN (
+          SELECT MAX(id) AS max_id
+          FROM lead_credit_handoffs
+          GROUP BY COALESCE(NULLIF(application_id, ''), lead_id)
+        ) latest ON lch.id = latest.max_id
+      `).catch(() => []),
 
-    query(`
-      SELECT mobile, COUNT(*) AS cnt FROM loan_applications WHERE mobile <> '' AND mobile IS NOT NULL GROUP BY mobile HAVING cnt > 1
-    `).catch(() => []),
+      query(`
+        SELECT mobile, COUNT(*) AS cnt FROM loan_applications WHERE mobile <> '' AND mobile IS NOT NULL GROUP BY mobile HAVING cnt > 1
+      `).catch(() => []),
 
-    query(`
-      SELECT pan_number, COUNT(*) AS cnt FROM loan_applications WHERE pan_number <> '' AND pan_number IS NOT NULL GROUP BY pan_number HAVING cnt > 1
-    `).catch(() => []),
-  ]);
+      query(`
+        SELECT pan_number, COUNT(*) AS cnt FROM loan_applications WHERE pan_number <> '' AND pan_number IS NOT NULL GROUP BY pan_number HAVING cnt > 1
+      `).catch(() => []),
+    ]);
 
-  // Build O(1) memory lookup maps
-  const callMap = new Map();
-  callLogs.forEach((c) => {
-    if (c.application_id) callMap.set(c.application_id, c);
-    if (c.lead_id) callMap.set(c.lead_id, c);
-  });
+    // Build O(1) memory lookup maps
+    const callMap = new Map();
+    callLogs.forEach((c) => {
+      if (c.application_id) callMap.set(c.application_id, c);
+      if (c.lead_id) callMap.set(c.lead_id, c);
+    });
 
-  const followupMap = new Map();
-  followups.forEach((f) => {
-    const key = f.application_id || f.lead_id;
-    if (key && !followupMap.has(key)) followupMap.set(key, f);
-  });
+    const followupMap = new Map();
+    followups.forEach((f) => {
+      const key = f.application_id || f.lead_id;
+      if (key && !followupMap.has(key)) followupMap.set(key, f);
+    });
 
-  const docMap = new Map();
-  docCounts.forEach((d) => {
-    if (d.application_id) docMap.set(d.application_id, d);
-  });
+    const docMap = new Map();
+    docCounts.forEach((d) => {
+      if (d.application_id) docMap.set(d.application_id, d);
+    });
 
-  const handoffMap = new Map();
-  handoffs.forEach((h) => {
-    if (h.application_id) handoffMap.set(h.application_id, h);
-    if (h.lead_id) handoffMap.set(h.lead_id, h);
-  });
+    const handoffMap = new Map();
+    handoffs.forEach((h) => {
+      if (h.application_id) handoffMap.set(h.application_id, h);
+      if (h.lead_id) handoffMap.set(h.lead_id, h);
+    });
 
-  const dupMobileSet = new Set(mobileDups.map((m) => m.mobile));
-  const dupPanSet = new Set(panDups.map((p) => p.pan_number));
+    const dupMobileSet = new Set(mobileDups.map((m) => m.mobile));
+    const dupPanSet = new Set(panDups.map((p) => p.pan_number));
 
-  const rows = baseRows.map((row) => {
-    const call = callMap.get(row.id) || callMap.get(row.rawId);
-    const followup = followupMap.get(row.id) || followupMap.get(row.rawId);
-    const doc = docMap.get(row.id);
-    const handoff = handoffMap.get(row.id) || handoffMap.get(row.rawId);
+    const rows = baseRows.map((row) => {
+      const call = callMap.get(row.id) || callMap.get(row.rawId);
+      const followup = followupMap.get(row.id) || followupMap.get(row.rawId);
+      const doc = docMap.get(row.id);
+      const handoff = handoffMap.get(row.id) || handoffMap.get(row.rawId);
 
-    const isDup = (row.phone && dupMobileSet.has(row.phone)) || (row.panNumber && dupPanSet.has(row.panNumber));
+      const isDup = (row.phone && dupMobileSet.has(row.phone)) || (row.panNumber && dupPanSet.has(row.panNumber));
 
-    return {
-      ...row,
-      lastContact: call ? call.created_at : null,
-      latestCallDisposition: call ? call.disposition : '',
-      latestCallAt: call ? call.created_at : null,
-      nextFollowupAt: followup ? followup.due_at : null,
-      documentTotalCount: doc ? Number(doc.total_count || 0) : 0,
-      documentVerifiedCount: doc ? Number(doc.verified_count || 0) : 0,
-      latestHandoffStatus: handoff ? handoff.status : '',
-      latestHandoffAt: handoff ? handoff.submitted_at : null,
-      latestHandoffSubmittedBy: handoff ? handoff.submitted_by : '',
-      latestHandoffReviewedBy: handoff ? handoff.reviewed_by : '',
-      latestHandoffReviewedAt: handoff ? handoff.reviewed_at : null,
-      latestHandoffDecision: handoff ? handoff.decision : '',
-      latestHandoffDecisionNotes: handoff ? handoff.decision_notes : '',
-      isDuplicate: isDup ? 1 : 0,
-      duplicateCount: isDup ? 1 : 0,
-    };
-  });
+      return {
+        ...row,
+        lastContact: call ? call.created_at : null,
+        latestCallDisposition: call ? call.disposition : '',
+        latestCallAt: call ? call.created_at : null,
+        nextFollowupAt: followup ? followup.due_at : null,
+        documentTotalCount: doc ? Number(doc.total_count || 0) : 0,
+        documentVerifiedCount: doc ? Number(doc.verified_count || 0) : 0,
+        latestHandoffStatus: handoff ? handoff.status : '',
+        latestHandoffAt: handoff ? handoff.submitted_at : null,
+        latestHandoffSubmittedBy: handoff ? handoff.submitted_by : '',
+        latestHandoffReviewedBy: handoff ? handoff.reviewed_by : '',
+        latestHandoffReviewedAt: handoff ? handoff.reviewed_at : null,
+        latestHandoffDecision: handoff ? handoff.decision : '',
+        latestHandoffDecisionNotes: handoff ? handoff.decision_notes : '',
+        isDuplicate: isDup ? 1 : 0,
+        duplicateCount: isDup ? 1 : 0,
+      };
+    });
 
-  const finalLeads = rows
-    .map(mapTelecallerWorkbenchLead)
-    .map((lead) => enrichTelecallerLead(lead))
-    .sort(sortTelecallerQueue);
-
-  workbenchCache[cacheKey] = {
-    timestamp: Date.now(),
-    data: finalLeads,
-  };
-
-  return finalLeads;
+    const finalLeads = rows
+      .map(mapTelecallerWorkbenchLead)
+      .map((lead) => enrichTelecallerLead(lead))
+      .sort(sortTelecallerQueue);
+    return finalLeads;
+  }, { cacheEmpty: false });
 }
 
 function normalizeWorkbenchQuery(filters = {}) {
@@ -730,12 +722,43 @@ function buildWorkbenchCounts(baseLeads, filteredWithoutTab) {
   };
 }
 
+// Reuse the time-derived snapshot only until an SLA/callback can change. A new
+// base array (expiry or mutation invalidation) always gets its own snapshot.
+const workbenchSnapshots = new WeakMap();
+function enrichedWorkbench(leads, now = new Date()) {
+  const time = now.getTime();
+  const cached = workbenchSnapshots.get(leads);
+  if (cached && time >= cached.computedAt && time < cached.nextChangeAt) return cached.items;
+
+  let nextChangeAt = Infinity;
+  const consider = value => {
+    if (Number.isFinite(value) && value > time) nextChangeAt = Math.min(nextChangeAt, value);
+  };
+  for (const lead of leads) {
+    if (TERMINAL_STATUSES.has(lead.status)) continue;
+    const created = lead.createdAt || lead.createdDate;
+    const createdAt = created ? new Date(created).getTime() : NaN;
+    if (!lead.latestCallDisposition) consider(createdAt + TELECALLER_SLA.firstCallMinutes * 60_000);
+    if (Number(lead.pendingDocumentCount || 0) > 0) {
+      consider(createdAt + TELECALLER_SLA.docsWarningHours * 3_600_000);
+      consider(createdAt + TELECALLER_SLA.docsBreachHours * 3_600_000);
+    }
+    if (lead.nextFollowupAt) {
+      const followupAt = new Date(lead.nextFollowupAt).getTime();
+      consider(followupAt);
+      // The existing callback age comparison is inclusive at exactly 168h.
+      consider(followupAt + 168 * 3_600_000 + 1);
+    }
+  }
+  const items = leads.map(lead => enrichTelecallerLead(lead, now)).sort(sortTelecallerQueue);
+  workbenchSnapshots.set(leads, { computedAt: time, nextChangeAt, items });
+  return items;
+}
+
 async function listTelecallerWorkbenchV2(filters = {}) {
   const normalizedFilters = normalizeWorkbenchQuery(filters);
   const isSupport = Boolean(filters && (filters.isSupportUser || filters.isSupport));
-  const allLeads = (await listTelecallerWorkbench({ isSupportUser: isSupport }))
-    .map((lead) => enrichTelecallerLead(lead))
-    .sort(sortTelecallerQueue);
+  const allLeads = enrichedWorkbench(await listTelecallerWorkbench({ isSupportUser: isSupport }));
   const baseLeads = allLeads.filter((lead) => leadMatchesFilters(lead, normalizedFilters, { includeTab: false }));
   const filteredWithoutTab = baseLeads;
   const filteredLeads = allLeads.filter((lead) => leadMatchesFilters(lead, normalizedFilters));
@@ -876,160 +899,150 @@ async function getTelecallerSlaReport(filters = {}) {
   };
 }
 
-let creditQueueCache = {
-  timestamp: 0,
-  data: null,
-};
-let creditApplicationsCache = {
-  timestamp: 0,
-  data: null,
-};
 const CREDIT_CACHE_TTL_MS = 15 * 1000; // 15 seconds
+const creditQueueCache = createTenantCache(CREDIT_CACHE_TTL_MS);
+const creditApplicationsCache = createTenantCache(CREDIT_CACHE_TTL_MS);
 
 function invalidateCreditCache() {
-  creditQueueCache.data = null;
-  creditApplicationsCache.data = null;
+  creditQueueCache.clear();
+  creditApplicationsCache.clear();
 }
 
 async function listCreditQueue() {
-  if (creditQueueCache.data && (Date.now() - creditQueueCache.timestamp < CREDIT_CACHE_TTL_MS)) {
-    return creditQueueCache.data;
-  }
+  const cached = creditQueueCache.get();
+  if (cached) return cached;
+  return creditQueueCache.getOrLoad('data', async () => {
 
-  const [candidates, handoffs, docCounts, callLogs] = await Promise.all([
-    query(`
-      SELECT
-        COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS id,
-        CAST(la.id AS CHAR) AS rawId,
-        la.application_id,
-        COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
-        COALESCE(la.email, '') AS email,
-        la.mobile AS phone,
-        la.loan_amount AS loanAmount,
-        COALESCE(NULLIF(la.priority, ''), CASE
-          WHEN la.loan_amount >= 200000 THEN 'High'
-          WHEN la.loan_amount >= 50000 THEN 'Medium'
-          ELSE 'Low'
-        END) AS priority,
-        CASE la.status
-          WHEN 'draft' THEN 'New'
-          WHEN 'submitted' THEN 'Contacted'
-          WHEN 'review' THEN 'Document Collection'
-          WHEN 'documents_pending' THEN 'Documents Pending'
-          WHEN 'not_connected' THEN 'Not Connected'
-          WHEN 'approved' THEN 'Qualified'
-          WHEN 'rejected' THEN 'Lost'
-          WHEN 'disbursed' THEN 'Converted'
-          WHEN 'closed' THEN 'Closed'
-          WHEN 'send_to_credit' THEN 'Send to Credit Manager'
-          ELSE 'New'
-        END AS status,
-        COALESCE(la.monthly_income, 0) AS monthlyIncome,
-        COALESCE(la.pan_number, '') AS panNumber,
-        COALESCE(la.bank_name, '') AS bankName,
-        COALESCE(la.account_number, '') AS accountNumber,
-        COALESCE(la.ifsc_code, '') AS ifscCode,
-        COALESCE(la.salary_slip_current, '') AS salarySlipCurrent,
-        COALESCE(la.aadhaar_verified, 0) AS aadhaarVerified,
-        la.assigned_to,
-        la.created_at
-      FROM loan_applications la
-      WHERE la.status NOT IN ('approved', 'rejected', 'disbursed', 'closed')
-      ORDER BY la.created_at DESC, la.id DESC
-    `).catch(() => []),
+    const [candidates, handoffs, docCounts, callLogs] = await Promise.all([
+      query(`
+        SELECT
+          COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS id,
+          CAST(la.id AS CHAR) AS rawId,
+          la.application_id,
+          COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
+          COALESCE(la.email, '') AS email,
+          la.mobile AS phone,
+          la.loan_amount AS loanAmount,
+          COALESCE(NULLIF(la.priority, ''), CASE
+            WHEN la.loan_amount >= 200000 THEN 'High'
+            WHEN la.loan_amount >= 50000 THEN 'Medium'
+            ELSE 'Low'
+          END) AS priority,
+          CASE la.status
+            WHEN 'draft' THEN 'New'
+            WHEN 'submitted' THEN 'Contacted'
+            WHEN 'review' THEN 'Document Collection'
+            WHEN 'documents_pending' THEN 'Documents Pending'
+            WHEN 'not_connected' THEN 'Not Connected'
+            WHEN 'approved' THEN 'Qualified'
+            WHEN 'rejected' THEN 'Lost'
+            WHEN 'disbursed' THEN 'Converted'
+            WHEN 'closed' THEN 'Closed'
+            WHEN 'send_to_credit' THEN 'Send to Credit Manager'
+            ELSE 'New'
+          END AS status,
+          COALESCE(la.monthly_income, 0) AS monthlyIncome,
+          COALESCE(la.pan_number, '') AS panNumber,
+          COALESCE(la.bank_name, '') AS bankName,
+          COALESCE(la.account_number, '') AS accountNumber,
+          COALESCE(la.ifsc_code, '') AS ifscCode,
+          COALESCE(la.salary_slip_current, '') AS salarySlipCurrent,
+          COALESCE(la.aadhaar_verified, 0) AS aadhaarVerified,
+          la.assigned_to,
+          la.created_at
+        FROM loan_applications la
+        WHERE la.status NOT IN ('approved', 'rejected', 'disbursed', 'closed')
+        ORDER BY la.created_at DESC, la.id DESC
+      `).catch(() => []),
 
-    query(`
-      SELECT id, application_id, lead_id, status, submitted_by, submitted_at, notes,
-             TIMESTAMPDIFF(HOUR, submitted_at, CURRENT_TIMESTAMP) AS handoffAgeHours
-      FROM lead_credit_handoffs
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT id, application_id, lead_id, status, submitted_by, submitted_at, notes,
+               TIMESTAMPDIFF(HOUR, submitted_at, CURRENT_TIMESTAMP) AS handoffAgeHours
+        FROM lead_credit_handoffs
+        ORDER BY id ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT application_id, COUNT(*) AS total_count, SUM(status = 'verified') AS verified_count
-      FROM lead_document_checks
-      GROUP BY application_id
-    `).catch(() => []),
+      query(`
+        SELECT application_id, COUNT(*) AS total_count, SUM(status = 'verified') AS verified_count
+        FROM lead_document_checks
+        GROUP BY application_id
+      `).catch(() => []),
 
-    query(`
-      SELECT id, application_id, lead_id, disposition, created_at
-      FROM lead_call_logs
-      ORDER BY id ASC
-    `).catch(() => []),
-  ]);
+      query(`
+        SELECT id, application_id, lead_id, disposition, created_at
+        FROM lead_call_logs
+        ORDER BY id ASC
+      `).catch(() => []),
+    ]);
 
-  if (!candidates || !candidates.length) {
-    creditQueueCache = { timestamp: Date.now(), data: [] };
-    return [];
-  }
-
-  const handoffMap = new Map();
-  handoffs.forEach((h) => {
-    if (h.application_id) handoffMap.set(String(h.application_id), h);
-    if (h.lead_id) handoffMap.set(String(h.lead_id), h);
-  });
-
-  const docCountMap = new Map();
-  docCounts.forEach((d) => {
-    if (d.application_id) docCountMap.set(String(d.application_id), d);
-  });
-
-  const callLogMap = new Map();
-  callLogs.forEach((cl) => {
-    if (cl.application_id) callLogMap.set(String(cl.application_id), cl);
-    if (cl.lead_id) callLogMap.set(String(cl.lead_id), cl);
-  });
-
-  const matchedRows = [];
-  for (const la of candidates) {
-    const h = handoffMap.get(la.id) || handoffMap.get(la.rawId) || handoffMap.get(String(la.application_id || ''));
-    const isReadyHandoff = h && h.status === 'ready';
-    const isSendToCredit = la.status === 'Send to Credit Manager';
-    const isCreditManager = la.assigned_to === 'Credit Manager';
-    const isShruti = String(la.assigned_to || '').toLowerCase().includes('shruti');
-
-    if (!isReadyHandoff && !isSendToCredit && !isCreditManager && !isShruti) {
-      continue;
+    if (!candidates || !candidates.length) {
+      return [];
     }
 
-    const latestCall = callLogMap.get(la.id) || callLogMap.get(la.rawId) || callLogMap.get(String(la.application_id || ''));
-    const docCount = docCountMap.get(la.id) || docCountMap.get(la.rawId) || docCountMap.get(String(la.application_id || ''));
-    const submittedAt = (h && h.submitted_at) || la.created_at;
-
-    matchedRows.push({
-      ...la,
-      submittedBy: (h && h.submitted_by) || la.assigned_to || 'Telecaller',
-      submittedAt,
-      handoffNotes: (h && h.notes) || '',
-      handoffAgeHours: h && h.handoffAgeHours !== undefined ? Number(h.handoffAgeHours || 0) : Math.floor((Date.now() - new Date(submittedAt).getTime()) / (3600 * 1000)),
-      latestCallDisposition: latestCall ? latestCall.disposition : null,
-      latestCallAt: latestCall ? latestCall.created_at : null,
-      documentTotalCount: docCount ? Number(docCount.total_count || 0) : 0,
-      documentVerifiedCount: docCount ? Number(docCount.verified_count || 0) : 0,
+    const handoffMap = new Map();
+    handoffs.forEach((h) => {
+      if (h.application_id) handoffMap.set(String(h.application_id), h);
+      if (h.lead_id) handoffMap.set(String(h.lead_id), h);
     });
-  }
 
-  matchedRows.sort((a, b) => {
-    const timeA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
-    const timeB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
-    if (timeB !== timeA) return timeB - timeA;
-    const idDiff = Number(b.rawId || 0) - Number(a.rawId || 0);
-    if (idDiff !== 0) return idDiff;
-    const priorityWeight = (p) => {
-      if (p === 'Urgent') return 0;
-      if (p === 'High') return 1;
-      if (p === 'Medium') return 2;
-      return 3;
-    };
-    return priorityWeight(a.priority) - priorityWeight(b.priority);
-  });
+    const docCountMap = new Map();
+    docCounts.forEach((d) => {
+      if (d.application_id) docCountMap.set(String(d.application_id), d);
+    });
 
-  const finalLeads = matchedRows.map(mapCreditQueueLead);
-  creditQueueCache = {
-    timestamp: Date.now(),
-    data: finalLeads,
-  };
-  return finalLeads;
+    const callLogMap = new Map();
+    callLogs.forEach((cl) => {
+      if (cl.application_id) callLogMap.set(String(cl.application_id), cl);
+      if (cl.lead_id) callLogMap.set(String(cl.lead_id), cl);
+    });
+
+    const matchedRows = [];
+    for (const la of candidates) {
+      const h = handoffMap.get(la.id) || handoffMap.get(la.rawId) || handoffMap.get(String(la.application_id || ''));
+      const isReadyHandoff = h && h.status === 'ready';
+      const isSendToCredit = la.status === 'Send to Credit Manager';
+      const isCreditManager = la.assigned_to === 'Credit Manager';
+      const isShruti = String(la.assigned_to || '').toLowerCase().includes('shruti');
+
+      if (!isReadyHandoff && !isSendToCredit && !isCreditManager && !isShruti) {
+        continue;
+      }
+
+      const latestCall = callLogMap.get(la.id) || callLogMap.get(la.rawId) || callLogMap.get(String(la.application_id || ''));
+      const docCount = docCountMap.get(la.id) || docCountMap.get(la.rawId) || docCountMap.get(String(la.application_id || ''));
+      const submittedAt = (h && h.submitted_at) || la.created_at;
+
+      matchedRows.push({
+        ...la,
+        submittedBy: (h && h.submitted_by) || la.assigned_to || 'Telecaller',
+        submittedAt,
+        handoffNotes: (h && h.notes) || '',
+        handoffAgeHours: h && h.handoffAgeHours !== undefined ? Number(h.handoffAgeHours || 0) : Math.floor((Date.now() - new Date(submittedAt).getTime()) / (3600 * 1000)),
+        latestCallDisposition: latestCall ? latestCall.disposition : null,
+        latestCallAt: latestCall ? latestCall.created_at : null,
+        documentTotalCount: docCount ? Number(docCount.total_count || 0) : 0,
+        documentVerifiedCount: docCount ? Number(docCount.verified_count || 0) : 0,
+      });
+    }
+
+    matchedRows.sort((a, b) => {
+      const timeA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+      const timeB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      const idDiff = Number(b.rawId || 0) - Number(a.rawId || 0);
+      if (idDiff !== 0) return idDiff;
+      const priorityWeight = (p) => {
+        if (p === 'Urgent') return 0;
+        if (p === 'High') return 1;
+        if (p === 'Medium') return 2;
+        return 3;
+      };
+      return priorityWeight(a.priority) - priorityWeight(b.priority);
+    });
+
+    const finalLeads = matchedRows.map(mapCreditQueueLead);
+    return finalLeads;
+  }, {});
 }
 
 function normalizeCreditPagination(filters = {}, defaultPageSize = 10) {
@@ -1341,231 +1354,221 @@ async function listCreditApplications(filters = {}) {
   const search = String(filters.search || '').trim().toLowerCase();
   const stage = String(filters.stage || 'all').trim();
 
-  if (creditApplicationsCache.data && (Date.now() - creditApplicationsCache.timestamp < CREDIT_CACHE_TTL_MS)) {
-    const cached = creditApplicationsCache.data;
-    const searched = search
-      ? cached.filter((item) => creditApplicationMatchesSearch(item, search))
-      : cached;
-    return searched.filter((item) => stage === 'all' || item.stage.toLowerCase().replace(/\s+/g, '-') === stage);
-  }
+  const cached = creditApplicationsCache.get();
+  const mapped = cached || await creditApplicationsCache.getOrLoad('data', async () => {
+    const baseRows = await query(`
+      SELECT
+        COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS id,
+        CAST(la.id AS CHAR) AS rawId,
+        COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
+        COALESCE(la.email, '') AS email,
+        la.mobile AS phone,
+        la.loan_amount AS loanAmount,
+        COALESCE(NULLIF(la.priority, ''), CASE
+          WHEN la.loan_amount >= 200000 THEN 'High'
+          WHEN la.loan_amount >= 50000 THEN 'Medium'
+          ELSE 'Low'
+        END) AS priority,
+        CASE la.status
+          WHEN 'draft' THEN 'New'
+          WHEN 'submitted' THEN 'Contacted'
+          WHEN 'review' THEN 'Document Collection'
+          WHEN 'documents_pending' THEN 'Documents Pending'
+          WHEN 'not_connected' THEN 'Not Connected'
+          WHEN 'approved' THEN 'Qualified'
+          WHEN 'rejected' THEN 'Lost'
+          WHEN 'disbursed' THEN 'Converted'
+          WHEN 'closed' THEN 'Closed'
+          WHEN 'send_to_credit' THEN 'Send to Credit Manager'
+          ELSE 'New'
+        END AS status,
+        COALESCE(NULLIF(la.assigned_to, ''), 'Unassigned') AS assignedTo,
+        COALESCE(la.monthly_income, 0) AS monthlyIncome,
+        COALESCE(la.pan_number, '') AS panNumber,
+        ${dateTimeSql('la.created_at')} AS createdAt,
+        ${dateTimeSql('la.updated_at')} AS updatedAt
+      FROM loan_applications la
+      ORDER BY la.created_at DESC, la.id DESC
+    `);
 
-  const baseRows = await query(`
-    SELECT
-      COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS id,
-      CAST(la.id AS CHAR) AS rawId,
-      COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
-      COALESCE(la.email, '') AS email,
-      la.mobile AS phone,
-      la.loan_amount AS loanAmount,
-      COALESCE(NULLIF(la.priority, ''), CASE
-        WHEN la.loan_amount >= 200000 THEN 'High'
-        WHEN la.loan_amount >= 50000 THEN 'Medium'
-        ELSE 'Low'
-      END) AS priority,
-      CASE la.status
-        WHEN 'draft' THEN 'New'
-        WHEN 'submitted' THEN 'Contacted'
-        WHEN 'review' THEN 'Document Collection'
-        WHEN 'documents_pending' THEN 'Documents Pending'
-        WHEN 'not_connected' THEN 'Not Connected'
-        WHEN 'approved' THEN 'Qualified'
-        WHEN 'rejected' THEN 'Lost'
-        WHEN 'disbursed' THEN 'Converted'
-        WHEN 'closed' THEN 'Closed'
-        WHEN 'send_to_credit' THEN 'Send to Credit Manager'
-        ELSE 'New'
-      END AS status,
-      COALESCE(NULLIF(la.assigned_to, ''), 'Unassigned') AS assignedTo,
-      COALESCE(la.monthly_income, 0) AS monthlyIncome,
-      COALESCE(la.pan_number, '') AS panNumber,
-      ${dateTimeSql('la.created_at')} AS createdAt,
-      ${dateTimeSql('la.updated_at')} AS updatedAt
-    FROM loan_applications la
-    ORDER BY la.created_at DESC, la.id DESC
-  `);
+    if (!baseRows || !baseRows.length) return [];
 
-  if (!baseRows || !baseRows.length) return [];
+    const [handoffs, cams, sanctions, agreements, accountingEvents, loansList, aaSessions, docCounts] = await Promise.all([
+      query(`
+        SELECT application_id, lead_id, status, submitted_by, ${dateTimeSql('submitted_at')} AS submitted_at,
+               reviewed_by, ${dateTimeSql('reviewed_at')} AS reviewed_at, decision, decision_notes,
+               TIMESTAMPDIFF(HOUR, submitted_at, CURRENT_TIMESTAMP) AS handoffAgeHours
+        FROM lead_credit_handoffs
+        ORDER BY id ASC
+      `).catch(() => []),
 
-  const [handoffs, cams, sanctions, agreements, accountingEvents, loansList, aaSessions, docCounts] = await Promise.all([
-    query(`
-      SELECT application_id, lead_id, status, submitted_by, ${dateTimeSql('submitted_at')} AS submitted_at,
-             reviewed_by, ${dateTimeSql('reviewed_at')} AS reviewed_at, decision, decision_notes,
-             TIMESTAMPDIFF(HOUR, submitted_at, CURRENT_TIMESTAMP) AS handoffAgeHours
-      FROM lead_credit_handoffs
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT id, application_id, lead_id, status, version, ${dateTimeSql('created_at')} AS created_at
+        FROM lead_cam_sheets
+        ORDER BY id ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT id, application_id, lead_id, status, version, ${dateTimeSql('created_at')} AS created_at
-      FROM lead_cam_sheets
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT id, application_id, lead_id, agreement_number, email_status, ${dateTimeSql('sent_at')} AS sent_at,
+               pdf_path, whatsapp_status, whatsapp_error, ${dateTimeSql('whatsapp_sent_at')} AS whatsapp_sent_at,
+               principal_amount, disbursed_amount, repayment_amount,
+               customer_decision, ${dateTimeSql('customer_decision_at')} AS customer_decision_at, customer_decision_ip,
+               decision_token, acceptance_proof_path
+        FROM lead_sanctions
+        ORDER BY id ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT id, application_id, lead_id, agreement_number, email_status, ${dateTimeSql('sent_at')} AS sent_at,
-             pdf_path, whatsapp_status, whatsapp_error, ${dateTimeSql('whatsapp_sent_at')} AS whatsapp_sent_at,
-             principal_amount, disbursed_amount, repayment_amount,
-             customer_decision, ${dateTimeSql('customer_decision_at')} AS customer_decision_at, customer_decision_ip,
-             decision_token, acceptance_proof_path
-      FROM lead_sanctions
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT id, application_id, lead_id, status, provider_status, ${dateTimeSql('sent_at')} AS sent_at,
+               ${dateTimeSql('signed_at')} AS signed_at, signing_url, pdf_path, signed_pdf_path
+        FROM lead_loan_agreements
+        ORDER BY id ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT id, application_id, lead_id, status, provider_status, ${dateTimeSql('sent_at')} AS sent_at,
-             ${dateTimeSql('signed_at')} AS signed_at, signing_url, pdf_path, signed_pdf_path
-      FROM lead_loan_agreements
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT application_id, lead_id, ${dateTimeSql('occurred_at')} AS occurred_at, actor
+        FROM lead_status_events
+        WHERE stage_key = 'accounting_handoff'
+        ORDER BY id ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT application_id, lead_id, ${dateTimeSql('occurred_at')} AS occurred_at, actor
-      FROM lead_status_events
-      WHERE stage_key = 'accounting_handoff'
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT id, status, balance FROM loans
+      `).catch(() => []),
 
-    query(`
-      SELECT id, status, balance FROM loans
-    `).catch(() => []),
+      query(`
+        SELECT application_id, tracking_id, status, fip_name
+        FROM lead_account_aggregator_sessions
+        ORDER BY id ASC
+      `).catch(() => []),
 
-    query(`
-      SELECT application_id, tracking_id, status, fip_name
-      FROM lead_account_aggregator_sessions
-      ORDER BY id ASC
-    `).catch(() => []),
+      query(`
+        SELECT application_id, COUNT(*) AS total_count, SUM(status = 'verified') AS verified_count
+        FROM lead_document_checks
+        GROUP BY application_id
+      `).catch(() => []),
+    ]);
 
-    query(`
-      SELECT application_id, COUNT(*) AS total_count, SUM(status = 'verified') AS verified_count
-      FROM lead_document_checks
-      GROUP BY application_id
-    `).catch(() => []),
-  ]);
-
-  const extractNum = (str) => {
-    const s = String(str || '').trim();
-    const digits = s.replace(/^[A-Z\-]+/g, '').replace(/^0+/, '');
-    return /^\d+$/.test(digits) ? digits : '';
-  };
-
-  const handoffMap = new Map();
-  handoffs.forEach((h) => {
-    if (h.application_id) handoffMap.set(String(h.application_id), h);
-    if (h.lead_id) handoffMap.set(String(h.lead_id), h);
-  });
-
-  const camMap = new Map();
-  cams.forEach((c) => {
-    if (c.application_id) camMap.set(String(c.application_id), c);
-    if (c.lead_id) camMap.set(String(c.lead_id), c);
-  });
-
-  const sanctionMap = new Map();
-  sanctions.forEach((s) => {
-    if (s.application_id) sanctionMap.set(String(s.application_id), s);
-    if (s.lead_id) sanctionMap.set(String(s.lead_id), s);
-  });
-
-  const agreementMap = new Map();
-  agreements.forEach((a) => {
-    if (a.application_id) agreementMap.set(String(a.application_id), a);
-    if (a.lead_id) agreementMap.set(String(a.lead_id), a);
-  });
-
-  const accountingMap = new Map();
-  accountingEvents.forEach((se) => {
-    if (se.application_id) accountingMap.set(String(se.application_id), se);
-    if (se.lead_id) accountingMap.set(String(se.lead_id), se);
-  });
-
-  const loanMap = new Map();
-  loansList.forEach((l) => {
-    if (l.id) loanMap.set(String(l.id), l);
-  });
-
-  const aaMap = new Map();
-  aaSessions.forEach((aa) => {
-    if (aa.application_id) {
-      const appStr = String(aa.application_id).trim();
-      aaMap.set(appStr, aa);
-      const n1 = extractNum(appStr);
-      if (n1) aaMap.set(n1, aa);
-    }
-    if (aa.tracking_id) {
-      const match = String(aa.tracking_id).match(/^AA_(?:TRK|TRACK)_([0-9]+)_/i);
-      const n2 = match ? match[1] : '';
-      if (n2) aaMap.set(n2, aa);
-    }
-  });
-
-  const docMap = new Map();
-  docCounts.forEach((d) => {
-    if (d.application_id) docMap.set(String(d.application_id), d);
-  });
-
-  const enrichedRows = baseRows.map((row) => {
-    const h = handoffMap.get(row.id) || handoffMap.get(row.rawId);
-    const cam = camMap.get(row.id) || camMap.get(row.rawId);
-    const sanction = sanctionMap.get(row.id) || sanctionMap.get(row.rawId);
-    const agreement = agreementMap.get(row.id) || agreementMap.get(row.rawId);
-    const accountingHandoff = accountingMap.get(row.id) || accountingMap.get(row.rawId);
-    const l = loanMap.get(row.id) || loanMap.get(`LN${row.id}`) || loanMap.get(`LNWQTMN0${row.rawId}`) || loanMap.get(`LNWQTMN0${row.id}`);
-    const aa = aaMap.get(row.id) || aaMap.get(row.rawId) || aaMap.get(extractNum(row.id)) || aaMap.get(extractNum(row.rawId));
-    const doc = docMap.get(row.id) || docMap.get(row.rawId);
-
-    return {
-      ...row,
-      handoffStatus: h ? h.status : '',
-      submittedBy: h ? h.submitted_by : '',
-      submittedAt: h ? h.submitted_at : null,
-      reviewedBy: h ? h.reviewed_by : '',
-      reviewedAt: h ? h.reviewed_at : null,
-      decision: h ? h.decision : '',
-      decisionNotes: h ? h.decision_notes : '',
-      handoffAgeHours: h ? Number(h.handoffAgeHours || 0) : 0,
-      documentTotalCount: doc ? Number(doc.total_count || 0) : 0,
-      documentVerifiedCount: doc ? Number(doc.verified_count || 0) : 0,
-      camSheetId: cam ? cam.id : null,
-      camStatus: cam ? cam.status : '',
-      camVersion: cam ? cam.version : null,
-      camCreatedAt: cam ? cam.created_at : null,
-      sanctionId: sanction ? sanction.id : null,
-      agreementNumber: sanction ? sanction.agreement_number : '',
-      sanctionEmailStatus: sanction ? sanction.email_status : '',
-      sanctionSentAt: sanction ? sanction.sent_at : null,
-      sanctionPdfPath: sanction ? sanction.pdf_path : '',
-      sanctionWhatsappStatus: sanction ? sanction.whatsapp_status : 'pending',
-      sanctionWhatsappError: sanction ? sanction.whatsapp_error : '',
-      sanctionWhatsappSentAt: sanction ? sanction.whatsapp_sent_at : null,
-      sanctionCustomerDecision: sanction ? sanction.customer_decision : 'pending',
-      sanctionCustomerDecisionAt: sanction ? sanction.customer_decision_at : null,
-      sanctionCustomerDecisionIp: sanction ? sanction.customer_decision_ip : '',
-      sanctionDecisionToken: sanction ? sanction.decision_token : '',
-      sanctionAmount: sanction ? Number(sanction.principal_amount || 0) : Number(row.loanAmount || 0),
-      disbursementAmount: sanction ? Number(sanction.disbursed_amount || 0) : 0,
-      repaymentAmount: sanction ? Number(sanction.repayment_amount || 0) : 0,
-      loanAgreementId: agreement ? agreement.id : null,
-      loanAgreementStatus: agreement ? agreement.status : '',
-      loanAgreementProviderStatus: agreement ? agreement.provider_status : '',
-      loanAgreementSentAt: agreement ? agreement.sent_at : null,
-      loanAgreementSignedAt: agreement ? agreement.signed_at : null,
-      signingUrl: agreement ? agreement.signing_url : '',
-      agreementPdfPath: agreement ? agreement.pdf_path : '',
-      signedAgreementPdfPath: agreement ? agreement.signed_pdf_path : '',
-      accountingHandoffAt: accountingHandoff ? accountingHandoff.occurred_at : null,
-      accountingHandoffBy: accountingHandoff ? accountingHandoff.actor : '',
-      loanStatus: l ? l.status : '',
-      loanBalance: l && l.balance !== undefined && l.balance !== null ? Number(l.balance) : null,
-      accountAggregatorStatus: aa ? aa.status : '',
-      accountAggregatorFipName: aa ? aa.fip_name : '',
+    const extractNum = (str) => {
+      const s = String(str || '').trim();
+      const digits = s.replace(/^[A-Z\-]+/g, '').replace(/^0+/, '');
+      return /^\d+$/.test(digits) ? digits : '';
     };
-  });
 
-  const mapped = enrichedRows.map(mapCreditApplication);
-  creditApplicationsCache = {
-    timestamp: Date.now(),
-    data: mapped,
-  };
+    const handoffMap = new Map();
+    handoffs.forEach((h) => {
+      if (h.application_id) handoffMap.set(String(h.application_id), h);
+      if (h.lead_id) handoffMap.set(String(h.lead_id), h);
+    });
+
+    const camMap = new Map();
+    cams.forEach((c) => {
+      if (c.application_id) camMap.set(String(c.application_id), c);
+      if (c.lead_id) camMap.set(String(c.lead_id), c);
+    });
+
+    const sanctionMap = new Map();
+    sanctions.forEach((s) => {
+      if (s.application_id) sanctionMap.set(String(s.application_id), s);
+      if (s.lead_id) sanctionMap.set(String(s.lead_id), s);
+    });
+
+    const agreementMap = new Map();
+    agreements.forEach((a) => {
+      if (a.application_id) agreementMap.set(String(a.application_id), a);
+      if (a.lead_id) agreementMap.set(String(a.lead_id), a);
+    });
+
+    const accountingMap = new Map();
+    accountingEvents.forEach((se) => {
+      if (se.application_id) accountingMap.set(String(se.application_id), se);
+      if (se.lead_id) accountingMap.set(String(se.lead_id), se);
+    });
+
+    const loanMap = new Map();
+    loansList.forEach((l) => {
+      if (l.id) loanMap.set(String(l.id), l);
+    });
+
+    const aaMap = new Map();
+    aaSessions.forEach((aa) => {
+      if (aa.application_id) {
+        const appStr = String(aa.application_id).trim();
+        aaMap.set(appStr, aa);
+        const n1 = extractNum(appStr);
+        if (n1) aaMap.set(n1, aa);
+      }
+      if (aa.tracking_id) {
+        const match = String(aa.tracking_id).match(/^AA_(?:TRK|TRACK)_([0-9]+)_/i);
+        const n2 = match ? match[1] : '';
+        if (n2) aaMap.set(n2, aa);
+      }
+    });
+
+    const docMap = new Map();
+    docCounts.forEach((d) => {
+      if (d.application_id) docMap.set(String(d.application_id), d);
+    });
+
+    const enrichedRows = baseRows.map((row) => {
+      const h = handoffMap.get(row.id) || handoffMap.get(row.rawId);
+      const cam = camMap.get(row.id) || camMap.get(row.rawId);
+      const sanction = sanctionMap.get(row.id) || sanctionMap.get(row.rawId);
+      const agreement = agreementMap.get(row.id) || agreementMap.get(row.rawId);
+      const accountingHandoff = accountingMap.get(row.id) || accountingMap.get(row.rawId);
+      const l = loanMap.get(row.id) || loanMap.get(`LN${row.id}`) || loanMap.get(`LNWQTMN0${row.rawId}`) || loanMap.get(`LNWQTMN0${row.id}`);
+      const aa = aaMap.get(row.id) || aaMap.get(row.rawId) || aaMap.get(extractNum(row.id)) || aaMap.get(extractNum(row.rawId));
+      const doc = docMap.get(row.id) || docMap.get(row.rawId);
+
+      return {
+        ...row,
+        handoffStatus: h ? h.status : '',
+        submittedBy: h ? h.submitted_by : '',
+        submittedAt: h ? h.submitted_at : null,
+        reviewedBy: h ? h.reviewed_by : '',
+        reviewedAt: h ? h.reviewed_at : null,
+        decision: h ? h.decision : '',
+        decisionNotes: h ? h.decision_notes : '',
+        handoffAgeHours: h ? Number(h.handoffAgeHours || 0) : 0,
+        documentTotalCount: doc ? Number(doc.total_count || 0) : 0,
+        documentVerifiedCount: doc ? Number(doc.verified_count || 0) : 0,
+        camSheetId: cam ? cam.id : null,
+        camStatus: cam ? cam.status : '',
+        camVersion: cam ? cam.version : null,
+        camCreatedAt: cam ? cam.created_at : null,
+        sanctionId: sanction ? sanction.id : null,
+        agreementNumber: sanction ? sanction.agreement_number : '',
+        sanctionEmailStatus: sanction ? sanction.email_status : '',
+        sanctionSentAt: sanction ? sanction.sent_at : null,
+        sanctionPdfPath: sanction ? sanction.pdf_path : '',
+        sanctionWhatsappStatus: sanction ? sanction.whatsapp_status : 'pending',
+        sanctionWhatsappError: sanction ? sanction.whatsapp_error : '',
+        sanctionWhatsappSentAt: sanction ? sanction.whatsapp_sent_at : null,
+        sanctionCustomerDecision: sanction ? sanction.customer_decision : 'pending',
+        sanctionCustomerDecisionAt: sanction ? sanction.customer_decision_at : null,
+        sanctionCustomerDecisionIp: sanction ? sanction.customer_decision_ip : '',
+        sanctionDecisionToken: sanction ? sanction.decision_token : '',
+        sanctionAmount: sanction ? Number(sanction.principal_amount || 0) : Number(row.loanAmount || 0),
+        disbursementAmount: sanction ? Number(sanction.disbursed_amount || 0) : 0,
+        repaymentAmount: sanction ? Number(sanction.repayment_amount || 0) : 0,
+        loanAgreementId: agreement ? agreement.id : null,
+        loanAgreementStatus: agreement ? agreement.status : '',
+        loanAgreementProviderStatus: agreement ? agreement.provider_status : '',
+        loanAgreementSentAt: agreement ? agreement.sent_at : null,
+        loanAgreementSignedAt: agreement ? agreement.signed_at : null,
+        signingUrl: agreement ? agreement.signing_url : '',
+        agreementPdfPath: agreement ? agreement.pdf_path : '',
+        signedAgreementPdfPath: agreement ? agreement.signed_pdf_path : '',
+        accountingHandoffAt: accountingHandoff ? accountingHandoff.occurred_at : null,
+        accountingHandoffBy: accountingHandoff ? accountingHandoff.actor : '',
+        loanStatus: l ? l.status : '',
+        loanBalance: l && l.balance !== undefined && l.balance !== null ? Number(l.balance) : null,
+        accountAggregatorStatus: aa ? aa.status : '',
+        accountAggregatorFipName: aa ? aa.fip_name : '',
+      };
+    });
+    return enrichedRows.map(mapCreditApplication);
+  }, { cacheEmpty: false });
 
   const searched = search
     ? mapped.filter((item) => creditApplicationMatchesSearch(item, search))
@@ -1600,12 +1603,23 @@ async function listCreditApplicationsV2(filters = {}) {
   const search = String(filters.search || '').trim().toLowerCase();
   const priority = String(filters.priority || 'all').trim();
   const stage = String(filters.stage || 'all').trim();
+  const statusSearch = String(filters.statusSearch || '').trim().toLowerCase();
+  const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.fromDate || '')) ? filters.fromDate : '';
+  const toDate = /^\d{4}-\d{2}-\d{2}$/.test(String(filters.toDate || '')) ? filters.toDate : '';
+  const matchesDate = (value) => {
+    if (!fromDate && !toDate) return true;
+    const key = String(value || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(key) && (!fromDate || key >= fromDate) && (!toDate || key <= toDate);
+  };
   const allApplications = await listCreditApplications({ stage: 'all' });
+  const matchesAdminDate = application => (!fromDate && !toDate) || ['submittedAt', 'createdAt', 'sanctionSentAt', 'loanAgreementSentAt', 'loanAgreementSignedAt', 'accountingHandoffAt', 'updatedAt'].some(key => matchesDate(application[key]));
   const baseApplications = allApplications.filter((application) => (
-    creditApplicationMatchesSearch(application, search) &&
-    (priority === 'all' || application.priority === priority)
+    (filters.searchFields === 'admin-list' ? (!search || [application.id, application.name, application.email, application.phone].some(value => String(value || '').toLowerCase().includes(search))) : creditApplicationMatchesSearch(application, search)) &&
+    (priority === 'all' || String(application.priority).toLowerCase() === priority.toLowerCase()) &&
+    matchesAdminDate(application)
   ));
-  const filteredApplications = baseApplications.filter((application) => creditApplicationMatchesStage(application, stage));
+  const filteredApplications = baseApplications.filter((application) => creditApplicationMatchesStage(application, stage) &&
+    (!statusSearch || String(application.stage || '').toLowerCase().includes(statusSearch) || String(application.status || '').toLowerCase().includes(statusSearch)));
   const totalItems = filteredApplications.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -1629,7 +1643,16 @@ async function listCreditApplicationsV2(filters = {}) {
     if (application.stage.includes('Failed')) stageCounts.failed += 1;
   });
 
+  const adminApplications = String(filters.includeAdminStats) === 'true' ? allApplications.filter(matchesAdminDate) : [];
+  const adminStats = String(filters.includeAdminStats) === 'true' ? {
+    total: adminApplications.length,
+    inReview: adminApplications.filter(app => String(app.stage || '').toLowerCase().includes('review')).length,
+    sanctionSent: adminApplications.filter(app => (app.stage === 'Sanction Sent' || Boolean(app.sanctionId) || app.sanctionEmailStatus === 'sent') && matchesDate(app.sanctionSentAt || app.updatedAt || app.submittedAt)).length,
+    agreementPending: adminApplications.filter(app => (app.stage === 'Agreement Pending eSign' || app.loanAgreementStatus === 'sent' || (Boolean(app.loanAgreementId) && app.loanAgreementStatus !== 'signed')) && matchesDate(app.loanAgreementSentAt || app.loanAgreementSignedAt || app.updatedAt)).length,
+    sentToAccountant: adminApplications.filter(app => (app.stage === 'Sent to Accountant' || Boolean(app.accountingHandoffAt)) && matchesDate(app.accountingHandoffAt || app.updatedAt)).length,
+  } : undefined;
   return {
+    adminStats,
     counts: stageCounts,
     filters: { page: safePage, pageSize, priority, search, stage },
     items: filteredApplications.slice(start, start + pageSize),

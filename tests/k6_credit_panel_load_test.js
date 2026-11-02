@@ -21,6 +21,7 @@ export const options = {
     },
   },
   thresholds: {
+    checks: ['rate==1'],
     http_req_duration: ['p(95)<1500'],
     credit_queue_duration_ms: ['p(95)<1000'],
     credit_applications_duration_ms: ['p(95)<1000'],
@@ -28,8 +29,9 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.TARGET_URL || 'https://payday-api.waqtmoney.com';
-const AUTH_TOKEN = __ENV.AUTH_TOKEN || '';
+import { BASE_URL, AUTH_TOKEN, validateEnvironment } from "./k6/runtime.js";
+
+export function setup() { validateEnvironment(); }
 
 export default function () {
   const headers = {

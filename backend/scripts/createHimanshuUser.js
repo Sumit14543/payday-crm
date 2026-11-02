@@ -8,7 +8,11 @@ async function createHimanshuUser() {
     const email = 'himanshukumar@waqtfinance.com';
     const name = 'Himanshu';
     const role = 'collection';
-    const password = 'Himanshu@#2016##';
+    const password = process.env.USER_PASSWORD || process.argv[2];
+    if (!password) {
+      console.error('Usage: node createHimanshuUser.js <password>');
+      process.exit(1);
+    }
 
     const salt = '45fc08e36726dcad454fdc48a13b0c61';
     const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 32, 'sha256').toString('hex');
@@ -31,7 +35,7 @@ async function createHimanshuUser() {
     console.log(`Email:    ${email}`);
     console.log(`Name:     ${name}`);
     console.log(`Role:     ${role} (Collection Agent)`);
-    console.log(`Password: ${password}`);
+    // password omitted for security
     console.log(`OTP 2FA:  Enabled (Login via email OTP)`);
     console.log(`======================================================\n`);
 

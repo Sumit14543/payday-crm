@@ -23,6 +23,7 @@ export const options = {
     },
   },
   thresholds: {
+    checks: ['rate==1'],
     http_req_duration: ['p(95)<1200'],
     loans_api_duration_ms: ['p(95)<1000'],
     leads_api_duration_ms: ['p(95)<800'],
@@ -31,8 +32,9 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.TARGET_URL || 'https://payday-api.waqtmoney.com';
-const AUTH_TOKEN = __ENV.AUTH_TOKEN || '';
+import { BASE_URL, AUTH_TOKEN, validateEnvironment } from "./k6/runtime.js";
+
+export function setup() { validateEnvironment(); }
 
 export default function () {
   const headers = {
@@ -52,13 +54,13 @@ export default function () {
     'loans has data array': (r) => {
       try {
         const body = JSON.parse(r.body);
-        return Array.isArray(body.data) && body.data.length > 0;
+        return body.success === true && Array.isArray(body.data);
       } catch {
         return false;
       }
     },
   });
-  if (!loansOk) errorRate.add(1);
+  errorRate.add(!loansOk);
 
   // 2. Fetch Leads
   const t1 = new Date().getTime();
@@ -67,7 +69,7 @@ export default function () {
   const leadsOk = check(leadsRes, {
     'leads status 200': (r) => r.status === 200,
   });
-  if (!leadsOk) errorRate.add(1);
+  errorRate.add(!leadsOk);
 
   // 3. Fetch Collections
   const t2 = new Date().getTime();
@@ -76,7 +78,7 @@ export default function () {
   const colOk = check(colRes, {
     'collections status 200': (r) => r.status === 200,
   });
-  if (!colOk) errorRate.add(1);
+  errorRate.add(!colOk);
 
   // 4. Fetch Collections Summary
   const t3 = new Date().getTime();
@@ -85,7 +87,7 @@ export default function () {
   const sumOk = check(sumRes, {
     'summary status 200': (r) => r.status === 200,
   });
-  if (!sumOk) errorRate.add(1);
+  errorRate.add(!sumOk);
 
   dashboardDuration.add(new Date().getTime() - tStart);
   sleep(0.5);

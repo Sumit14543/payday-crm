@@ -23,14 +23,16 @@ export const options = {
     },
   },
   thresholds: {
+    checks: ['rate==1'],
     http_req_duration: ['p(95)<1000'],
     reports_dashboard_duration_ms: ['p(95)<800'],
     custom_error_rate: ['rate<0.05'],
   },
 };
 
-const BASE_URL = __ENV.TARGET_URL || 'https://payday-api.waqtmoney.com';
-const AUTH_TOKEN = __ENV.AUTH_TOKEN || '';
+import { BASE_URL, AUTH_TOKEN, validateEnvironment } from "./k6/runtime.js";
+
+export function setup() { validateEnvironment(); }
 
 export default function () {
   const headers = {
@@ -51,13 +53,13 @@ export default function () {
     'accountant has actionQueue': (r) => {
       try {
         const body = JSON.parse(r.body);
-        return body.actionQueue !== undefined || body.success !== false;
+        return body.success === true && body.data?.actionQueue !== undefined;
       } catch {
         return false;
       }
     },
   });
-  if (!accOk) errorRate.add(1);
+  errorRate.add(!accOk);
 
   // 2. Interest Report
   const t1 = new Date().getTime();
@@ -66,7 +68,7 @@ export default function () {
   const intOk = check(intRes, {
     'interest status 200': (r) => r.status === 200,
   });
-  if (!intOk) errorRate.add(1);
+  errorRate.add(!intOk);
 
   // 3. Collections Report
   const t2 = new Date().getTime();
@@ -75,7 +77,7 @@ export default function () {
   const colOk = check(colRes, {
     'collections status 200': (r) => r.status === 200,
   });
-  if (!colOk) errorRate.add(1);
+  errorRate.add(!colOk);
 
   // 4. SLA Report
   const t3 = new Date().getTime();
@@ -84,7 +86,7 @@ export default function () {
   const slaOk = check(slaRes, {
     'sla status 200': (r) => r.status === 200,
   });
-  if (!slaOk) errorRate.add(1);
+  errorRate.add(!slaOk);
 
   reportsDuration.add(new Date().getTime() - t0);
   sleep(0.5);

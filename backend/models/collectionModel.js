@@ -1,4 +1,5 @@
 const { query } = require('../config/db');
+const { createTenantCache, createTenantState } = require('../utils/tenantCache');
 
 const VALID_DISPOSITIONS = new Set([
   'Connected',
@@ -58,118 +59,109 @@ async function findCaseById(caseId) {
   return mapCase(rows[0]);
 }
 
-let summaryCache = {
-  timestamp: 0,
-  data: null,
-};
 const SUMMARY_CACHE_TTL_MS = 15 * 1000; // 15 seconds cache
+const summaryCache = createTenantCache(SUMMARY_CACHE_TTL_MS);
 
 function invalidateSummaryCache() {
-  summaryCache.data = null;
+  summaryCache.clear();
 }
 
-let lastSyncOverdueTimestamp = 0;
-let syncOverdueInProgress = false;
+const getSyncState = createTenantState(() => ({ lastSyncAt: 0, inProgress: false }));
 const SYNC_OVERDUE_THROTTLE_MS = 2 * 60 * 1000; // 2 minutes throttle
 
 async function getSummary(options = {}) {
   const force = options?.force === true;
-  if (!force && summaryCache.data && (Date.now() - summaryCache.timestamp < SUMMARY_CACHE_TTL_MS)) {
-    return summaryCache.data;
-  }
+  const cached = summaryCache.get();
+  if (!force && cached) return cached;
+  return summaryCache.getOrLoad('data', async () => {
 
-  const [
-    [caseStats = {}],
-    [totalCollectedStats = {}],
-    [todayStats = {}],
-    [thisMonthStats = {}],
-    [followupStats = {}],
-    [ptpStats = {}],
-  ] = await Promise.all([
-    query(`
-      SELECT
-        COUNT(*) AS activeCases,
-        SUM(CASE 
-          WHEN COALESCE(loan.balance, cc.total_due, 0) > 0 THEN COALESCE(loan.balance, cc.total_due, 0)
-          ELSE 0 
-        END) AS totalOutstanding,
-        SUM(CASE WHEN DATE(COALESCE(loan.due_date, cc.original_due_date)) = CURDATE() THEN 1 ELSE 0 END) AS dueToday,
-        SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) > 0 THEN 1 ELSE 0 END) AS overdueAccounts,
-        SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) BETWEEN 0 AND 30 THEN 1 ELSE 0 END) AS bucket0To30,
-        SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) BETWEEN 31 AND 60 THEN 1 ELSE 0 END) AS bucket31To60,
-        SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) BETWEEN 61 AND 90 THEN 1 ELSE 0 END) AS bucket61To90,
-        SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) > 90 THEN 1 ELSE 0 END) AS bucket90Plus,
-        SUM(COALESCE(loan.total_amount, cc.total_due, 0)) AS totalRepayable,
-        SUM(COALESCE(loan.amount_paid, 0)) AS caseCollected
-      FROM collection_cases cc
-      LEFT JOIN loans loan ON loan.id = cc.loan_id
-      WHERE cc.status NOT IN ('Closed', 'Paid Off')
-    `),
-    query(`
-      SELECT COALESCE(SUM(amount_paid), 0) AS grandTotalCollected FROM loans
-    `),
-    query(`
-      SELECT COALESCE(SUM(amount), 0) AS collectionToday, COUNT(*) AS paymentsToday
-      FROM loan_repayments
-      WHERE DATE(COALESCE(received_at, created_at)) = CURDATE()
-        AND LOWER(TRIM(status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
-    `),
-    query(`
-      SELECT COALESCE(SUM(amount), 0) AS collectionThisMonth, COUNT(*) AS paymentsThisMonth
-      FROM loan_repayments
-      WHERE MONTH(COALESCE(received_at, created_at)) = MONTH(CURDATE())
-        AND YEAR(COALESCE(received_at, created_at)) = YEAR(CURDATE())
-        AND LOWER(TRIM(status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
-    `),
-    query(`
-      SELECT COUNT(DISTINCT f.id) AS pendingFollowups
-      FROM collection_followups f
-      JOIN collection_cases cc ON cc.id = f.case_id
-      WHERE f.status = 'open' AND f.due_at <= NOW() AND cc.status NOT IN ('Closed', 'Paid Off')
-    `),
-    query(`
-      SELECT
-        COUNT(DISTINCT CASE WHEN p.status = 'active' THEN p.id END) AS activePtps,
-        COUNT(DISTINCT CASE WHEN p.status = 'active' AND p.ptp_date < CURDATE() THEN p.id END) AS brokenPtps
-      FROM collection_ptps p
-      JOIN collection_cases cc ON cc.id = p.case_id
-      WHERE cc.status NOT IN ('Closed', 'Paid Off')
-    `),
-  ]);
+    const [
+      [caseStats = {}],
+      [totalCollectedStats = {}],
+      [todayStats = {}],
+      [thisMonthStats = {}],
+      [followupStats = {}],
+      [ptpStats = {}],
+    ] = await Promise.all([
+      query(`
+        SELECT
+          COUNT(*) AS activeCases,
+          SUM(CASE
+            WHEN COALESCE(loan.balance, cc.total_due, 0) > 0 THEN COALESCE(loan.balance, cc.total_due, 0)
+            ELSE 0
+          END) AS totalOutstanding,
+          SUM(CASE WHEN DATE(COALESCE(loan.due_date, cc.original_due_date)) = CURDATE() THEN 1 ELSE 0 END) AS dueToday,
+          SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) > 0 THEN 1 ELSE 0 END) AS overdueAccounts,
+          SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) BETWEEN 0 AND 30 THEN 1 ELSE 0 END) AS bucket0To30,
+          SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) BETWEEN 31 AND 60 THEN 1 ELSE 0 END) AS bucket31To60,
+          SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) BETWEEN 61 AND 90 THEN 1 ELSE 0 END) AS bucket61To90,
+          SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(loan.due_date, cc.original_due_date)) > 90 THEN 1 ELSE 0 END) AS bucket90Plus,
+          SUM(COALESCE(loan.total_amount, cc.total_due, 0)) AS totalRepayable,
+          SUM(COALESCE(loan.amount_paid, 0)) AS caseCollected
+        FROM collection_cases cc
+        LEFT JOIN loans loan ON loan.id = cc.loan_id
+        WHERE cc.status NOT IN ('Closed', 'Paid Off')
+      `),
+      query(`
+        SELECT COALESCE(SUM(amount_paid), 0) AS grandTotalCollected FROM loans
+      `),
+      query(`
+        SELECT COALESCE(SUM(amount), 0) AS collectionToday, COUNT(*) AS paymentsToday
+        FROM loan_repayments
+        WHERE DATE(COALESCE(received_at, created_at)) = CURDATE()
+          AND LOWER(TRIM(status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
+      `),
+      query(`
+        SELECT COALESCE(SUM(amount), 0) AS collectionThisMonth, COUNT(*) AS paymentsThisMonth
+        FROM loan_repayments
+        WHERE MONTH(COALESCE(received_at, created_at)) = MONTH(CURDATE())
+          AND YEAR(COALESCE(received_at, created_at)) = YEAR(CURDATE())
+          AND LOWER(TRIM(status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
+      `),
+      query(`
+        SELECT COUNT(DISTINCT f.id) AS pendingFollowups
+        FROM collection_followups f
+        JOIN collection_cases cc ON cc.id = f.case_id
+        WHERE f.status = 'open' AND f.due_at <= NOW() AND cc.status NOT IN ('Closed', 'Paid Off')
+      `),
+      query(`
+        SELECT
+          COUNT(DISTINCT CASE WHEN p.status = 'active' THEN p.id END) AS activePtps,
+          COUNT(DISTINCT CASE WHEN p.status = 'active' AND p.ptp_date < CURDATE() THEN p.id END) AS brokenPtps
+        FROM collection_ptps p
+        JOIN collection_cases cc ON cc.id = p.case_id
+        WHERE cc.status NOT IN ('Closed', 'Paid Off')
+      `),
+    ]);
 
-  let collectionThisMonth = Number(thisMonthStats.collectionThisMonth || 0);
-  let paymentsThisMonth = Number(thisMonthStats.paymentsThisMonth || 0);
-  const totalRepayable = Number(caseStats.totalRepayable || 0);
-  const totalCollected = Number(totalCollectedStats.grandTotalCollected || caseStats.caseCollected || 0);
+    let collectionThisMonth = Number(thisMonthStats.collectionThisMonth || 0);
+    let paymentsThisMonth = Number(thisMonthStats.paymentsThisMonth || 0);
+    const totalRepayable = Number(caseStats.totalRepayable || 0);
+    const totalCollected = Number(totalCollectedStats.grandTotalCollected || caseStats.caseCollected || 0);
 
-  const result = {
-    activeCases: Number(caseStats.activeCases || 0),
-    activePtps: Number(ptpStats.activePtps || 0),
-    brokenPtps: Number(ptpStats.brokenPtps || 0),
-    buckets: {
-      '0-30': Number(caseStats.bucket0To30 || 0),
-      '31-60': Number(caseStats.bucket31To60 || 0),
-      '61-90': Number(caseStats.bucket61To90 || 0),
-      '90+': Number(caseStats.bucket90Plus || 0),
-    },
-    collectionToday: Number(todayStats.collectionToday || 0),
-    collectionThisMonth,
-    dueToday: Number(caseStats.dueToday || 0),
-    overdueAccounts: Number(caseStats.overdueAccounts || 0),
-    paymentsToday: Number(todayStats.paymentsToday || 0),
-    paymentsThisMonth,
-    pendingFollowups: Number(followupStats.pendingFollowups || 0),
-    recoveryRate: totalRepayable > 0 ? Math.round((totalCollected / totalRepayable) * 100) : 0,
-    totalCollected,
-    totalOutstanding: Number(caseStats.totalOutstanding || 0),
-  };
-
-  summaryCache = {
-    timestamp: Date.now(),
-    data: result,
-  };
-
-  return result;
+    const result = {
+      activeCases: Number(caseStats.activeCases || 0),
+      activePtps: Number(ptpStats.activePtps || 0),
+      brokenPtps: Number(ptpStats.brokenPtps || 0),
+      buckets: {
+        '0-30': Number(caseStats.bucket0To30 || 0),
+        '31-60': Number(caseStats.bucket31To60 || 0),
+        '61-90': Number(caseStats.bucket61To90 || 0),
+        '90+': Number(caseStats.bucket90Plus || 0),
+      },
+      collectionToday: Number(todayStats.collectionToday || 0),
+      collectionThisMonth,
+      dueToday: Number(caseStats.dueToday || 0),
+      overdueAccounts: Number(caseStats.overdueAccounts || 0),
+      paymentsToday: Number(todayStats.paymentsToday || 0),
+      paymentsThisMonth,
+      pendingFollowups: Number(followupStats.pendingFollowups || 0),
+      recoveryRate: totalRepayable > 0 ? Math.round((totalCollected / totalRepayable) * 100) : 0,
+      totalCollected,
+      totalOutstanding: Number(caseStats.totalOutstanding || 0),
+    };
+    return result;
+  }, { force });
 }
 
 function parseJson(value) {
@@ -451,14 +443,15 @@ async function getCollectionReports() {
 }
 
 async function syncOverdueLoans(options = {}) {
+  const syncState = getSyncState();
   const force = options?.force === true;
-  if (!force && (Date.now() - lastSyncOverdueTimestamp < SYNC_OVERDUE_THROTTLE_MS)) {
+  if (!force && (Date.now() - syncState.lastSyncAt < SYNC_OVERDUE_THROTTLE_MS)) {
     return;
   }
-  if (syncOverdueInProgress) {
+  if (syncState.inProgress) {
     return;
   }
-  syncOverdueInProgress = true;
+  syncState.inProgress = true;
   try {
     // 0. Check for any missing loan records from active collection_cases
     const missingLoans = await query(`
@@ -523,7 +516,7 @@ async function syncOverdueLoans(options = {}) {
     `);
 
     if (!activeLoans || !activeLoans.length) {
-      lastSyncOverdueTimestamp = Date.now();
+      syncState.lastSyncAt = Date.now();
       return;
     }
 
@@ -776,9 +769,9 @@ async function syncOverdueLoans(options = {}) {
       loanId
     ]);
   }
-  lastSyncOverdueTimestamp = Date.now();
+  syncState.lastSyncAt = Date.now();
 } finally {
-  syncOverdueInProgress = false;
+  syncState.inProgress = false;
 }
 }
 

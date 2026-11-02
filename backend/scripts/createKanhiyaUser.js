@@ -8,7 +8,11 @@ async function createKanhiyaUser() {
     const email = 'kanhiayakumar@waqtfinance.com';
     const name = 'Kanhiya Kumar';
     const role = 'collection';
-    const password = 'Kanhiaya@#2016##';
+    const password = process.env.USER_PASSWORD || process.argv[2];
+    if (!password) {
+      console.error('Usage: node createKanhiyaUser.js <password>');
+      process.exit(1);
+    }
 
     const salt = 'cf0af1027e1f5b00788a041c6f8f62f7';
     const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 32, 'sha256').toString('hex');
@@ -31,7 +35,7 @@ async function createKanhiyaUser() {
     console.log(`Email:    ${email}`);
     console.log(`Name:     ${name}`);
     console.log(`Role:     ${role} (Collection Agent)`);
-    console.log(`Password: ${password}`);
+    // password omitted for security
     console.log(`======================================================\n`);
 
     process.exit(0);

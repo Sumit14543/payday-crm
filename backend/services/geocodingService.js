@@ -3,7 +3,7 @@
  * Converts latitude and longitude coordinates to address details via Google Maps Geocoding API.
  */
 
-const DEFAULT_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyASdz_lCbjWIJHXQIlKOdVIzKwwBqgYYcY';
+const DEFAULT_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 
 async function getAddressFromLatLng(lat, lng) {
   if (lat === undefined || lat === null || lng === undefined || lng === null) {
@@ -18,6 +18,9 @@ async function getAddressFromLatLng(lat, lng) {
   }
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY || DEFAULT_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${numLat},${numLng}&key=${apiKey}`;
 
   try {

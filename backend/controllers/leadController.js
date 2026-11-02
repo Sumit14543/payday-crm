@@ -34,6 +34,7 @@ function verifyLeadAssignedToTelecaller(req, lead) {
 
 async function listLeads(req, res) {
   const query = { ...req.query };
+  if (!["product-admin", "superadmin"].includes(req.user?.role)) delete query.summaryScope;
   const isSearchOrDuplicate = Boolean(query.search || query.includeAllLeads === 'true' || query.duplicateLookup === 'true');
   if (req.user && req.user.role === 'telecaller' && !isSupportUser(req.user) && !isSearchOrDuplicate) {
     query.telecallerUser = req.user.name;
@@ -49,6 +50,7 @@ async function listLeads(req, res) {
       total: leads.total !== undefined ? leads.total : leads.length,
       totalPages: leads.totalPages || 1,
     },
+    stats: leads.stats,
     message: 'OK',
   });
 }

@@ -69,13 +69,11 @@ export function RevenueAnalytics() {
 
   useEffect(() => {
     let active = true;
-    apiGet<any[]>("/loans?page=1&limit=5000&pageSize=5000")
-      .then((data) => {
-        if (active && Array.isArray(data) && data.length > 0) {
-          setLeads(data);
-          
-          // Calculate dynamic revenue metrics. PF & GST depend on Disbursement date. ROI depends on Repayment.
-          const loans = data;
+    apiGet<any>("/loans?page=1&limit=5000&pageSize=5000")
+      .then((data: any) => {
+        const loans = Array.isArray(data) ? data : (data?.data || data?.loans || []);
+        if (active && Array.isArray(loans) && loans.length > 0) {
+          setLeads(loans);
 
           if (loans.length > 0) {
             const today = getLocalDateStr(new Date().toISOString());

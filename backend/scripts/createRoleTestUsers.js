@@ -10,31 +10,31 @@ async function createRoleTestUsers() {
         email: 'test.telecaller@waqtmoney.in',
         name: 'Test Telecaller User',
         role: 'telecaller',
-        password: 'WaqtTest@2026##',
+        password: process.env.TEST_USER_PASSWORD || 'TestPass@' + Math.random().toString(36).slice(2),
       },
       {
         email: 'test.collection@waqtmoney.in',
         name: 'Test Collection User',
         role: 'collection',
-        password: 'WaqtTest@2026##',
+        password: process.env.TEST_USER_PASSWORD || 'TestPass@' + Math.random().toString(36).slice(2),
       },
       {
         email: 'test.accountant@waqtmoney.in',
         name: 'Test Accountant User',
         role: 'accountant',
-        password: 'WaqtTest@2026##',
+        password: process.env.TEST_USER_PASSWORD || 'TestPass@' + Math.random().toString(36).slice(2),
       },
       {
         email: 'test.admin@waqtmoney.in',
         name: 'Test Product Admin User',
         role: 'product-admin',
-        password: 'WaqtTest@2026##',
+        password: process.env.TEST_USER_PASSWORD || 'TestPass@' + Math.random().toString(36).slice(2),
       },
       {
         email: 'test.credit@waqtmoney.in',
         name: 'Test Credit Manager',
         role: 'credit-manager',
-        password: 'WaqtTest@2026##',
+        password: process.env.TEST_USER_PASSWORD || 'TestPass@' + Math.random().toString(36).slice(2),
       },
     ];
 

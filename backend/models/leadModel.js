@@ -253,13 +253,22 @@ function leadListSql() {
 
 async function findAll(filters = {}) {
   await autoAssignUnassignedLeads();
-  const { search = '', status = 'all', assignedTo = 'all', limit } = filters;
+  const { search = '', assignedTo = 'all', limit } = filters;
+  const portfolio = filters.view === 'customer-portfolio';
+  const status = portfolio ? 'Converted' : (filters.status === 'New Lead' ? 'New' : (filters.status || 'all'));
   const clauses = [];
   const params = [];
 
   if (search) {
-    clauses.push('(application_id LIKE ? OR full_name LIKE ? OR email LIKE ? OR mobile LIKE ? OR pan_number LIKE ? OR city LIKE ?)');
-    params.push(...likeParams(search, 6));
+    if (portfolio || filters.view === 'admin-leads') {
+      const nameSql = "COALESCE(NULLIF(full_name, ''), CONCAT('Applicant ', id))";
+      const fields = portfolio ? [nameSql, "CONCAT('CUST-', id)", 'mobile'] : [nameSql, "COALESCE(NULLIF(application_id, ''), CONCAT('APP-', id))", 'mobile', 'city'];
+      clauses.push('(' + fields.map(field => `LOCATE(LOWER(?), LOWER(COALESCE(${field}, ''))) > 0`).join(' OR ') + ')');
+      params.push(...fields.map(() => search));
+    } else {
+      clauses.push('(application_id LIKE ? OR full_name LIKE ? OR email LIKE ? OR mobile LIKE ? OR pan_number LIKE ? OR city LIKE ?)');
+      params.push(...likeParams(search, 6));
+    }
   }
 
   if (status !== 'all') {
@@ -275,8 +284,8 @@ async function findAll(filters = {}) {
       WHEN 'closed' THEN 'Closed'
       WHEN 'send_to_credit' THEN 'Send to Credit Manager'
       ELSE 'New'
-    END) = ?`);
-    params.push(status);
+    END) ${status === 'KYC Pending' ? 'IN (?, ?)' : '= ?'}`);
+    params.push(...(status === 'KYC Pending' ? ['Document Collection', 'Documents Pending'] : [status]));
   }
 
   if (assignedTo !== 'all') {
@@ -292,6 +301,25 @@ async function findAll(filters = {}) {
   if (filters.sourceSystem && filters.sourceSystem !== 'all') {
     clauses.push("(LOWER(source_system) = ? OR LOWER(source) = ?)");
     params.push(String(filters.sourceSystem).trim().toLowerCase(), String(filters.sourceSystem).trim().toLowerCase());
+  }
+
+  if (filters.source && filters.source !== 'all') {
+    clauses.push(`LOWER(${sourceDisplaySql()}) = ?`);
+    params.push(String(filters.source).trim().toLowerCase());
+  }
+  if (filters.view === 'admin-leads' && filters.tenantSource) {
+    clauses.push(`${sourceSystemSql()} = ?`);
+    params.push(String(filters.tenantSource).trim().toLowerCase());
+  }
+  if (filters.excludeSourceSystem) {
+    clauses.push(`${sourceSystemSql()} <> ?`);
+    params.push(String(filters.excludeSourceSystem).trim().toLowerCase());
+  }
+  for (const [key, operator] of [['fromDate', '>='], ['toDate', '<']]) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(filters[key] || ''))) {
+      clauses.push(key === 'toDate' ? 'created_at < DATE_ADD(?, INTERVAL 1 DAY)' : `created_at ${operator} ?`);
+      params.push(filters[key]);
+    }
   }
 
   if (filters.telecallerUser || filters.telecallerEmail) {
@@ -314,24 +342,44 @@ async function findAll(filters = {}) {
     }
   }
 
+  if (portfolio && ['700plus', 'below700'].includes(filters.score)) clauses.push('1 = 0'); // Existing lead projection has no verified credit score.
   const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
   // Server-side total count calculation
-  const countSql = `
-    SELECT COUNT(*) AS total FROM loan_applications
-    ${whereClause}
-  `;
-  const countRows = await query(countSql, params);
+  const includeStats = String(filters.includeStats) === 'true';
+  const portfolioSql = portfolio ? ', COALESCE(SUM(loan_amount), 0) AS totalPrincipal, COALESCE(AVG(COALESCE(loan_amount, 0)), 0) AS avgPrincipal' : '';
+  const summarySql = includeStats ? `,
+    SUM(CASE WHEN status IS NULL OR status NOT IN ('submitted', 'review', 'documents_pending', 'not_connected', 'approved', 'rejected', 'disbursed', 'closed', 'send_to_credit') THEN 1 ELSE 0 END) AS fresh,
+    SUM(CASE WHEN status IN ('submitted', 'review', 'documents_pending') THEN 1 ELSE 0 END) AS contacted,
+    SUM(CASE WHEN assigned_to = 'Credit Manager' THEN 1 ELSE 0 END) AS sentToCredit,
+    SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected` : '';
+  let countSql = `SELECT COUNT(*) AS total ${summarySql} ${portfolioSql} FROM loan_applications ${whereClause}`;
+  let countParams = params;
+  if (includeStats && !portfolio && filters.summaryScope === 'date') {
+    const dateClauses = [], dateParams = [];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(filters.fromDate || ''))) { dateClauses.push('created_at >= ?'); dateParams.push(filters.fromDate); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(filters.toDate || ''))) { dateClauses.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)'); dateParams.push(filters.toDate); }
+    const dateWhere = dateClauses.length ? `WHERE ${dateClauses.join(' AND ')}` : '';
+    countSql = `SELECT filtered.total, summary.statsTotal, summary.fresh, summary.contacted, summary.sentToCredit, summary.rejected
+      FROM (SELECT COUNT(*) AS total FROM loan_applications ${whereClause}) filtered
+      CROSS JOIN (SELECT COUNT(*) AS statsTotal ${summarySql} FROM loan_applications ${dateWhere}) summary`;
+    countParams = [...params, ...dateParams];
+  }
+  const countRows = await query(countSql, countParams);
   const total = Number(countRows?.[0]?.total || 0);
+  let stats = includeStats ? Object.fromEntries(['total', 'fresh', 'contacted', 'sentToCredit', 'rejected'].map(key => [key, Number(countRows?.[0]?.[key] || 0)])) : undefined;
+  if (stats && !portfolio && filters.summaryScope === 'date') stats.total = Number(countRows?.[0]?.statsTotal || 0);
+  if (portfolio) stats = { totalCustomers: total, totalPrincipal: Number(countRows?.[0]?.totalPrincipal || 0), avgPrincipal: Math.round(Number(countRows?.[0]?.avgPrincipal || 0)) };
+  const orderBy = portfolio && filters.sortBy === 'name' ? "UPPER(COALESCE(NULLIF(full_name, ''), CONCAT('Applicant ', id))) ASC, id DESC" : portfolio && filters.sortBy === 'limit' ? 'loan_amount DESC, id DESC' : 'created_at DESC, id DESC';
 
-  const parsedLimit = Math.min(Math.max(Number(limit || filters.pageSize) || 50, 1), 500);
-  const parsedPage = Math.max(Number(filters.page) || 1, 1);
+  const parsedLimit = Math.min(Math.max(Math.trunc(Number(limit || filters.pageSize)) || 50, 1), 500);
+  const parsedPage = Math.min(Math.max(Math.trunc(Number(filters.page)) || 1, 1), 1000000);
   const offset = (parsedPage - 1) * parsedLimit;
 
   const idSql = `
     SELECT id FROM loan_applications
     ${whereClause}
-    ORDER BY created_at DESC
+    ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `;
 
@@ -343,13 +391,14 @@ async function findAll(filters = {}) {
     emptyResult.page = parsedPage;
     emptyResult.limit = parsedLimit;
     emptyResult.totalPages = Math.ceil(total / parsedLimit);
+    emptyResult.stats = stats;
     return emptyResult;
   }
 
   const ids = idsRes.map((r) => r.id);
   const detailSql = `
     ${leadSqlWhere(`id IN (${ids.join(',')})`)}
-    ORDER BY createdAt DESC
+    ORDER BY ${portfolio && filters.sortBy === 'name' ? 'UPPER(name) ASC, CAST(rawId AS UNSIGNED) DESC' : portfolio && filters.sortBy === 'limit' ? 'loanAmount DESC, CAST(rawId AS UNSIGNED) DESC' : 'createdAt DESC, CAST(rawId AS UNSIGNED) DESC'}
   `;
 
   let rows;
@@ -371,6 +420,7 @@ async function findAll(filters = {}) {
     enriched.page = parsedPage;
     enriched.limit = parsedLimit;
     enriched.totalPages = Math.ceil(total / parsedLimit);
+    enriched.stats = stats;
   }
   return enriched;
 }
