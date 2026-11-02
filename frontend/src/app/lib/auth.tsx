@@ -169,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
       setUser(nextUser);
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("diwali:trigger_celebration"));
       return { requiresOtp: false, user: nextUser };
     },
     verifyOtp: async ({ tempToken, otp }) => {
@@ -189,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
       setUser(nextUser);
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("diwali:trigger_celebration"));
       return nextUser;
     },
     resendOtp: async ({ tempToken }) => {

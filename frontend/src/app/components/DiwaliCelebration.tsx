@@ -52,21 +52,26 @@ export function DiwaliCelebration() {
       }
     }, 3200);
 
-    // Exact 6 MINUTES auto-dismiss (360,000 ms)
+    // Auto-dismiss after 5 seconds of celebration
     autoCloseTimerRef.current = window.setTimeout(() => {
       closeCelebration();
-    }, 360000);
+    }, 6250);
   };
 
   useEffect(() => {
-    // Automatically trigger on page load during Diwali season
-    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v14_2026");
-    if (!hasSeen) {
-      startAnimation();
-      sessionStorage.setItem("diwali_wishes_artistic_v14_2026", "true");
-    }
+    // Automatically trigger on every page refresh / load
+    startAnimation();
 
-    return () => clearTimers();
+    // Trigger on login event
+    const handleLoginTrigger = () => {
+      startAnimation();
+    };
+    window.addEventListener("diwali:trigger_celebration", handleLoginTrigger);
+
+    return () => {
+      clearTimers();
+      window.removeEventListener("diwali:trigger_celebration", handleLoginTrigger);
+    };
   }, []);
 
   // Canvas Fireworks Simulation
@@ -401,7 +406,7 @@ export function DiwaliCelebration() {
 
             {/* 1. "W I S H I N G   Y O U   A" */}
             <div
-              className="text-[12px] sm:text-[14px] font-semibold tracking-[0.45em] text-[#fed7aa] uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] mb-1 opacity-95"
+              className="text-[12px] sm:text-[14px] font-semibold tracking-[0.45em] text-[#fed7aa] uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] mb-5 sm:mb-6 opacity-95"
               style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
             >
               ✦ &nbsp; W I S H I N G &nbsp; Y O U &nbsp; A &nbsp; ✦
@@ -517,7 +522,7 @@ export function DiwaliCelebration() {
             </div>
 
             {/* 5. Subtitle */}
-            <p className="mt-2 text-base sm:text-lg font-medium text-[#fffbeb] tracking-wider drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-lg">
+            <p className="mt-7 sm:mt-9 text-base sm:text-lg font-medium text-[#fffbeb] tracking-wider drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-lg">
               May your life shine with happiness and prosperity
             </p>
           </div>
