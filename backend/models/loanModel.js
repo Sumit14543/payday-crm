@@ -175,8 +175,7 @@ function getLocalDate(dStr) {
 // Global Fast Aggregate Stats (Runs in ~1-2ms)
 async function getLoanStats() {
   try {
-    const rows = await query(`
-      const [loanRows, disbRows] = await Promise.all([
+    const [loanRows, disbRows] = await Promise.all([
         query(`
           SELECT
             COUNT(*) AS allLoans,
