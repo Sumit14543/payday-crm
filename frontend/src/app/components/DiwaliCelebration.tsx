@@ -28,18 +28,18 @@ export function DiwaliCelebration() {
     setIsFadingOut(false);
     setIsActive(true);
 
-    // Initial bursts: Center burst at 1.2s when rocket reaches 35vh
+    // Initial bursts: Center burst at 1.25s when rocket reaches 36vh
     window.setTimeout(() => {
       if (createFireworkRef.current) {
-        createFireworkRef.current(window.innerWidth / 2, window.innerHeight * 0.35, 120);
+        createFireworkRef.current(window.innerWidth / 2, window.innerHeight * 0.36, 120);
       }
-    }, 1200);
+    }, 1250);
 
     // Secondary flanking bursts at 1.8s
     window.setTimeout(() => {
       if (createFireworkRef.current) {
-        createFireworkRef.current(window.innerWidth * 0.32, window.innerHeight * 0.30, 60);
-        createFireworkRef.current(window.innerWidth * 0.68, window.innerHeight * 0.32, 60);
+        createFireworkRef.current(window.innerWidth * 0.30, window.innerHeight * 0.30, 60);
+        createFireworkRef.current(window.innerWidth * 0.70, window.innerHeight * 0.32, 60);
       }
     }, 1800);
 
@@ -60,16 +60,16 @@ export function DiwaliCelebration() {
 
   useEffect(() => {
     // Automatically trigger on page load during Diwali season
-    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v13_2026");
+    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v14_2026");
     if (!hasSeen) {
       startAnimation();
-      sessionStorage.setItem("diwali_wishes_artistic_v13_2026", "true");
+      sessionStorage.setItem("diwali_wishes_artistic_v14_2026", "true");
     }
 
     return () => clearTimers();
   }, []);
 
-  // Canvas Fireworks Simulation (Exact NextBigBox logic)
+  // Canvas Fireworks Simulation
   useEffect(() => {
     if (!isActive) return;
 
@@ -161,10 +161,10 @@ export function DiwaliCelebration() {
   return (
     <>
       <style>{`
-        /* NextBigBox Exact Rocket Launch */
+        /* Rocket Launch */
         @keyframes diwaliRocketLaunch {
           0% {
-            transform: translate3d(-50%, 110vh, 0) scale(0.6);
+            transform: translate3d(-50%, 110vh, 0) scale(0.65);
             opacity: 0;
           }
           15% {
@@ -174,7 +174,7 @@ export function DiwaliCelebration() {
             opacity: 1;
           }
           100% {
-            transform: translate3d(-50%, 35vh, 0) scale(1);
+            transform: translate3d(-50%, 36vh, 0) scale(1.05);
             opacity: 0;
           }
         }
@@ -185,31 +185,31 @@ export function DiwaliCelebration() {
           width: 60px;
           height: 100px;
           opacity: 0;
-          z-index: 2;
+          z-index: 20;
           will-change: transform, opacity;
-          animation: diwaliRocketLaunch 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+          animation: diwaliRocketLaunch 1.25s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
         }
 
-        /* NextBigBox Rocket Flame */
-        @keyframes diwaliFlame {
-          from { transform: scaleY(0.8); }
-          to { transform: scaleY(1.3); }
+        /* Rocket Flame */
+        @keyframes rocketFlamePulse {
+          from { transform: scaleY(0.85) scaleX(0.95); opacity: 0.9; }
+          to { transform: scaleY(1.35) scaleX(1.05); opacity: 1; }
         }
-        .animate-diwali-flame {
-          transform-origin: center;
-          animation: diwaliFlame 0.15s infinite alternate;
+        .animate-rocket-flame {
+          transform-origin: top center;
+          animation: rocketFlamePulse 0.12s infinite alternate;
         }
 
-        /* NextBigBox Greeting Appearance */
-        @keyframes diwaliGreetingAppear {
+        /* Grand Bloom Entrance */
+        @keyframes grandBloomEntrance {
           0% {
             opacity: 0;
-            transform: translate(-50%, -50%) scale(0.5);
-            filter: blur(10px);
+            transform: translate(-50%, -50%) scale(0.65);
+            filter: blur(8px);
           }
           70% {
             opacity: 1;
-            transform: translate(-50%, -50%) scale(1.08);
+            transform: translate(-50%, -50%) scale(1.04);
             filter: blur(0);
           }
           100% {
@@ -218,72 +218,58 @@ export function DiwaliCelebration() {
             filter: blur(0);
           }
         }
-        .animate-diwali-greeting {
+        .animate-grand-bloom {
           position: absolute;
           left: 50%;
-          top: 42%;
-          width: min(90%, 700px);
-          transform: translate(-50%, -50%) scale(0.5);
-          text-align: center;
+          top: 45%;
+          width: min(92%, 840px);
+          transform: translate(-50%, -50%);
           opacity: 0;
-          z-index: 3;
-          color: #fff3c4;
-          animation: diwaliGreetingAppear 1s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
-          animation-delay: 1.4s;
-          text-shadow:
-            0 0 10px rgba(255, 190, 50, 0.6),
-            0 0 30px rgba(255, 120, 20, 0.4);
+          animation: grandBloomEntrance 0.9s cubic-bezier(0.18, 0.89, 0.32, 1.2) forwards;
+          animation-delay: 1.35s;
         }
 
-        /* NextBigBox Typography */
-        .diwali-small-text {
-          display: block;
-          font-size: clamp(14px, 2vw, 22px);
-          letter-spacing: 5px;
-          text-transform: uppercase;
-          color: #ffe8a3;
-          margin-bottom: 8px;
+        /* Diya Flame Realistic Flickering */
+        @keyframes flameDance {
+          0%, 100% {
+            transform: scale(1) rotate(-1deg);
+            filter: drop-shadow(0 0 16px #f59e0b) drop-shadow(0 0 32px #ef4444);
+          }
+          35% {
+            transform: scale(1.08, 0.95) rotate(1.5deg);
+            filter: drop-shadow(0 0 22px #fbbf24) drop-shadow(0 0 42px #f97316);
+          }
+          70% {
+            transform: scale(0.95, 1.05) rotate(-1.5deg);
+            filter: drop-shadow(0 0 16px #f59e0b) drop-shadow(0 0 28px #dc2626);
+          }
         }
-        .happy-text {
-          display: block;
-          font-family: Georgia, serif;
-          font-size: clamp(30px, 5vw, 55px);
-          font-weight: 400;
-          color: #fff1b3;
-          letter-spacing: 3px;
+        .animate-vibrant-flame {
+          transform-origin: 50% 95%;
+          animation: flameDance 0.35s infinite alternate ease-in-out;
         }
-        .diwali-text {
-          display: block;
-          font-family: "Brush Script MT", "Segoe Script", cursive;
-          font-size: clamp(65px, 12vw, 130px);
-          font-weight: 700;
-          font-style: italic;
-          line-height: 1.1;
-          background: linear-gradient(180deg,
-              #fff7c2 0%,
-              #ffd76a 35%,
-              #ff9b22 65%,
-              #fff0a3 100%);
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-          filter: drop-shadow(0 0 15px rgba(255, 174, 0, 0.5));
+
+        /* Rotating Lace Mandala */
+        @keyframes spinMandala {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
-        .diwali-decoration {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 15px;
-          margin: 15px auto;
+        .animate-spin-mandala {
+          animation: spinMandala 55s linear infinite;
         }
-        .diwali-decoration span:not(.diya-icon) {
-          width: 70px;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, #ffd166, transparent);
+
+        /* Hanging Lamps Gentle Sway */
+        @keyframes swayLamp {
+          0%, 100% { transform: rotate(-2.5deg); }
+          50% { transform: rotate(2.5deg); }
         }
-        .diya-icon {
-          font-size: 30px;
-          filter: drop-shadow(0 0 10px rgba(255, 180, 0, 0.8));
+        .animate-sway-left {
+          transform-origin: top center;
+          animation: swayLamp 4s ease-in-out infinite;
+        }
+        .animate-sway-right {
+          transform-origin: top center;
+          animation: swayLamp 4.8s ease-in-out infinite reverse;
         }
 
         /* Fade Out */
@@ -293,14 +279,14 @@ export function DiwaliCelebration() {
         }
       `}</style>
 
-      {/* FULL OVERLAY (EXACT NEXTBIGBOX IMPLEMENTATION) */}
+      {/* FULL BESPOKE CELEBRATION OVERLAY */}
       {isActive && (
         <div
           onClick={closeCelebration}
           className={`fixed inset-0 z-50 overflow-hidden cursor-pointer select-none ${
             isFadingOut ? "animate-diwali-fadeout" : ""
           }`}
-          style={{ background: "rgba(0, 0, 0, 0.773)" }}
+          style={{ background: "rgba(8, 6, 18, 0.76)" }}
         >
           {/* Close button top right */}
           <button
@@ -321,9 +307,9 @@ export function DiwaliCelebration() {
             className="absolute inset-0 w-full h-full pointer-events-none"
           />
 
-          {/* Exact NextBigBox Cartoon Rocket */}
+          {/* 1. Cartoon Red & Yellow Rocket Launch */}
           <div className="animate-diwali-rocket pointer-events-none">
-            <svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" className="w-full h-full overflow-visible">
+            <svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" className="w-full h-full overflow-visible filter drop-shadow-[0_0_15px_#f59e0b]">
               <path
                 d="M30 5 C12 20 15 45 15 65 L45 65 C45 45 48 20 30 5Z"
                 fill="#ff3158"
@@ -335,39 +321,210 @@ export function DiwaliCelebration() {
               <path d="M45 55 L57 75 L45 70 Z" fill="#ffb703" />
               <path d="M15 65 L45 65 L30 80 Z" fill="#ff3158" />
               <path
-                className="animate-diwali-flame"
-                d="M22 75 Q30 100 38 75 Q30 85 22 75Z"
+                className="animate-rocket-flame"
+                d="M22 75 Q30 102 38 75 Q30 86 22 75Z"
                 fill="#ffb703"
               />
             </svg>
           </div>
 
-          {/* Exact NextBigBox Diwali Greeting */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="animate-diwali-greeting pointer-events-auto"
-          >
-            <span className="diwali-small-text">Wishing You A</span>
-
-            <h1 className="m-0 p-0 leading-none">
-              <span className="happy-text">Happy</span>
-              <span className="diwali-text">Diwali</span>
-            </h1>
-
-            <div className="diwali-decoration">
-              <span />
-              <span className="diya-icon">🪔</span>
-              <span />
+          {/* 2. Flanked Hanging Lamps on Threads */}
+          <div className="absolute top-0 inset-x-0 h-48 pointer-events-none z-10 flex justify-between px-6 sm:px-14">
+            {/* Left Flank */}
+            <div className="flex gap-8 sm:gap-14">
+              <div className="flex flex-col items-center animate-sway-left" style={{ height: "135px" }}>
+                <div className="w-[1.2px] h-26 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+                <div className="flex flex-col items-center -mt-1">
+                  <div className="h-3.5 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_12px_#f59e0b] animate-pulse" />
+                  <div className="h-2.5 w-7 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                </div>
+              </div>
+              <div className="flex flex-col items-center hidden sm:flex animate-sway-right" style={{ height: "185px" }}>
+                <div className="w-[1.2px] h-38 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+                <div className="flex flex-col items-center -mt-1">
+                  <div className="h-4 w-2.5 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_14px_#f59e0b] animate-pulse" />
+                  <div className="h-3 w-8 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                </div>
+              </div>
             </div>
 
-            <p className="m-0 mt-3 text-base sm:text-lg tracking-wider text-[#fff2d0]">
+            {/* Right Flank */}
+            <div className="flex gap-8 sm:gap-14">
+              <div className="flex flex-col items-center hidden sm:flex animate-sway-left" style={{ height: "165px" }}>
+                <div className="w-[1.2px] h-32 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+                <div className="flex flex-col items-center -mt-1">
+                  <div className="h-4 w-2.5 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_14px_#f59e0b] animate-pulse" />
+                  <div className="h-3 w-8 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                </div>
+              </div>
+              <div className="flex flex-col items-center animate-sway-right" style={{ height: "140px" }}>
+                <div className="w-[1.2px] h-28 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+                <div className="flex flex-col items-center -mt-1">
+                  <div className="h-3.5 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_12px_#f59e0b] animate-pulse" />
+                  <div className="h-2.5 w-7 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Bespoke Handcrafted Centerpiece */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="animate-grand-bloom pointer-events-auto flex flex-col items-center justify-center text-center px-4"
+          >
+            {/* Rotating Lace Mandala Ring */}
+            <div
+              className="absolute -top-14 w-[420px] sm:w-[520px] h-[420px] sm:h-[520px] pointer-events-none opacity-45 animate-spin-mandala"
+            >
+              <svg viewBox="0 0 400 400" className="w-full h-full stroke-amber-400/90 fill-none" strokeWidth="1.3">
+                <g transform="translate(200,200)">
+                  <circle cx="0" cy="0" r="175" strokeDasharray="3,6" />
+                  <circle cx="0" cy="0" r="150" />
+                  <circle cx="0" cy="0" r="125" strokeDasharray="2,4" />
+                  <circle cx="0" cy="0" r="100" />
+                  <circle cx="0" cy="0" r="75" />
+                  <g>
+                    {[0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5].map((deg) => (
+                      <path
+                        key={deg}
+                        d="M0,-75 Q-20,-115 0,-150 Q20,-115 0,-75"
+                        transform={`rotate(${deg})`}
+                      />
+                    ))}
+                  </g>
+                </g>
+              </svg>
+            </div>
+
+            {/* Ambient Warm Backlight Glow */}
+            <div className="absolute -bottom-8 w-88 h-44 bg-gradient-to-t from-yellow-500/25 via-amber-500/15 to-transparent rounded-full blur-3xl pointer-events-none" />
+
+            {/* 1. "W I S H I N G   Y O U   A" */}
+            <div
+              className="text-[12px] sm:text-[14px] font-semibold tracking-[0.45em] text-[#fed7aa] uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] mb-1 opacity-95"
+              style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
+            >
+              ✦ &nbsp; W I S H I N G &nbsp; Y O U &nbsp; A &nbsp; ✦
+            </div>
+
+            {/* 2. "Happy" in Flowing Crimson Red Brush Script */}
+            <h2
+              className="text-4xl sm:text-6xl font-normal tracking-wide text-[#f43f5e] drop-shadow-[0_2px_10px_rgba(244,63,94,0.6)] -mb-2 sm:-mb-3 select-none"
+              style={{ fontFamily: "'Marck Script', cursive" }}
+            >
+              Happy
+            </h2>
+
+            {/* 3. "Diwali" in Radiant Saffron-Gold Festive Calligraphy */}
+            <h1
+              className="text-7xl sm:text-9xl md:text-[9.2rem] font-bold leading-[1.02] tracking-wide select-none whitespace-nowrap px-6"
+              style={{
+                fontFamily: "'Kaushan Script', cursive",
+                color: "#fde047",
+                background: "linear-gradient(180deg, #ffffff 0%, #fef08a 25%, #f59e0b 60%, #ea580c 90%, #c2410c 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                filter: "drop-shadow(0 0 22px rgba(245, 158, 11, 0.75)) drop-shadow(0 0 45px rgba(234, 88, 12, 0.45))",
+              }}
+            >
+              Diwali
+            </h1>
+
+            {/* 4. HANDCRAFTED 3D DIYA ON SLEEK GOLDEN PEDESTAL LINE */}
+            <div className="relative flex items-center justify-center w-full max-w-lg mt-1 mb-2 z-20">
+              {/* Left Line */}
+              <div className="flex-1 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/80 to-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+
+              {/* Center Glowing 3D Diya */}
+              <div className="relative flex flex-col items-center mx-3 sm:mx-6">
+                {/* Flame */}
+                <div className="relative w-14 h-24 flex items-center justify-center -mb-6 z-20">
+                  <svg className="w-full h-full animate-vibrant-flame" viewBox="0 0 50 90">
+                    <defs>
+                      <linearGradient id="nbFlameGradReact" x1="50%" y1="100%" x2="50%" y2="0%">
+                        <stop offset="0%" stopColor="#f43f5e" />
+                        <stop offset="35%" stopColor="#f97316" />
+                        <stop offset="70%" stopColor="#fde047" />
+                        <stop offset="100%" stopColor="#ffffff" />
+                      </linearGradient>
+                      <linearGradient id="nbCoreGradReact" x1="50%" y1="100%" x2="50%" y2="0%">
+                        <stop offset="0%" stopColor="#fb7185" />
+                        <stop offset="50%" stopColor="#fef08a" />
+                        <stop offset="100%" stopColor="#ffffff" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M25,2 C30,22 46,38 42,62 C38,76 28,84 25,84 C22,84 12,76 8,62 C4,38 20,22 25,2 Z"
+                      fill="url(#nbFlameGradReact)"
+                    />
+                    <path
+                      d="M25,22 C28,36 36,48 34,64 C32,74 27,78 25,78 C23,78 18,74 16,64 C14,48 22,36 25,22 Z"
+                      fill="url(#nbCoreGradReact)"
+                      opacity="0.88"
+                    />
+                  </svg>
+                </div>
+
+                {/* Ceramic Bowl */}
+                <div className="relative z-10 scale-105 sm:scale-115">
+                  <svg className="w-40 sm:w-44 h-14" viewBox="0 0 160 55">
+                    <defs>
+                      <linearGradient id="nbBowlGradReact" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#7c2d12" />
+                        <stop offset="50%" stopColor="#451a03" />
+                        <stop offset="100%" stopColor="#1e1026" />
+                      </linearGradient>
+                      <linearGradient id="nbOilGradReact" x1="0%" y1="50%" x2="100%" y2="50%">
+                        <stop offset="0%" stopColor="#ea580c" />
+                        <stop offset="50%" stopColor="#f43f5e" />
+                        <stop offset="100%" stopColor="#ea580c" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M10,18 Q80,56 150,18 Q80,24 10,18 Z"
+                      fill="url(#nbBowlGradReact)"
+                      stroke="#f59e0b"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M16,18 Q80,36 144,18 Q80,20 16,18 Z"
+                      fill="url(#nbOilGradReact)"
+                      opacity="0.92"
+                    />
+                    <path
+                      d="M14,18 Q48,32 80,13 Q112,32 146,18"
+                      fill="none"
+                      stroke="#fde047"
+                      strokeWidth="1.8"
+                    />
+                    <g fill="#fde047" opacity="0.9">
+                      <circle cx="42" cy="33" r="1.6" />
+                      <circle cx="58" cy="37" r="1.9" />
+                      <circle cx="74" cy="39" r="1.6" />
+                      <circle cx="86" cy="39" r="1.6" />
+                      <circle cx="102" cy="37" r="1.9" />
+                      <circle cx="118" cy="33" r="1.6" />
+                    </g>
+                  </svg>
+                </div>
+
+                {/* Ground Light */}
+                <div className="w-36 h-4 rounded-[100%] bg-amber-400/40 blur-md -mt-2" />
+              </div>
+
+              {/* Right Line */}
+              <div className="flex-1 h-[1.5px] bg-gradient-to-l from-transparent via-amber-400/80 to-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+            </div>
+
+            {/* 5. Subtitle */}
+            <p className="mt-2 text-base sm:text-lg font-medium text-[#fffbeb] tracking-wider drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-lg">
               May your life shine with happiness and prosperity
             </p>
           </div>
         </div>
       )}
 
-      {/* Floating Replay Badge Bottom Right */}
+      {/* Replay Trigger Badge Bottom Right */}
       <button
         type="button"
         onClick={startAnimation}
