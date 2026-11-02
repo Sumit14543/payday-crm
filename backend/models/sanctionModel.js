@@ -120,23 +120,26 @@ function leadKeys(lead) {
 }
 
 function stripRevisionSuffix(agreementNumber) {
-  return String(agreementNumber || '').trim().replace(/-R\d+$/i, '');
+  return String(agreementNumber || '').trim().replace(/[-_]?R\d+$/i, '');
 }
 
 async function nextRevisionInfo(lead, agreementNumber) {
-  const baseAgreementNumber = stripRevisionSuffix(agreementNumber);
+  let baseAgreementNumber = stripRevisionSuffix(agreementNumber);
+  if (!baseAgreementNumber.toUpperCase().startsWith('LN')) {
+    baseAgreementNumber = `LN${baseAgreementNumber.toUpperCase()}`;
+  }
   const rows = await query(`
     SELECT COALESCE(MAX(revision_number), 0) + 1 AS next_revision
     FROM lead_sanctions
     WHERE (lead_id = ? OR application_id = ?)
-      AND (agreement_number = ? OR agreement_number LIKE ?)
-  `, [...leadKeys(lead), baseAgreementNumber, `${baseAgreementNumber}-R%`]);
+      AND (agreement_number = ? OR agreement_number LIKE ? OR agreement_number LIKE ?)
+  `, [...leadKeys(lead), baseAgreementNumber, `${baseAgreementNumber}-R%`, `${baseAgreementNumber}R%`]);
   const revisionNumber = Number(rows[0]?.next_revision || 1);
 
   return {
     baseAgreementNumber,
     revisionNumber,
-    revisedAgreementNumber: `${baseAgreementNumber}-R${revisionNumber}`,
+    revisedAgreementNumber: `${baseAgreementNumber}R${revisionNumber}`,
   };
 }
 

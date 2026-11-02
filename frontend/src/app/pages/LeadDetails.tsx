@@ -3843,18 +3843,22 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     const activeTenantSlug = getTenantSlug();
     const matchedSlug = sourceSystem || activeTenantSlug;
     
-    let agreementPrefix = 'WQTMN';
+    let agreementPrefix = 'LNWQTMN';
     if (matchedSlug === 'geetpay') {
-      agreementPrefix = 'GEETPAY';
+      agreementPrefix = 'LNGEETPAY';
     } else if (matchedSlug === 'loaninwallet') {
       agreementPrefix = 'LNWLT';
     } else if (matchedSlug === 'salarywaves') {
-      agreementPrefix = 'SLWV';
+      agreementPrefix = 'LNSLWV';
     }
+
+    // Ensure standardized Loan ID format across entire CRM (starts with LN, no trailing dashes)
+    const rawAgr = latestSanction?.agreementNumber || `${agreementPrefix}${agreementSeed}`;
+    const standardAgr = (rawAgr.toUpperCase().startsWith('LN') ? rawAgr.toUpperCase() : `LN${rawAgr.toUpperCase()}`).replace(/-R(\d+)$/i, 'R$1');
 
     return {
       agreementDate,
-      agreementNumber: latestSanction?.agreementNumber || `${agreementPrefix}${agreementSeed}`,
+      agreementNumber: standardAgr,
       apr: String(Math.round(interestRate * 365)),
       accountNumber: lead.accountNumber || "",
       bankName: lead.bankName || "",

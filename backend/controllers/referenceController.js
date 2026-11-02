@@ -1,5 +1,6 @@
 const referenceModel = require('../models/referenceModel');
 const collectionModel = require('../models/collectionModel');
+const { createTenantCache } = require('../utils/tenantCache');
 const { success } = require('../utils/http');
 const { normalizeAadhaarResponse } = require('../services/aadhaarService');
 
@@ -100,14 +101,11 @@ async function listTeam(req, res) {
   return success(res, rows);
 }
 
-let collectionsListCache = {
-  timestamp: 0,
-  data: null,
-};
 const COLLECTIONS_CACHE_TTL_MS = 5 * 1000; // 5 seconds
+const collectionsListCache = createTenantCache(COLLECTIONS_CACHE_TTL_MS);
 
 function invalidateCollectionsCache() {
-  collectionsListCache.data = null;
+  collectionsListCache.clear();
   if (typeof collectionModel.invalidateSummaryCache === 'function') {
     collectionModel.invalidateSummaryCache();
   }
@@ -118,26 +116,30 @@ async function listCollections(req, res) {
   const page = parseInt(req.query?.page || req.body?.page || 0, 10);
   const limit = parseInt(req.query?.limit || req.body?.limit || 0, 10);
 
-  if (!force && collectionsListCache.data && (Date.now() - collectionsListCache.timestamp < COLLECTIONS_CACHE_TTL_MS)) {
-    if (page > 0 && limit > 0) {
-      const total = collectionsListCache.data.length;
-      const offset = (page - 1) * limit;
-      const paginatedRows = collectionsListCache.data.slice(offset, offset + limit);
-      return res.json({
-        success: true,
-        data: paginatedRows,
-        pagination: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-        },
-      });
-    }
-    return success(res, collectionsListCache.data);
+  const cachedRows = !force && collectionsListCache.get();
+  const uniqueMappedRows = cachedRows || await collectionsListCache.getOrLoad('data', loadCollectionRows, { force, cacheEmpty: false });
+  // Preserve the legacy empty-response contract, including for paginated reads.
+  if (uniqueMappedRows.length === 0) return success(res, []);
+  if (page > 0 && limit > 0) {
+    const total = uniqueMappedRows.length;
+    const offset = (page - 1) * limit;
+    const paginatedRows = uniqueMappedRows.slice(offset, offset + limit);
+    return res.json({
+      success: true,
+      data: paginatedRows,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   }
 
+  return success(res, uniqueMappedRows);
+}
 
+async function loadCollectionRows() {
   let cases = [];
   let hasLastLoginAt = true;
   try {
@@ -178,7 +180,7 @@ async function listCollections(req, res) {
   }
 
   if (!cases || cases.length === 0) {
-    return success(res, []);
+    return [];
   }
 
   const loanIdsSet = new Set();
@@ -251,6 +253,7 @@ async function listCollections(req, res) {
   const [
     customersRows,
     appsRows,
+    sanctionsRows,
     aadhaarsRows,
     cibilsRows,
   ] = await Promise.all([
@@ -261,6 +264,11 @@ async function listCollections(req, res) {
 
     referenceModel.all(`SELECT * FROM loan_applications ORDER BY id DESC LIMIT 10000`).catch((err) => {
       console.error('[referenceController] loan_applications query error:', err.message);
+      return [];
+    }),
+
+    referenceModel.all(`SELECT * FROM lead_sanctions ORDER BY id DESC LIMIT 10000`).catch((err) => {
+      console.error('[referenceController] lead_sanctions query error:', err.message);
       return [];
     }),
 
@@ -328,6 +336,30 @@ async function listCollections(req, res) {
       } else {
         repaymentsByNormLoan.set(n, { ...r, todayPaid: Number(r.todayPaid || 0) });
       }
+    }
+  }
+
+  const sanctionsByAgreement = new Map();
+  const sanctionsByNorm = new Map();
+  const sanctionsByAppId = new Map();
+  const sanctionsByLeadId = new Map();
+  for (const s of (sanctionsRows || [])) {
+    const rawAgr = String(s.agreement_number || '').trim();
+    if (rawAgr) {
+      if (!sanctionsByAgreement.has(rawAgr)) sanctionsByAgreement.set(rawAgr, s);
+      if (!sanctionsByAgreement.has(rawAgr.toUpperCase())) sanctionsByAgreement.set(rawAgr.toUpperCase(), s);
+      const n = normLoan(rawAgr);
+      if (n && !sanctionsByNorm.has(n)) sanctionsByNorm.set(n, s);
+    }
+    const appId = String(s.application_id || '').trim();
+    if (appId) {
+      if (!sanctionsByAppId.has(appId)) sanctionsByAppId.set(appId, s);
+      if (!sanctionsByAppId.has(appId.toUpperCase())) sanctionsByAppId.set(appId.toUpperCase(), s);
+    }
+    const leadId = String(s.lead_id || '').trim();
+    if (leadId) {
+      if (!sanctionsByLeadId.has(leadId)) sanctionsByLeadId.set(leadId, s);
+      if (!sanctionsByLeadId.has(leadId.toUpperCase())) sanctionsByLeadId.set(leadId.toUpperCase(), s);
     }
   }
 
@@ -498,11 +530,36 @@ async function listCollections(req, res) {
     const loanPaid = Number(loan?.amount_paid || 0);
     const repPaid = Number(rep?.totalPaid || 0);
     const amountPaid = loanPaid > 0 ? loanPaid : (repPaid > 0 ? repPaid : 0);
-    const totalAmount = Number(loan?.total_amount || cc.totalDue || 0);
+    const sanction = sanctionsByAgreement.get(rawLoanId)
+      || sanctionsByAgreement.get(rawLoanId.toUpperCase())
+      || sanctionsByNorm.get(nLoan)
+      || (targetAppId && sanctionsByAppId.get(String(targetAppId).trim()))
+      || (targetLeadId && sanctionsByLeadId.get(String(targetLeadId).trim()))
+      || (la && la.application_id && sanctionsByAppId.get(String(la.application_id).trim()))
+      || (la && la.id && sanctionsByLeadId.get(String(la.id)))
+      || null;
+
+    const totalAmount = Number(loan?.total_amount || cc.totalDue || sanction?.repayment_amount || 0);
     const overdueInterest = Math.max(0, (loan ? (Number(loan.balance || 0) + Number(loan.amount_paid || 0) - Number(loan.total_amount || 0)) : 0));
-    const principal = Number(loan?.principal || payment?.amount || 0);
-    const disbursementAmount = Number(payment?.amount || loan?.principal || 0);
-    const disbursementDate = payment?.disbursed_at || loan?.start_date || null;
+    const sanctionPrincipal = Number(sanction?.principal_amount || 0);
+    const principal = Number(loan?.principal || sanctionPrincipal || (payment?.amount ? Math.round(Number(payment.amount) / 0.882) : 0));
+    const sanctionNet = Number(sanction?.disbursed_amount || 0);
+
+    // Proper Net Disbursement Logic:
+    // 1. If payment record exists in accounting payments, use exact bank payment amount.
+    // 2. If payment record is missing, use sanction's net disbursed_amount.
+    // 3. If sanction is missing, calculate standard net payout: Principal - (Processing Fee + GST) [approx 88.2%].
+    // NEVER fall back to gross principal!
+    let netDisbursed = 0;
+    if (payment && Number(payment.amount) > 0) {
+      netDisbursed = Number(payment.amount);
+    } else if (sanctionNet > 0) {
+      netDisbursed = sanctionNet;
+    } else if (principal > 0) {
+      netDisbursed = Math.round(principal * 0.882);
+    }
+    const disbursementAmount = netDisbursed;
+    const disbursementDate = payment?.disbursed_at || loan?.start_date || sanction?.disbursement_date || null;
 
     const dobFormatted = formatDob(aadhaar?.dob, la?.dob);
     const address = (aadhaar?.address ? String(aadhaar.address).trim() : '')
@@ -558,6 +615,7 @@ async function listCollections(req, res) {
       principal,
       disbursementAmount,
       disbursementDate,
+      repaymentAmount: totalAmount,
       baseRepayment: totalAmount,
       amountPaid,
       todayPaid: Number(rep?.todayPaid || 0),
@@ -635,29 +693,7 @@ async function listCollections(req, res) {
     const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
     return dateA - dateB;
   });
-
-  collectionsListCache = {
-    timestamp: Date.now(),
-    data: uniqueMappedRows,
-  };
-
-  if (page > 0 && limit > 0) {
-    const total = uniqueMappedRows.length;
-    const offset = (page - 1) * limit;
-    const paginatedRows = uniqueMappedRows.slice(offset, offset + limit);
-    return res.json({
-      success: true,
-      data: paginatedRows,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  }
-
-  return success(res, uniqueMappedRows);
+  return uniqueMappedRows;
 }
 
 async function listCommission(req, res) {

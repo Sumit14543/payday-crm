@@ -1,9 +1,9 @@
 const { query } = require('../config/db');
 const { likeParams } = require('../utils/strings');
 
-// 30-second In-Memory Cache for loans list queries
-const loansListCache = new Map();
+const { createTenantCache } = require('../utils/tenantCache');
 const LOANS_CACHE_TTL_MS = 30 * 1000;
+const loansListCache = createTenantCache(LOANS_CACHE_TTL_MS);
 
 function invalidateLoansCache() {
   loansListCache.clear();
@@ -176,34 +176,43 @@ function getLocalDate(dStr) {
 async function getLoanStats() {
   try {
     const rows = await query(`
-      SELECT
-        COUNT(*) AS allLoans,
-        SUM(CASE WHEN (status = 'Active' OR status IS NULL) AND balance > 0 THEN 1 ELSE 0 END) AS activeLoans,
-        SUM(CASE WHEN amount_paid > 0 AND balance > 0 THEN 1 ELSE 0 END) AS partPaymentLoans,
-        SUM(CASE WHEN balance <= 0 THEN 1 ELSE 0 END) AS paidOffLoans,
-        SUM(CASE WHEN balance > 0 AND (due_date < CURDATE() OR LOWER(status) = 'overdue' OR LOWER(payment_status) = 'overdue') THEN 1 ELSE 0 END) AS overdueLoans,
-        COALESCE(SUM(balance), 0) AS totalOutstanding,
-        COALESCE(SUM(amount_paid), 0) AS totalCollected,
-        SUM(CASE WHEN DATE(COALESCE(start_date, created_at)) = CURDATE() THEN 1 ELSE 0 END) AS todayDisbursedCount,
-        COALESCE(SUM(CASE WHEN DATE(COALESCE(start_date, created_at)) = CURDATE() THEN principal ELSE 0 END), 0) AS todayDisbursedAmount,
-        SUM(CASE WHEN DATE_FORMAT(COALESCE(start_date, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN 1 ELSE 0 END) AS monthDisbursedCount,
-        COALESCE(SUM(CASE WHEN DATE_FORMAT(COALESCE(start_date, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN principal ELSE 0 END), 0) AS monthDisbursedAmount
-      FROM loans
-    `);
-    const s = rows[0] || {};
-    return {
-      allLoans: Number(s.allLoans || 0),
-      activeLoans: Number(s.activeLoans || 0),
-      partPaymentLoans: Number(s.partPaymentLoans || 0),
-      paidOffLoans: Number(s.paidOffLoans || 0),
-      overdueLoans: Number(s.overdueLoans || 0),
-      totalOutstanding: Number(s.totalOutstanding || 0),
-      totalCollected: Number(s.totalCollected || 0),
-      todayDisbursedCount: Number(s.todayDisbursedCount || 0),
-      todayDisbursedAmount: Number(s.todayDisbursedAmount || 0),
-      monthDisbursedCount: Number(s.monthDisbursedCount || 0),
-      monthDisbursedAmount: Number(s.monthDisbursedAmount || 0),
-    };
+      const [loanRows, disbRows] = await Promise.all([
+        query(`
+          SELECT
+            COUNT(*) AS allLoans,
+            SUM(CASE WHEN (status = 'Active' OR status IS NULL) AND balance > 0 THEN 1 ELSE 0 END) AS activeLoans,
+            SUM(CASE WHEN amount_paid > 0 AND balance > 0 THEN 1 ELSE 0 END) AS partPaymentLoans,
+            SUM(CASE WHEN balance <= 0 THEN 1 ELSE 0 END) AS paidOffLoans,
+            SUM(CASE WHEN balance > 0 AND (due_date < CURDATE() OR LOWER(status) = 'overdue' OR LOWER(payment_status) = 'overdue') THEN 1 ELSE 0 END) AS overdueLoans,
+            COALESCE(SUM(balance), 0) AS totalOutstanding,
+            COALESCE(SUM(amount_paid), 0) AS totalCollected
+          FROM loans
+        `),
+        query(`
+          SELECT
+            SUM(CASE WHEN DATE(disbursed_at) = CURDATE() THEN 1 ELSE 0 END) AS todayDisbursedCount,
+            COALESCE(SUM(CASE WHEN DATE(disbursed_at) = CURDATE() THEN amount ELSE 0 END), 0) AS todayDisbursedAmount,
+            SUM(CASE WHEN DATE_FORMAT(disbursed_at, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN 1 ELSE 0 END) AS monthDisbursedCount,
+            COALESCE(SUM(CASE WHEN DATE_FORMAT(disbursed_at, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN amount ELSE 0 END), 0) AS monthDisbursedAmount
+          FROM lead_accounting_payments
+          WHERE LOWER(status) = 'paid'
+        `)
+      ]);
+      const s = loanRows[0] || {};
+      const d = disbRows[0] || {};
+      return {
+        allLoans: Number(s.allLoans || 0),
+        activeLoans: Number(s.activeLoans || 0),
+        partPaymentLoans: Number(s.partPaymentLoans || 0),
+        paidOffLoans: Number(s.paidOffLoans || 0),
+        overdueLoans: Number(s.overdueLoans || 0),
+        totalOutstanding: Number(s.totalOutstanding || 0),
+        totalCollected: Number(s.totalCollected || 0),
+        todayDisbursedCount: Number(d.todayDisbursedCount || 0),
+        todayDisbursedAmount: Number(d.todayDisbursedAmount || 0),
+        monthDisbursedCount: Number(d.monthDisbursedCount || 0),
+        monthDisbursedAmount: Number(d.monthDisbursedAmount || 0),
+      };
   } catch (err) {
     console.error('[LoanModel] Error fetching loan stats:', err.message);
     return null;
@@ -830,7 +839,18 @@ async function enrichLoansBatch(loans) {
     l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
     l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
     l.processing = adminFee;
-    l.disbursedAmount = Number(payment?.amount || sanction?.disbursed_amount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
+    // Standard Net Disbursement Calculation (Matches Accountant bank transfer exactly)
+    let netDisbursed = 0;
+    if (payment?.amount && Number(payment.amount) > 0) {
+      netDisbursed = Number(payment.amount);
+    } else if (sanction?.disbursed_amount && Number(sanction.disbursed_amount) > 0) {
+      netDisbursed = Number(sanction.disbursed_amount);
+    } else if (principal > totalAdminFee && totalAdminFee > 0) {
+      netDisbursed = principal - totalAdminFee;
+    } else if (principal > 0) {
+      netDisbursed = Math.round(principal * 0.882);
+    }
+    l.disbursedAmount = netDisbursed;
     l.loanRepayAmount = Number(sanction?.repayment_amount || l.totalAmount || Math.round(principal * 1.12));
     l.repaymentAmount = l.loanRepayAmount;
     l.tenure = Number(sanction?.tenure_days || 30);
@@ -866,8 +886,8 @@ async function enrichLoansBatch(loans) {
 
 async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all', fromDate = '', toDate = '', dateType = 'disbursed', sortBy = '', sortOrder = 'desc' } = {}) {
   const effectiveLimit = pageSize || limit;
-  const parsedPage = Math.max(Number(page) || 1, 1);
-  const parsedLimit = Math.min(Math.max(Number(effectiveLimit) || 50, 1), 5000);
+  const parsedPage = Math.min(Math.max(Math.trunc(Number(page)) || 1, 1), 1000000);
+  const parsedLimit = Math.min(Math.max(Math.trunc(Number(effectiveLimit)) || 50, 1), 5000);
   const offset = (parsedPage - 1) * parsedLimit;
 
   const cleanFromDate = normalizeDateString(fromDate);
@@ -876,259 +896,257 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   const cleanSortBy = cleanStr(sortBy).toLowerCase();
   const cleanSortOrder = (cleanStr(sortOrder).toLowerCase() === 'asc') ? 'asc' : 'desc';
 
-  const cacheKey = `${search}:${status}:${dateFilter}:${disbursedFilter}:${cleanFromDate}:${cleanToDate}:${cleanDateType}:${cleanSortBy}:${cleanSortOrder}:${parsedPage}:${parsedLimit}`;
+  const cacheKey = JSON.stringify([search, status, dateFilter, disbursedFilter, cleanFromDate, cleanToDate, cleanDateType, cleanSortBy, cleanSortOrder, parsedPage, parsedLimit]);
   const cached = loansListCache.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp < LOANS_CACHE_TTL_MS)) {
-    return cached.data;
-  }
+  if (cached) return cached;
+  return loansListCache.getOrLoad(cacheKey, async () => {
 
-  const clauses = [];
-  const params = [];
+    const clauses = [];
+    const params = [];
 
-  if (search) {
-    clauses.push('(l.id LIKE ? OR c.name LIKE ? OR l.customer_id LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)');
-    params.push(...likeParams(search, 5));
-  }
+    if (search) {
+      clauses.push('(l.id LIKE ? OR c.name LIKE ? OR l.customer_id LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)');
+      params.push(...likeParams(search, 5));
+    }
 
-  if (status !== 'all') {
-    const sLower = status.toLowerCase();
-    if (sLower === 'active') {
-      clauses.push("((l.status = 'Active' OR l.status IS NULL) AND l.balance > 0)");
-    } else if (sLower === 'paid off') {
-      clauses.push('l.balance <= 0');
-    } else if (sLower === 'part payment' || sLower === 'partial') {
-      clauses.push('(l.amount_paid > 0 AND l.balance > 0)');
-    } else if (sLower === 'overdue') {
-      clauses.push("(l.balance > 0 AND (l.due_date < CURDATE() OR LOWER(l.status) = 'overdue' OR LOWER(l.payment_status) = 'overdue'))");
+    if (status !== 'all') {
+      const sLower = status.toLowerCase();
+      if (sLower === 'active') {
+        clauses.push("((l.status = 'Active' OR l.status IS NULL) AND l.balance > 0)");
+      } else if (sLower === 'paid off') {
+        clauses.push('l.balance <= 0');
+      } else if (sLower === 'part payment' || sLower === 'partial') {
+        clauses.push('(l.amount_paid > 0 AND l.balance > 0)');
+      } else if (sLower === 'overdue') {
+        clauses.push("(l.balance > 0 AND (l.due_date < CURDATE() OR LOWER(l.status) = 'overdue' OR LOWER(l.payment_status) = 'overdue'))");
+      } else {
+        clauses.push('l.status = ?');
+        params.push(status);
+      }
+    }
+
+    // 1. Custom explicit date range filters
+    if (cleanFromDate || cleanToDate) {
+      if (cleanDateType === 'due') {
+        if (cleanFromDate) {
+          clauses.push('l.due_date >= ?');
+          params.push(cleanFromDate);
+        }
+        if (cleanToDate) {
+          clauses.push('l.due_date <= ?');
+          params.push(cleanToDate);
+        }
+      } else if (cleanDateType === 'collected') {
+        if (cleanFromDate && cleanToDate) {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM loan_repayments lr
+            WHERE lr.loan_id = l.id
+              AND lr.status IN ('received', 'success', 'paid', 'settled')
+              AND DATE(lr.received_at) >= ? AND DATE(lr.received_at) <= ?
+          )`);
+          params.push(cleanFromDate, cleanToDate);
+        } else if (cleanFromDate) {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM loan_repayments lr
+            WHERE lr.loan_id = l.id
+              AND lr.status IN ('received', 'success', 'paid', 'settled')
+              AND DATE(lr.received_at) >= ?
+          )`);
+          params.push(cleanFromDate);
+        } else if (cleanToDate) {
+          clauses.push(`EXISTS (
+            SELECT 1 FROM loan_repayments lr
+            WHERE lr.loan_id = l.id
+              AND lr.status IN ('received', 'success', 'paid', 'settled')
+              AND DATE(lr.received_at) <= ?
+          )`);
+          params.push(cleanToDate);
+        }
+      } else if (cleanDateType === 'created') {
+        if (cleanFromDate) {
+          clauses.push('DATE(l.created_at) >= ?');
+          params.push(cleanFromDate);
+        }
+        if (cleanToDate) {
+          clauses.push('DATE(l.created_at) <= ?');
+          params.push(cleanToDate);
+        }
+      } else {
+        // Default: 'disbursed'
+        if (cleanFromDate && cleanToDate) {
+          clauses.push(`(
+            (DATE(COALESCE(l.start_date, l.created_at)) >= ? AND DATE(COALESCE(l.start_date, l.created_at)) <= ?)
+            OR EXISTS (
+              SELECT 1 FROM lead_accounting_payments lap
+              WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+                AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) >= ?
+                AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) <= ?
+            )
+          )`);
+          params.push(cleanFromDate, cleanToDate, cleanFromDate, cleanToDate);
+        } else if (cleanFromDate) {
+          clauses.push(`(
+            DATE(COALESCE(l.start_date, l.created_at)) >= ?
+            OR EXISTS (
+              SELECT 1 FROM lead_accounting_payments lap
+              WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+                AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) >= ?
+            )
+          )`);
+          params.push(cleanFromDate, cleanFromDate);
+        } else if (cleanToDate) {
+          clauses.push(`(
+            DATE(COALESCE(l.start_date, l.created_at)) <= ?
+            OR EXISTS (
+              SELECT 1 FROM lead_accounting_payments lap
+              WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+                AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) <= ?
+            )
+          )`);
+          params.push(cleanToDate, cleanToDate);
+        }
+      }
     } else {
-      clauses.push('l.status = ?');
-      params.push(status);
-    }
-  }
+      // 2. Preset filters when custom dates are not specified
+      if (dateFilter !== 'all') {
+        if (dateFilter === 'today') {
+          clauses.push('l.due_date = CURDATE()');
+        } else if (dateFilter === 'yesterday') {
+          clauses.push('l.due_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY)');
+        } else if (dateFilter === 'month') {
+          clauses.push("DATE_FORMAT(l.due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
+        } else if (dateFilter === 'week') {
+          clauses.push('YEARWEEK(l.due_date, 1) = YEARWEEK(CURDATE(), 1)');
+        } else if (dateFilter === 'overdue') {
+          clauses.push('l.due_date < CURDATE() AND l.balance > 0');
+        }
+      }
 
-  // 1. Custom explicit date range filters
-  if (cleanFromDate || cleanToDate) {
-    if (cleanDateType === 'due') {
-      if (cleanFromDate) {
-        clauses.push('l.due_date >= ?');
-        params.push(cleanFromDate);
-      }
-      if (cleanToDate) {
-        clauses.push('l.due_date <= ?');
-        params.push(cleanToDate);
-      }
-    } else if (cleanDateType === 'collected') {
-      if (cleanFromDate && cleanToDate) {
-        clauses.push(`EXISTS (
-          SELECT 1 FROM loan_repayments lr
-          WHERE lr.loan_id = l.id
-            AND lr.status IN ('received', 'success', 'paid', 'settled')
-            AND DATE(lr.received_at) >= ? AND DATE(lr.received_at) <= ?
-        )`);
-        params.push(cleanFromDate, cleanToDate);
-      } else if (cleanFromDate) {
-        clauses.push(`EXISTS (
-          SELECT 1 FROM loan_repayments lr
-          WHERE lr.loan_id = l.id
-            AND lr.status IN ('received', 'success', 'paid', 'settled')
-            AND DATE(lr.received_at) >= ?
-        )`);
-        params.push(cleanFromDate);
-      } else if (cleanToDate) {
-        clauses.push(`EXISTS (
-          SELECT 1 FROM loan_repayments lr
-          WHERE lr.loan_id = l.id
-            AND lr.status IN ('received', 'success', 'paid', 'settled')
-            AND DATE(lr.received_at) <= ?
-        )`);
-        params.push(cleanToDate);
-      }
-    } else if (cleanDateType === 'created') {
-      if (cleanFromDate) {
-        clauses.push('DATE(l.created_at) >= ?');
-        params.push(cleanFromDate);
-      }
-      if (cleanToDate) {
-        clauses.push('DATE(l.created_at) <= ?');
-        params.push(cleanToDate);
-      }
-    } else {
-      // Default: 'disbursed'
-      if (cleanFromDate && cleanToDate) {
-        clauses.push(`(
-          (DATE(COALESCE(l.start_date, l.created_at)) >= ? AND DATE(COALESCE(l.start_date, l.created_at)) <= ?)
-          OR EXISTS (
-            SELECT 1 FROM lead_accounting_payments lap
-            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
-              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) >= ?
-              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) <= ?
-          )
-        )`);
-        params.push(cleanFromDate, cleanToDate, cleanFromDate, cleanToDate);
-      } else if (cleanFromDate) {
-        clauses.push(`(
-          DATE(COALESCE(l.start_date, l.created_at)) >= ?
-          OR EXISTS (
-            SELECT 1 FROM lead_accounting_payments lap
-            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
-              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) >= ?
-          )
-        )`);
-        params.push(cleanFromDate, cleanFromDate);
-      } else if (cleanToDate) {
-        clauses.push(`(
-          DATE(COALESCE(l.start_date, l.created_at)) <= ?
-          OR EXISTS (
-            SELECT 1 FROM lead_accounting_payments lap
-            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
-              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) <= ?
-          )
-        )`);
-        params.push(cleanToDate, cleanToDate);
-      }
-    }
-  } else {
-    // 2. Preset filters when custom dates are not specified
-    if (dateFilter !== 'all') {
-      if (dateFilter === 'today') {
-        clauses.push('l.due_date = CURDATE()');
-      } else if (dateFilter === 'yesterday') {
-        clauses.push('l.due_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY)');
-      } else if (dateFilter === 'month') {
-        clauses.push("DATE_FORMAT(l.due_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')");
-      } else if (dateFilter === 'week') {
-        clauses.push('YEARWEEK(l.due_date, 1) = YEARWEEK(CURDATE(), 1)');
-      } else if (dateFilter === 'overdue') {
-        clauses.push('l.due_date < CURDATE() AND l.balance > 0');
+      if (disbursedFilter !== 'all') {
+        if (disbursedFilter === 'today') {
+          clauses.push(`(
+            DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()
+            OR EXISTS (
+              SELECT 1 FROM lead_accounting_payments lap
+              WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+                AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) = CURDATE()
+            )
+          )`);
+        } else if (disbursedFilter === 'yesterday') {
+          clauses.push(`(
+            DATE(COALESCE(l.start_date, l.created_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+            OR EXISTS (
+              SELECT 1 FROM lead_accounting_payments lap
+              WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+                AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+            )
+          )`);
+        } else if (disbursedFilter === 'month') {
+          clauses.push(`(
+            DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
+            OR EXISTS (
+              SELECT 1 FROM lead_accounting_payments lap
+              WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
+                AND DATE_FORMAT(COALESCE(lap.disbursed_at, lap.paid_at)) = DATE_FORMAT(CURDATE(), '%Y-%m')
+            )
+          )`);
+        }
       }
     }
 
-    if (disbursedFilter !== 'all') {
-      if (disbursedFilter === 'today') {
-        clauses.push(`(
-          DATE(COALESCE(l.start_date, l.created_at)) = CURDATE()
-          OR EXISTS (
-            SELECT 1 FROM lead_accounting_payments lap
-            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
-              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) = CURDATE()
-          )
-        )`);
-      } else if (disbursedFilter === 'yesterday') {
-        clauses.push(`(
-          DATE(COALESCE(l.start_date, l.created_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-          OR EXISTS (
-            SELECT 1 FROM lead_accounting_payments lap
-            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
-              AND DATE(COALESCE(lap.disbursed_at, lap.paid_at)) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-          )
-        )`);
-      } else if (disbursedFilter === 'month') {
-        clauses.push(`(
-          DATE_FORMAT(COALESCE(l.start_date, l.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
-          OR EXISTS (
-            SELECT 1 FROM lead_accounting_payments lap
-            WHERE (lap.loan_id = l.id OR lap.lead_id = l.customer_id)
-              AND DATE_FORMAT(COALESCE(lap.disbursed_at, lap.paid_at)) = DATE_FORMAT(CURDATE(), '%Y-%m')
-          )
-        )`);
+    const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    // 1. Ultra-fast count and stats queries in parallel
+    const countSql = `
+      SELECT COUNT(*) AS total
+      FROM loans l
+      LEFT JOIN customers c ON c.id = l.customer_id
+      ${whereClause}
+    `;
+
+    const [countRows, stats] = await Promise.all([
+      query(countSql, params),
+      getLoanStats(),
+    ]);
+    const total = Number(countRows?.[0]?.total || 0);
+
+    // 2. Dynamic sorting (default: due_date ASC for collection, or start_date DESC)
+    let orderByClause = 'ORDER BY COALESCE(l.start_date, l.created_at) DESC, l.id DESC';
+    const sqlSortDir = cleanSortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    if (sortBy) {
+      const s = cleanSortBy;
+      if (s === 'duedate' || s === 'repaymentdate' || s === 'repaydate' || s === 'due_date') {
+        orderByClause = `ORDER BY (l.due_date IS NULL), l.due_date ${sqlSortDir}, l.id ${sqlSortDir}`;
+      } else if (s === 'disburseddate' || s === 'startdate' || s === 'start_date' || s === 'disbursed') {
+        orderByClause = `ORDER BY (COALESCE(l.start_date, l.created_at) IS NULL), COALESCE(l.start_date, l.created_at) ${sqlSortDir}, l.id ${sqlSortDir}`;
+      } else if (s === 'loanid' || s === 'id' || s === 'loanno') {
+        orderByClause = `ORDER BY l.id ${sqlSortDir}`;
+      } else if (s === 'customername' || s === 'name' || s === 'customer') {
+        orderByClause = `ORDER BY c.name ${sqlSortDir}, l.id ${sqlSortDir}`;
+      } else if (s === 'principal' || s === 'loanamount' || s === 'amount') {
+        orderByClause = `ORDER BY l.principal ${sqlSortDir}, l.id ${sqlSortDir}`;
+      } else if (s === 'repaymentamount' || s === 'totalamount' || s === 'loanrepayamount') {
+        orderByClause = `ORDER BY l.total_amount ${sqlSortDir}, l.id ${sqlSortDir}`;
+      } else if (s === 'createdat' || s === 'created_at') {
+        orderByClause = `ORDER BY l.created_at ${sqlSortDir}, l.id ${sqlSortDir}`;
       }
     }
-  }
 
-  const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    // 3. Ultra-fast base query without any scalar or joined correlated subqueries
+    const queryParams = [...params, parsedLimit, offset];
+    const loans = await query(`
+      SELECT
+        l.id,
+        l.customer_id AS customerId,
+        l.principal,
+        l.interest_rate AS interestRate,
+        l.total_amount AS totalAmount,
+        l.amount_paid AS amountPaid,
+        l.balance,
+        DATE_FORMAT(l.start_date, '%Y-%m-%d') AS startDate,
+        DATE_FORMAT(l.due_date, '%Y-%m-%d') AS dueDate,
+        l.status,
+        l.payment_status AS paymentStatus,
+        DATE_FORMAT(l.next_payment_date, '%Y-%m-%d') AS nextPaymentDate,
+        l.next_payment_amount AS nextPaymentAmount,
+        DATE_FORMAT(l.created_at, '%Y-%m-%d') AS createdAt,
+        DATE_FORMAT(l.updated_at, '%Y-%m-%d') AS updatedAt,
+        c.name AS customerName,
+        c.name AS customer,
+        c.email AS customerEmail,
+        c.phone AS customerPhone,
+        c.address AS customerAddress,
+        c.monthly_income AS customerMonthlyIncome,
+        c.total_loans AS customerTotalLoans
+      FROM loans l
+      LEFT JOIN customers c ON c.id = l.customer_id
+      ${whereClause}
+      ${orderByClause}
+      LIMIT ? OFFSET ?
+    `, queryParams);
 
-  // 1. Ultra-fast count and stats queries in parallel
-  const countSql = `
-    SELECT COUNT(*) AS total
-    FROM loans l
-    LEFT JOIN customers c ON c.id = l.customer_id
-    ${whereClause}
-  `;
-
-  const [countRows, stats] = await Promise.all([
-    query(countSql, params),
-    getLoanStats(),
-  ]);
-  const total = Number(countRows?.[0]?.total || 0);
-
-  // 2. Dynamic sorting (default: due_date ASC for collection, or start_date DESC)
-  let orderByClause = 'ORDER BY COALESCE(l.start_date, l.created_at) DESC, l.id DESC';
-  const sqlSortDir = cleanSortOrder === 'asc' ? 'ASC' : 'DESC';
-
-  if (sortBy) {
-    const s = cleanSortBy;
-    if (s === 'duedate' || s === 'repaymentdate' || s === 'repaydate' || s === 'due_date') {
-      orderByClause = `ORDER BY (l.due_date IS NULL), l.due_date ${sqlSortDir}, l.id ${sqlSortDir}`;
-    } else if (s === 'disburseddate' || s === 'startdate' || s === 'start_date' || s === 'disbursed') {
-      orderByClause = `ORDER BY (COALESCE(l.start_date, l.created_at) IS NULL), COALESCE(l.start_date, l.created_at) ${sqlSortDir}, l.id ${sqlSortDir}`;
-    } else if (s === 'loanid' || s === 'id' || s === 'loanno') {
-      orderByClause = `ORDER BY l.id ${sqlSortDir}`;
-    } else if (s === 'customername' || s === 'name' || s === 'customer') {
-      orderByClause = `ORDER BY c.name ${sqlSortDir}, l.id ${sqlSortDir}`;
-    } else if (s === 'principal' || s === 'loanamount' || s === 'amount') {
-      orderByClause = `ORDER BY l.principal ${sqlSortDir}, l.id ${sqlSortDir}`;
-    } else if (s === 'repaymentamount' || s === 'totalamount' || s === 'loanrepayamount') {
-      orderByClause = `ORDER BY l.total_amount ${sqlSortDir}, l.id ${sqlSortDir}`;
-    } else if (s === 'createdat' || s === 'created_at') {
-      orderByClause = `ORDER BY l.created_at ${sqlSortDir}, l.id ${sqlSortDir}`;
+    if (!loans || loans.length === 0) {
+      const emptyResult = [];
+      emptyResult.loans = [];
+      emptyResult.total = total;
+      emptyResult.page = parsedPage;
+      emptyResult.limit = parsedLimit;
+      emptyResult.totalPages = Math.ceil(total / parsedLimit);
+      emptyResult.stats = stats;
+      return emptyResult;
     }
-  }
 
-  // 3. Ultra-fast base query without any scalar or joined correlated subqueries
-  const queryParams = [...params, parsedLimit, offset];
-  const loans = await query(`
-    SELECT
-      l.id,
-      l.customer_id AS customerId,
-      l.principal,
-      l.interest_rate AS interestRate,
-      l.total_amount AS totalAmount,
-      l.amount_paid AS amountPaid,
-      l.balance,
-      DATE_FORMAT(l.start_date, '%Y-%m-%d') AS startDate,
-      DATE_FORMAT(l.due_date, '%Y-%m-%d') AS dueDate,
-      l.status,
-      l.payment_status AS paymentStatus,
-      DATE_FORMAT(l.next_payment_date, '%Y-%m-%d') AS nextPaymentDate,
-      l.next_payment_amount AS nextPaymentAmount,
-      DATE_FORMAT(l.created_at, '%Y-%m-%d') AS createdAt,
-      DATE_FORMAT(l.updated_at, '%Y-%m-%d') AS updatedAt,
-      c.name AS customerName,
-      c.name AS customer,
-      c.email AS customerEmail,
-      c.phone AS customerPhone,
-      c.address AS customerAddress,
-      c.monthly_income AS customerMonthlyIncome,
-      c.total_loans AS customerTotalLoans
-    FROM loans l
-    LEFT JOIN customers c ON c.id = l.customer_id
-    ${whereClause}
-    ${orderByClause}
-    LIMIT ? OFFSET ?
-  `, queryParams);
+    // 3. Fast parallel batch enrichment for ONLY the current page
+    await enrichLoansBatch(loans);
 
-  if (!loans || loans.length === 0) {
-    const emptyResult = [];
-    emptyResult.loans = [];
-    emptyResult.total = total;
-    emptyResult.page = parsedPage;
-    emptyResult.limit = parsedLimit;
-    emptyResult.totalPages = Math.ceil(total / parsedLimit);
-    emptyResult.stats = stats;
-    return emptyResult;
-  }
-
-  // 3. Fast parallel batch enrichment for ONLY the current page
-  await enrichLoansBatch(loans);
-
-  loans.total = total;
-  loans.page = parsedPage;
-  loans.limit = parsedLimit;
-  loans.totalPages = Math.ceil(total / parsedLimit);
-  loans.stats = stats;
-
-  loansListCache.set(cacheKey, { data: loans, timestamp: Date.now() });
-  return loans;
+    loans.total = total;
+    loans.page = parsedPage;
+    loans.limit = parsedLimit;
+    loans.totalPages = Math.ceil(total / parsedLimit);
+    loans.stats = stats;
+    return loans;
+  }, { cacheEmpty: false });
 }
 
 async function findById(id) {

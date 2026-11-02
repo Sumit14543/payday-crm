@@ -1,3 +1,4 @@
+import { PartialDataNotice } from "../../components/PartialDataNotice";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams, useOutletContext } from "react-router-dom";
 import { Activity, AlertTriangle, Banknote, Briefcase, Calendar, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, DollarSign, Download, FileSpreadsheet, FileText, IndianRupee, Phone, Search, Send, ShieldAlert, ShieldCheck, UserPlus, Users, Printer, RefreshCw, Repeat } from "lucide-react";
@@ -1548,6 +1549,7 @@ export function Reports() {
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+      <PartialDataNotice rows={leads} />
       <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Telecaller Reports</h2>
@@ -2062,7 +2064,7 @@ function SingleReportView({
       }
       case "disbursement-report": {
         const totalDisbursed = pTransfers.reduce((sum, t) => sum + Number(t.disbursementAmount || 0), 0);
-        const totalRepay = pTransfers.reduce((sum, t) => sum + Number(t.repaymentAmount || 0), 0);
+        const totalRepay = pTransfers.reduce((sum, t) => sum + Number(t.repaymentAmount || (t as any).baseRepayment || (t as any).totalDue || 0), 0);
         return [
           { label: "Disbursed Count", value: String(pTransfers.length), note: "Loans disbursed in period", color: "blue", icon: "FileText" },
           { label: "Total Disbursed", value: formatCurrency(totalDisbursed), note: "Funded volume", color: "emerald", icon: "Banknote" },
@@ -2420,7 +2422,7 @@ function SingleReportView({
           loanId: row.loanId,
           sanctionAmount: formatCurrency(row.principal || row.sanctionAmount || row.loanAmount || row.disbursementAmount || 0),
           disbursed: formatCurrency(row.disbursementAmount),
-          repayment: formatCurrency(row.repaymentAmount || row.totalDue),
+          repayment: formatCurrency(row.repaymentAmount || (row as any).baseRepayment || row.totalDue),
           disbursedOn: formatDate(row.disbursedAt || row.disbursementDate),
           dueDate: formatDate(row.dueDate),
         }));
