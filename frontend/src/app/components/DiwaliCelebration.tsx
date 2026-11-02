@@ -52,10 +52,10 @@ export function DiwaliCelebration() {
       }
     }, 3200);
 
-    // Auto-dismiss after 5 seconds of celebration after bloom (total 6.35s)
+    // Auto-dismiss after 4 seconds of celebration after bloom (total 5.25s)
     autoCloseTimerRef.current = window.setTimeout(() => {
       closeCelebration();
-    }, 6350);
+    }, 5250);
   };
 
   useEffect(() => {
@@ -292,9 +292,9 @@ export function DiwaliCelebration() {
             isFadingOut ? "animate-diwali-fadeout" : ""
           }`}
           style={{
-            background: "radial-gradient(circle at 50% 45%, rgba(6, 3, 14, 0.94) 0%, rgba(2, 1, 6, 0.98) 100%)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)"
+            background: "radial-gradient(circle at 50% 45%, rgba(10, 6, 20, 0.82) 0%, rgba(5, 3, 12, 0.88) 100%)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)"
           }}
         >
           {/* Close button top right */}
@@ -411,13 +411,7 @@ export function DiwaliCelebration() {
             {/* Ambient Warm Backlight Glow */}
             <div className="absolute -bottom-10 w-96 h-48 bg-gradient-to-t from-yellow-500/25 via-amber-500/15 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-            {/* 1. "W I S H I N G   Y O U   A" - Highly Prominent, Luminous Gold */}
-            <div
-              className="text-[13px] sm:text-[15px] font-bold tracking-[0.42em] uppercase mb-4 sm:mb-5 text-[#fef08a] px-5 py-1.5 rounded-full bg-black/60 border border-amber-400/40 backdrop-blur-sm shadow-[0_2px_14px_rgba(0,0,0,0.9)]"
-              style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
-            >
-              ✦ &nbsp; W I S H I N G &nbsp; Y O U &nbsp; A &nbsp; ✦
-            </div>
+            
 
             {/* 2. "Happy" in Flowing Royal Festive Calligraphy in Luminous Gold/Cream */}
             <h2
