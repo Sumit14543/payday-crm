@@ -598,12 +598,14 @@ async function enrichLoansBatch(loans) {
       compositeName = parts[2] || '';
     }
 
+    const isReloan = /R\d+$/i.test(rawId) || /R\d+$/i.test(strippedLn);
+
     // Match payment
     const payment = lapByLoan.get(rawId) ||
       lapByLoan.get(strippedLn) ||
       (compositeApp && lapByApp.get(compositeApp)) ||
       (compositeLead && lapByLead.get(compositeLead)) ||
-      (strippedCus && lapByLead.get(strippedCus)) ||
+      (!isReloan && strippedCus && lapByLead.get(strippedCus)) ||
       null;
 
     // Match sanction
@@ -838,10 +840,17 @@ async function enrichLoansBatch(loans) {
     l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
     l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
     l.processing = adminFee;
+    // Safety check: Avoid mismatched older payments on reloans
+    const isMismatchedPayment = payment && (
+      (isReloan && payment.loan_id && !String(payment.loan_id).toUpperCase().includes('R')) ||
+      (payment.disbursed_at && l.startDate && Math.abs(new Date(l.startDate) - new Date(payment.disbursed_at)) > 20 * 86400000)
+    );
+    const validPayment = isMismatchedPayment ? null : payment;
+
     // Standard Net Disbursement Calculation (Matches Accountant bank transfer exactly)
     let netDisbursed = 0;
-    if (payment?.amount && Number(payment.amount) > 0) {
-      netDisbursed = Number(payment.amount);
+    if (validPayment?.amount && Number(validPayment.amount) > 0) {
+      netDisbursed = Number(validPayment.amount);
     } else if (sanction?.disbursed_amount && Number(sanction.disbursed_amount) > 0) {
       netDisbursed = Number(sanction.disbursed_amount);
     } else if (principal > totalAdminFee && totalAdminFee > 0) {
@@ -856,7 +865,7 @@ async function enrichLoansBatch(loans) {
     l.roi = Number(sanction?.interest_rate || l.interestRate || 1.0);
 
     // Dates
-    l.disbursedDate = payment?.disbursed_at ? getLocalDate(payment.disbursed_at) : (payment?.paid_at ? getLocalDate(payment.paid_at) : (sanction?.agreement_date ? getLocalDate(sanction.agreement_date) : (l.startDate || null)));
+    l.disbursedDate = validPayment?.disbursed_at ? getLocalDate(validPayment.disbursed_at) : (validPayment?.paid_at ? getLocalDate(validPayment.paid_at) : (sanction?.agreement_date ? getLocalDate(sanction.agreement_date) : (l.startDate || null)));
     l.loanDisbursedDate = l.disbursedDate;
     l.repaymentDate = l.dueDate || null;
 

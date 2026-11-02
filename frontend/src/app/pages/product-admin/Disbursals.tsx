@@ -172,9 +172,7 @@ export function Disbursals() {
     const totalPrincipal = list.reduce((sum, l) => sum + Number(l.principal || 0), 0);
     const totalNetDisbursed = list.reduce((sum, l) => {
       const principal = Number(l.principal || 0);
-      const pFee = Number(l.processingFee || Math.round(principal * 0.10));
-      const gst = Number(l.gstAmount || Math.round(pFee * 0.18));
-      return sum + Math.max(0, principal - pFee - gst);
+      return sum + Number(l.disbursedAmount || (principal > 0 ? Math.round(principal * 0.882) : 0));
     }, 0);
     const totalOutstanding = list.reduce((sum, l) => sum + Number(l.balance !== undefined ? l.balance : l.principal), 0);
 
@@ -212,9 +210,7 @@ export function Disbursals() {
     const totalSanctioned = filteredList.reduce((sum, l) => sum + Number(l.principal || 0), 0);
     const totalNetDisbursed = filteredList.reduce((sum, l) => {
       const sanctioned = Number(l.principal || 0);
-      const fee = Number(l.processingFee || Math.round(sanctioned * 0.10));
-      const gst = Number(l.gstAmount || Math.round(fee * 0.18));
-      return sum + Math.max(0, sanctioned - fee - gst);
+      return sum + Number(l.disbursedAmount || (sanctioned > 0 ? Math.round(sanctioned * 0.882) : 0));
     }, 0);
     const totalOutstanding = filteredList.reduce((sum, l) => sum + Number(l.balance !== undefined ? l.balance : l.principal), 0);
 
@@ -238,7 +234,7 @@ export function Disbursals() {
       const sanctioned = Number(l.principal || 0);
       const fee = Number(l.processingFee || Math.round(sanctioned * 0.10));
       const gst = Number(l.gstAmount || Math.round(fee * 0.18));
-      const netPayout = Math.max(0, sanctioned - fee - gst);
+      const netPayout = Number(l.disbursedAmount || Math.max(0, sanctioned - fee - gst));
       const outstanding = Number(l.balance !== undefined ? l.balance : l.principal);
       
       let dateStr = "-";
