@@ -7,10 +7,10 @@ export function DiwaliCelebration() {
 
   useEffect(() => {
     // Automatically trigger on page load during Diwali season
-    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v9_2026");
+    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v10_2026");
     if (!hasSeen) {
       setIsOpen(true);
-      sessionStorage.setItem("diwali_wishes_artistic_v9_2026", "true");
+      sessionStorage.setItem("diwali_wishes_artistic_v10_2026", "true");
     }
   }, []);
 
@@ -246,7 +246,7 @@ export function DiwaliCelebration() {
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/35 backdrop-blur-[5px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/15 backdrop-blur-[1.5px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
         >
           {/* Fireworks & Rockets Canvas */}
           <canvas
@@ -315,14 +315,14 @@ export function DiwaliCelebration() {
           {/* MAIN CENTERPIECE: Rotating Mandala + User Image 2 Brush Text + Image 1 Vibrant Diya */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative z-30 flex flex-col items-center justify-center text-center max-w-xl px-4 pointer-events-auto"
+            className="relative z-30 flex flex-col items-center justify-center text-center w-full max-w-4xl px-2 pointer-events-auto overflow-visible"
           >
             {/* Rotating Lace Mandala Ring (From Image 2) */}
             <div
-              className="absolute -top-12 w-[420px] sm:w-[500px] h-[420px] sm:h-[500px] pointer-events-none opacity-25"
+              className="absolute -top-12 w-[420px] sm:w-[500px] h-[420px] sm:h-[500px] pointer-events-none opacity-65"
               style={{ animation: "spin 55s linear infinite" }}
             >
-              <svg viewBox="0 0 400 400" className="w-full h-full stroke-amber-200 fill-none" strokeWidth="1.2">
+              <svg viewBox="0 0 400 400" className="w-full h-full stroke-amber-400 fill-none" strokeWidth="1.5">
                 <g transform="translate(200,200)">
                   <circle cx="0" cy="0" r="175" strokeDasharray="3,6" />
                   <circle cx="0" cy="0" r="150" />
@@ -362,7 +362,7 @@ export function DiwaliCelebration() {
 
               {/* 'Diwali' in Saffron-Orange Indian Brush Calligraphy (Crisp, High Contrast, Natural Festive Tone) */}
               <h1
-                className="text-7xl sm:text-9xl md:text-[9.5rem] font-bold leading-[0.98] select-none tracking-normal"
+                className="text-6xl sm:text-8xl md:text-[8.5rem] font-bold leading-normal select-none tracking-normal whitespace-nowrap px-6 py-2 overflow-visible"
                 style={{
                   fontFamily: "'Kaushan Script', cursive",
                   color: "#ea580c",
