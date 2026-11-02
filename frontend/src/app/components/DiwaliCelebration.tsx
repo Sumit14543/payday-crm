@@ -6,11 +6,11 @@ export function DiwaliCelebration() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    // Automatically trigger once per session during Diwali season
-    const hasSeen = sessionStorage.getItem("diwali_wishes_clean_v5_2026");
+    // Automatically trigger on page load during Diwali season
+    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v6_2026");
     if (!hasSeen) {
       setIsOpen(true);
-      sessionStorage.setItem("diwali_wishes_clean_v5_2026", "true");
+      sessionStorage.setItem("diwali_wishes_artistic_v6_2026", "true");
     }
   }, []);
 
@@ -47,7 +47,6 @@ export function DiwaliCelebration() {
       alpha: number;
       decay: number;
       radius: number;
-      sparkle?: boolean;
     }
 
     interface StripedRocket {
@@ -66,28 +65,6 @@ export function DiwaliCelebration() {
 
     const rockets: StripedRocket[] = [];
     const particles: Particle[] = [];
-    const ambientEmbers: Particle[] = [];
-
-    // Floating celebratory sparkles around the center typography
-    const spawnEmber = () => {
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2 - 20;
-      for (let i = 0; i < 2; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = Math.random() * 240 + 40;
-        ambientEmbers.push({
-          x: cx + Math.cos(angle) * dist,
-          y: cy + Math.sin(angle) * (dist * 0.7),
-          vx: (Math.random() - 0.5) * 0.7,
-          vy: (Math.random() - 0.5) * 0.7 - 0.2, // gentle upward drift
-          color: colors[Math.floor(Math.random() * colors.length)],
-          alpha: 1,
-          decay: Math.random() * 0.007 + 0.005,
-          radius: Math.random() * 2.4 + 1.2,
-          sparkle: Math.random() > 0.4,
-        });
-      }
-    };
 
     const createStripedRocket = (customStartX?: number, customTargetY?: number) => {
       const sx = customStartX !== undefined ? customStartX : Math.random() * (canvas.width - 240) + 120;
@@ -130,7 +107,7 @@ export function DiwaliCelebration() {
       }
     };
 
-    // Initial rockets barrage
+    // Initial rockets
     for (let i = 0; i < 4; i++) {
       setTimeout(() => {
         if (isRunning) createStripedRocket();
@@ -138,27 +115,17 @@ export function DiwaliCelebration() {
     }
 
     let lastAutoLaunch = Date.now();
-    let lastSparkle = Date.now();
 
     const loop = () => {
-      // 100% transparent clear every frame - website stays crystal clear!
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const now = Date.now();
-
-      // Launch rockets from bottom
       if (now - lastAutoLaunch > 950 && rockets.length < 5) {
         createStripedRocket();
         lastAutoLaunch = now;
       }
 
-      // Continuous floating festive embers
-      if (now - lastSparkle > 75 && ambientEmbers.length < 130) {
-        spawnEmber();
-        lastSparkle = now;
-      }
-
-      // Update & Draw Striped Rockets
+      // Update & Draw Rockets
       for (let i = rockets.length - 1; i >= 0; i--) {
         const r = rockets[i];
         r.trail.push({ x: r.x, y: r.y });
@@ -216,12 +183,12 @@ export function DiwaliCelebration() {
         }
       }
 
-      // Update & Draw Explosion Particles
+      // Update & Draw Particles
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.vx *= 0.98;
         p.vy *= 0.98;
-        p.vy += 0.05; // gravity
+        p.vy += 0.05;
         p.x += p.vx;
         p.y += p.vy;
         p.alpha -= p.decay;
@@ -238,30 +205,6 @@ export function DiwaliCelebration() {
         ctx.fillStyle = p.color;
         ctx.shadowColor = p.color;
         ctx.shadowBlur = 9;
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Update & Draw Ambient Sparkler Embers
-      for (let i = ambientEmbers.length - 1; i >= 0; i--) {
-        const e = ambientEmbers[i];
-        e.x += e.vx;
-        e.y += e.vy;
-        e.alpha -= e.decay;
-
-        if (e.alpha <= 0) {
-          ambientEmbers.splice(i, 1);
-          continue;
-        }
-
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, e.alpha);
-        ctx.beginPath();
-        const r = e.sparkle && Math.random() > 0.4 ? e.radius * 1.4 : e.radius;
-        ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = e.color;
-        ctx.shadowColor = e.color;
-        ctx.shadowBlur = 8;
         ctx.fill();
         ctx.restore();
       }
@@ -294,11 +237,10 @@ export function DiwaliCelebration() {
       </button>
 
       {/* FULL SCREEN PURE TRANSPARENT FROSTED-GLASS OVERLAY */}
-      {/* NO orange card, NO buttons, Website is clearly visible through soft blur! */}
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/30 backdrop-blur-[5px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/35 backdrop-blur-[5px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
         >
           {/* Fireworks & Rockets Canvas */}
           <canvas
@@ -319,94 +261,207 @@ export function DiwaliCelebration() {
             <X className="h-5 w-5" />
           </button>
 
-          {/* LEFT SIDE DECORATED DIYA */}
-          <div className="absolute left-6 sm:left-14 top-1/2 -translate-y-1/2 hidden md:flex flex-col items-center pointer-events-none opacity-90 scale-110">
-            <div
-              className="h-7 w-4.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_22px_#f59e0b] animate-pulse"
-              style={{ animationDuration: "0.5s" }}
-            />
-            <div className="h-3.5 w-14 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow-[0_4px_16px_rgba(245,158,11,0.6)] -mt-0.5" />
+          {/* HANGING LAMPS ON THREADS (From User Image 2) */}
+          <div className="absolute top-0 inset-x-0 h-48 pointer-events-none z-20 flex justify-between px-6 sm:px-24">
+            {/* Lamp 1 */}
+            <div className="flex flex-col items-center" style={{ height: "130px" }}>
+              <div className="w-[1px] h-24 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center -mt-1">
+                <div className="h-3 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_10px_#f59e0b] animate-pulse" />
+                <div className="h-2 w-6 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+              </div>
+            </div>
+
+            {/* Lamp 2 */}
+            <div className="flex flex-col items-center hidden sm:flex" style={{ height: "170px" }}>
+              <div className="w-[1px] h-32 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center -mt-1">
+                <div className="h-3.5 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_12px_#f59e0b] animate-pulse" />
+                <div className="h-2.5 w-7 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+              </div>
+            </div>
+
+            {/* Lamp 3 */}
+            <div className="flex flex-col items-center hidden sm:flex" style={{ height: "155px" }}>
+              <div className="w-[1px] h-28 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center -mt-1">
+                <div className="h-3.5 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_12px_#f59e0b] animate-pulse" />
+                <div className="h-2.5 w-7 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+              </div>
+            </div>
+
+            {/* Lamp 4 */}
+            <div className="flex flex-col items-center" style={{ height: "125px" }}>
+              <div className="w-[1px] h-22 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center -mt-1">
+                <div className="h-3 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_10px_#f59e0b] animate-pulse" />
+                <div className="h-2 w-6 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+              </div>
+            </div>
           </div>
 
-          {/* RIGHT SIDE DECORATED DIYA */}
-          <div className="absolute right-6 sm:right-14 top-1/2 -translate-y-1/2 hidden md:flex flex-col items-center pointer-events-none opacity-90 scale-110">
-            <div
-              className="h-7 w-4.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-white shadow-[0_0_22px_#f59e0b] animate-pulse"
-              style={{ animationDuration: "0.6s" }}
-            />
-            <div className="h-3.5 w-14 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow-[0_4px_16px_rgba(245,158,11,0.6)] -mt-0.5" />
-          </div>
-
-          {/* CENTER: PURE FLOATING TYPOGRAPHY (Zero Card, Zero Orange Box, Zero Buttons) */}
+          {/* MAIN CENTERPIECE: Rotating Mandala + User Image 2 Brush Text + Image 1 Vibrant Diya */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative z-20 flex flex-col items-center justify-center text-center max-w-2xl px-6 pointer-events-auto"
+            className="relative z-30 flex flex-col items-center justify-center text-center max-w-xl px-4 pointer-events-auto"
           >
-            {/* Top Text: W I S H I N G   Y O U   A */}
-            <p className="text-xs sm:text-sm font-semibold tracking-[0.45em] uppercase text-amber-200 drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)] mb-1">
-              W I S H I N G &nbsp; Y O U &nbsp; A
-            </p>
-
-            {/* Serif 'Happy' */}
-            <h2
-              className="text-4xl sm:text-6xl font-normal tracking-wide text-[#fff9eb] drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] mt-1 mb-0"
-              style={{ fontFamily: "'Cinzel', 'Playfair Display', Georgia, serif" }}
+            {/* Rotating Lace Mandala Ring (From Image 2) */}
+            <div
+              className="absolute -top-10 w-[380px] sm:w-[460px] h-[380px] sm:h-[460px] pointer-events-none opacity-20"
+              style={{ animation: "spin 50s linear infinite" }}
             >
-              Happy
-            </h2>
+              <svg viewBox="0 0 400 400" className="w-full h-full stroke-amber-200 fill-none" strokeWidth="1.2">
+                <g transform="translate(200,200)">
+                  <circle cx="0" cy="0" r="170" strokeDasharray="3,6" />
+                  <circle cx="0" cy="0" r="150" />
+                  <circle cx="0" cy="0" r="130" strokeDasharray="2,4" />
+                  <circle cx="0" cy="0" r="105" />
+                  <circle cx="0" cy="0" r="80" />
+                  <g>
+                    {[0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5].map((deg) => (
+                      <path
+                        key={deg}
+                        d="M0,-80 Q-20,-115 0,-150 Q20,-115 0,-80"
+                        transform={`rotate(${deg})`}
+                      />
+                    ))}
+                  </g>
+                </g>
+              </svg>
+            </div>
 
-            {/* Glowing Golden Script 'Diwali' */}
-            <div className="relative my-0 py-1">
-              {/* Star sparkles */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <span className="absolute -top-3 -left-10 text-2xl text-yellow-300 animate-pulse drop-shadow-[0_0_8px_#fde047]">✦</span>
-                <span className="absolute -top-5 right-4 text-xl text-pink-400 animate-ping drop-shadow-[0_0_8px_#f43f5e]" style={{ animationDuration: "3s" }}>✨</span>
-                <span className="absolute -bottom-1 -left-8 text-base text-cyan-300 animate-pulse drop-shadow-[0_0_6px_#06b6d4]">✦</span>
-                <span className="absolute -bottom-2 right-8 text-2xl text-amber-400 animate-pulse drop-shadow-[0_0_10px_#f59e0b]">✨</span>
-                <span className="absolute top-1/2 -right-12 text-lg text-emerald-400 animate-ping drop-shadow-[0_0_6px_#10b981]" style={{ animationDuration: "2.5s" }}>✦</span>
-              </div>
+            {/* Ambient Warm Glow */}
+            <div className="absolute -bottom-6 w-80 h-36 bg-gradient-to-t from-yellow-500/25 via-amber-500/15 to-transparent rounded-full blur-3xl pointer-events-none" />
 
+            {/* TEXT SECTION (Following User Image 2 Reference) */}
+            <div className="relative z-30 mb-2">
+              {/* 'Happy' in Crimson/Red Brush Script (Image 2) */}
+              <h2
+                className="text-3xl sm:text-5xl font-bold tracking-wide text-[#dc2626] drop-shadow-[0_2px_4px_rgba(255,255,255,0.7)] drop-shadow-[0_4px_16px_rgba(220,38,38,0.8)] -mb-2 sm:-mb-3 select-none"
+                style={{ fontFamily: "'Caveat', 'Brush Script MT', cursive" }}
+              >
+                Happy
+              </h2>
+
+              {/* 'Diwali' in Saffron-Orange Textured Calligraphy Brush (Image 2) */}
               <h1
-                className="text-8xl sm:text-[9.5rem] md:text-[10.5rem] font-bold leading-[0.9] select-none text-[#ffc837]"
+                className="text-7xl sm:text-9xl md:text-[9.5rem] font-bold leading-none select-none tracking-normal"
                 style={{
-                  fontFamily: "'Great Vibes', 'Dancing Script', 'Brush Script MT', cursive",
-                  textShadow: `
-                    0 0 14px #ffe57f,
-                    0 0 28px #ffb300,
-                    0 0 45px #ff8f00,
-                    0 0 70px #ff6f00,
-                    0 4px 20px rgba(0, 0, 0, 0.95)
-                  `,
-                  transform: "rotate(-3deg)",
+                  fontFamily: "'Great Vibes', 'Dancing Script', cursive",
+                  color: "#f97316",
+                  background: "linear-gradient(180deg, #ea580c 0%, #f97316 45%, #fbbf24 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  filter: "drop-shadow(0 2px 2px #fff8e7) drop-shadow(0 0 16px rgba(249,115,22,0.9)) drop-shadow(0 0 35px rgba(234,88,12,0.6))",
                 }}
               >
                 Diwali
               </h1>
             </div>
 
-            {/* Center Glowing Diya with Horizontal Golden Rays */}
-            <div className="mt-4 sm:mt-6 flex items-center justify-center w-full max-w-xs sm:max-w-md gap-4">
-              <div className="h-[1.5px] flex-1 bg-gradient-to-r from-transparent via-amber-400 to-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
+            {/* THE ARTISTIC 3D DIYA (From Image 1 & Image 2) */}
+            <div className="relative z-30 flex flex-col items-center mt-1">
               
-              {/* Center Diya */}
-              <div className="relative flex flex-col items-center px-1">
-                <div
-                  className="h-5 w-3.5 rounded-full bg-gradient-to-t from-orange-600 via-amber-400 to-yellow-100 shadow-[0_0_18px_#f59e0b] animate-pulse"
-                  style={{ animationDuration: "0.5s" }}
-                />
-                <div className="h-3 w-10 rounded-b-full bg-gradient-to-b from-amber-600 to-amber-950 border border-amber-400/80 shadow-[0_3px_10px_rgba(245,158,11,0.6)] -mt-0.5" />
+              {/* Vibrant Flame: Coral Pink Base to Fiery Orange to Golden-White Tip (Image 1) */}
+              <div className="relative w-16 h-28 flex items-center justify-center -mb-7 z-20">
+                <svg
+                  className="w-full h-full"
+                  viewBox="0 0 50 90"
+                  style={{
+                    transformOrigin: "50% 95%",
+                    animation: "pulse 0.6s infinite alternate ease-in-out",
+                    filter: "drop-shadow(0 0 16px #f59e0b) drop-shadow(0 0 35px #ef4444)",
+                  }}
+                >
+                  <defs>
+                    <linearGradient id="vibrantFlameGradReact" x1="50%" y1="100%" x2="50%" y2="0%">
+                      <stop offset="0%" stopColor="#f43f5e" />
+                      <stop offset="35%" stopColor="#f97316" />
+                      <stop offset="75%" stopColor="#fde047" />
+                      <stop offset="100%" stopColor="#ffffff" />
+                    </linearGradient>
+                    <linearGradient id="innerFlameCoreReact" x1="50%" y1="100%" x2="50%" y2="0%">
+                      <stop offset="0%" stopColor="#fb7185" />
+                      <stop offset="50%" stopColor="#fef08a" />
+                      <stop offset="100%" stopColor="#ffffff" />
+                    </linearGradient>
+                  </defs>
+
+                  <path
+                    d="M25,2 C30,22 46,38 42,62 C38,76 28,84 25,84 C22,84 12,76 8,62 C4,38 20,22 25,2 Z"
+                    fill="url(#vibrantFlameGradReact)"
+                  />
+                  <path
+                    d="M25,22 C28,36 36,48 34,64 C32,74 27,78 25,78 C23,78 18,74 16,64 C14,48 22,36 25,22 Z"
+                    fill="url(#innerFlameCoreReact)"
+                    opacity="0.85"
+                  />
+                </svg>
               </div>
 
-              <div className="h-[1.5px] flex-1 bg-gradient-to-l from-transparent via-amber-400 to-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
+              {/* Diya Clay Bowl with Dual Petal Rim & Stars (Image 1 & 2) */}
+              <div className="relative z-10 scale-105 sm:scale-120">
+                <svg className="w-48 h-16" viewBox="0 0 160 55">
+                  <defs>
+                    <linearGradient id="diyaBowlGradReact" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#7c2d12" />
+                      <stop offset="50%" stopColor="#451a03" />
+                      <stop offset="100%" stopColor="#1e1026" />
+                    </linearGradient>
+                    <linearGradient id="oilPoolGradReact" x1="0%" y1="50%" x2="100%" y2="50%">
+                      <stop offset="0%" stopColor="#ea580c" />
+                      <stop offset="50%" stopColor="#f43f5e" />
+                      <stop offset="100%" stopColor="#ea580c" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Main Ceramic Bowl */}
+                  <path
+                    d="M12,18 Q80,58 148,18 Q80,24 12,18 Z"
+                    fill="url(#diyaBowlGradReact)"
+                    stroke="#f59e0b"
+                    strokeWidth="1.5"
+                  />
+                  
+                  {/* Glowing Oil Pool */}
+                  <path
+                    d="M18,18 Q80,38 142,18 Q80,20 18,18 Z"
+                    fill="url(#oilPoolGradReact)"
+                    opacity="0.9"
+                  />
+
+                  {/* Dual Petal Center Arch on Rim (From Image 2) */}
+                  <path
+                    d="M15,18 Q48,32 80,14 Q112,32 145,18"
+                    fill="none"
+                    stroke="#fde047"
+                    strokeWidth="1.8"
+                  />
+
+                  {/* Decorative Stars on Lamp Body (From Image 1) */}
+                  <g fill="#fde047" opacity="0.85">
+                    <circle cx="45" cy="34" r="1.5" />
+                    <circle cx="60" cy="38" r="1.8" />
+                    <circle cx="75" cy="40" r="1.5" />
+                    <circle cx="85" cy="40" r="1.5" />
+                    <circle cx="100" cy="38" r="1.8" />
+                    <circle cx="115" cy="34" r="1.5" />
+                  </g>
+                </svg>
+              </div>
+
+              {/* Ground Shadow & Light Pool */}
+              <div className="w-44 h-5 rounded-[100%] bg-black/70 blur-xs -mt-2" />
+              <div className="w-64 h-8 rounded-[100%] bg-amber-400/25 blur-md -mt-4 pointer-events-none" />
             </div>
 
-            {/* Bottom Subtitle: Crisp High-Contrast Legibility */}
-            <p className="mt-6 text-[15px] sm:text-[17px] font-medium text-[#fffbeb] tracking-wide drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)]">
+            {/* Clean Subtitle: 100% Readable */}
+            <p className="mt-5 text-[15px] sm:text-[17px] font-semibold text-[#fff8e7] tracking-wider drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)]">
               May your life shine with happiness and prosperity
             </p>
 
-            {/* Subtle dismiss instruction */}
-            <p className="mt-8 text-[11px] text-amber-200/50 tracking-widest uppercase drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
+            {/* Subtle Click to Dismiss Hint */}
+            <p className="text-[11px] text-amber-200/50 tracking-widest uppercase mt-3 drop-shadow">
               Click anywhere to continue
             </p>
           </div>
