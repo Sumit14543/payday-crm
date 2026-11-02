@@ -131,7 +131,10 @@ jobs:
             [ ! -f app.js ] || touch app.js || true
             [ ! -f passenger_wsgi.py ] || touch passenger_wsgi.py || true
             PORT=8081 nohup node index.js </dev/null > node_production.log 2>&1 &
-            sleep 3
+            sleep 5
+            echo "=== Node Production Log ==="
+            cat node_production.log || true
+            curl -I http://127.0.0.1:8081/api/health || true
 
             echo "Checking and keeping testing backend active on port 8083..."
             if ! (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -q ":8083 "; then
