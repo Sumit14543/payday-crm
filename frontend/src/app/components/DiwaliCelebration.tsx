@@ -227,7 +227,7 @@ export function DiwaliCelebration() {
           position: absolute;
           left: 50%;
           top: 45%;
-          width: min(94%, 860px);
+          width: min(96%, 920px);
           transform: translate(-50%, -50%);
           opacity: 0;
           animation: grandBloomEntrance 0.9s cubic-bezier(0.18, 0.89, 0.32, 1.2) forwards;
@@ -414,32 +414,36 @@ export function DiwaliCelebration() {
             
 
             {/* 2. "Happy" in Flowing Royal Festive Calligraphy in Luminous Gold/Cream */}
-            <h2
-              className="text-6xl sm:text-7xl md:text-8xl font-normal leading-[0.95] tracking-wide select-none -mb-3 sm:-mb-5"
-              style={{
-                fontFamily: "'Great Vibes', cursive",
-                background: "linear-gradient(180deg, #ffffff 0%, #fff6cc 40%, #fed7aa 80%, #f59e0b 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.95)) drop-shadow(0 0 16px rgba(251,191,36,0.85))",
-              }}
-            >
-              Happy
-            </h2>
+            <div className="w-full flex justify-center overflow-visible">
+              <h2
+                className="text-5xl sm:text-6xl md:text-7xl font-normal leading-normal tracking-wide select-none pt-4 pb-1 px-10 overflow-visible inline-block"
+                style={{
+                  fontFamily: "'Great Vibes', cursive",
+                  background: "linear-gradient(180deg, #ffffff 0%, #fff6cc 40%, #fed7aa 80%, #f59e0b 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.95)) drop-shadow(0 0 16px rgba(251,191,36,0.85))",
+                }}
+              >
+                Happy
+              </h2>
+            </div>
 
-            {/* 3. "Diwali" in Grand Saffron-Gold Majestic Script with 3D Depth & High Contrast */}
-            <h1
-              className="text-8xl sm:text-[9.5rem] md:text-[11rem] font-bold leading-[0.9] tracking-normal select-none whitespace-nowrap px-8"
-              style={{
-                fontFamily: "'Great Vibes', cursive",
-                background: "linear-gradient(180deg, #ffffff 0%, #fef08a 25%, #fbbf24 55%, #f59e0b 80%, #d97706 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.95)) drop-shadow(0 0 24px rgba(245,158,11,0.85)) drop-shadow(0 0 55px rgba(234,88,12,0.45))",
-              }}
-            >
-              Diwali
-            </h1>
+            {/* 3. "Diwali" in Grand Saffron-Gold Majestic Script with 3D Depth - Zero Clipping */}
+            <div className="w-full flex justify-center overflow-visible -mt-4 sm:-mt-6 mb-2">
+              <h1
+                className="text-7xl sm:text-8xl md:text-[8.5rem] font-bold leading-normal tracking-normal select-none whitespace-nowrap py-3 px-12 sm:px-20 overflow-visible inline-block"
+                style={{
+                  fontFamily: "'Great Vibes', cursive",
+                  background: "linear-gradient(180deg, #ffffff 0%, #fef08a 25%, #fbbf24 55%, #f59e0b 80%, #d97706 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.95)) drop-shadow(0 0 24px rgba(245,158,11,0.85)) drop-shadow(0 0 55px rgba(234,88,12,0.45))",
+                }}
+              >
+                Diwali
+              </h1>
+            </div>
 
             {/* 4. HANDCRAFTED 3D DIYA ON SLEEK GOLDEN PEDESTAL LINE */}
             <div className="relative flex items-center justify-center w-full max-w-lg mt-1 mb-2 z-20">
