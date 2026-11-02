@@ -77,7 +77,7 @@ export function Disbursals() {
   const fetchLoans = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiGet<Loan[]>("/loans");
+      const data = await apiGet<Loan[]>("/loans?page=1&limit=5000");
       setLoans(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch loans ledger:", err);
@@ -337,7 +337,6 @@ export function Disbursals() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6 pb-10 font-sans print:p-0 print:m-0"
     >
-      <PartialDataNotice rows={loans} />
       {/* Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5 print:hidden">
         <div>

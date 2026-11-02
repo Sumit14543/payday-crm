@@ -448,7 +448,6 @@ export function Pipeline() {
       transition={{ duration: 0.3 }}
       className="space-y-6 flex flex-col h-[calc(100vh-140px)]"
     >
-      <PartialDataNotice rows={leads} />
       {/* Page Title */}
       <div className="border-b border-slate-200/80 dark:border-slate-800/80 pb-4.5">
         <h1 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Kanban Pipeline</h1>

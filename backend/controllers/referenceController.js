@@ -530,20 +530,34 @@ async function loadCollectionRows() {
     const loanPaid = Number(loan?.amount_paid || 0);
     const repPaid = Number(rep?.totalPaid || 0);
     const amountPaid = loanPaid > 0 ? loanPaid : (repPaid > 0 ? repPaid : 0);
+    const isReloan = /R\d+$/i.test(rawLoanId);
+    const isMismatchedPayment = payment && (
+      (isReloan && payment.loan_id && !String(payment.loan_id).toUpperCase().includes('R')) ||
+      (payment.disbursed_at && loan?.start_date && Math.abs(new Date(loan.start_date) - new Date(payment.disbursed_at)) > 20 * 86400000)
+    );
+    const validPayment = isMismatchedPayment ? null : payment;
+
     const sanction = sanctionsByAgreement.get(rawLoanId)
       || sanctionsByAgreement.get(rawLoanId.toUpperCase())
       || sanctionsByNorm.get(nLoan)
-      || (targetAppId && sanctionsByAppId.get(String(targetAppId).trim()))
-      || (targetLeadId && sanctionsByLeadId.get(String(targetLeadId).trim()))
-      || (la && la.application_id && sanctionsByAppId.get(String(la.application_id).trim()))
-      || (la && la.id && sanctionsByLeadId.get(String(la.id)))
+      || (!isReloan && targetAppId && sanctionsByAppId.get(String(targetAppId).trim()))
+      || (!isReloan && targetLeadId && sanctionsByLeadId.get(String(targetLeadId).trim()))
+      || (!isReloan && la && la.application_id && sanctionsByAppId.get(String(la.application_id).trim()))
+      || (!isReloan && la && la.id && sanctionsByLeadId.get(String(la.id)))
       || null;
 
     const totalAmount = Number(loan?.total_amount || cc.totalDue || sanction?.repayment_amount || 0);
     const overdueInterest = Math.max(0, (loan ? (Number(loan.balance || 0) + Number(loan.amount_paid || 0) - Number(loan.total_amount || 0)) : 0));
     const sanctionPrincipal = Number(sanction?.principal_amount || 0);
-    const principal = Number(loan?.principal || sanctionPrincipal || (payment?.amount ? Math.round(Number(payment.amount) / 0.882) : 0));
-    const sanctionNet = Number(sanction?.disbursed_amount || 0);
+    const principal = Number(loan?.principal || sanctionPrincipal || (validPayment?.amount ? Math.round(Number(validPayment.amount) / 0.882) : 0));
+
+    const isValidSanction = sanction && (
+      !sanction.principal_amount ||
+      Number(sanction.principal_amount) === principal ||
+      (!isReloan && Math.abs(Number(sanction.principal_amount) - principal) < 100)
+    );
+    const validSanction = isValidSanction ? sanction : null;
+    const sanctionNet = Number(validSanction?.disbursed_amount || 0);
 
     // Proper Net Disbursement Logic:
     // 1. If payment record exists in accounting payments, use exact bank payment amount.
@@ -551,15 +565,15 @@ async function loadCollectionRows() {
     // 3. If sanction is missing, calculate standard net payout: Principal - (Processing Fee + GST) [approx 88.2%].
     // NEVER fall back to gross principal!
     let netDisbursed = 0;
-    if (payment && Number(payment.amount) > 0) {
-      netDisbursed = Number(payment.amount);
+    if (validPayment && Number(validPayment.amount) > 0) {
+      netDisbursed = Number(validPayment.amount);
     } else if (sanctionNet > 0) {
       netDisbursed = sanctionNet;
     } else if (principal > 0) {
       netDisbursed = Math.round(principal * 0.882);
     }
     const disbursementAmount = netDisbursed;
-    const disbursementDate = payment?.disbursed_at || loan?.start_date || sanction?.disbursement_date || null;
+    const disbursementDate = validPayment?.disbursed_at || loan?.start_date || (validSanction?.disbursement_date && (!loan?.start_date || Math.abs(new Date(validSanction.disbursement_date) - new Date(loan.start_date)) < 15 * 86400000) ? validSanction.disbursement_date : (loan?.start_date || null));
 
     const dobFormatted = formatDob(aadhaar?.dob, la?.dob);
     const address = (aadhaar?.address ? String(aadhaar.address).trim() : '')

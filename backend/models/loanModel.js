@@ -608,16 +608,29 @@ async function enrichLoansBatch(loans) {
       (!isReloan && strippedCus && lapByLead.get(strippedCus)) ||
       null;
 
+    const isMismatchedPayment = payment && (
+      (isReloan && payment.loan_id && !String(payment.loan_id).toUpperCase().includes('R')) ||
+      (payment.disbursed_at && l.startDate && Math.abs(new Date(l.startDate) - new Date(payment.disbursed_at)) > 20 * 86400000)
+    );
+    const validPayment = isMismatchedPayment ? null : payment;
+
     // Match sanction
     const sanction = lsByAgree.get(rawId) ||
       lsByAgree.get(strippedLn) ||
       (compositeApp && lsByApp.get(compositeApp)) ||
       (compositeLead && lsByLead.get(compositeLead)) ||
-      (payment?.lead_id && lsByLead.get(String(payment.lead_id))) ||
-      (payment?.application_id && lsByApp.get(String(payment.application_id))) ||
-      (strippedCus && lsByLead.get(strippedCus)) ||
-      (phone && lsByPhone.get(phone)) ||
+      (validPayment?.lead_id && lsByLead.get(String(validPayment.lead_id))) ||
+      (validPayment?.application_id && lsByApp.get(String(validPayment.application_id))) ||
+      (!isReloan && strippedCus && lsByLead.get(strippedCus)) ||
+      (!isReloan && phone && lsByPhone.get(phone)) ||
       null;
+
+    const isValidSanction = sanction && (
+      !sanction.principal_amount ||
+      Number(sanction.principal_amount) === principal ||
+      (!isReloan && Math.abs(Number(sanction.principal_amount) - principal) < 100)
+    );
+    const validSanction = isValidSanction ? sanction : null;
 
     // Match application
     const app = (sanction?.lead_id && laById.get(String(sanction.lead_id))) ||
@@ -830,8 +843,8 @@ async function enrichLoansBatch(loans) {
     l.repeatType = Number(l.customerTotalLoans || 0) > 1 ? 'Repeat' : 'Fresh';
 
     // Financial calculations
-    const adminFee = Number(sanction?.processing_fee || Math.round(principal * 0.10));
-    const adminFeeGst = Number(sanction?.gst_amount || Math.round(adminFee * 0.18));
+    const adminFee = Number(validSanction?.processing_fee || Math.round(principal * 0.10));
+    const adminFeeGst = Number(validSanction?.gst_amount || Math.round(adminFee * 0.18));
     const totalAdminFee = adminFee + adminFeeGst;
     l.adminFee = adminFee;
     l.adminFeeGst = adminFeeGst;
@@ -840,32 +853,26 @@ async function enrichLoansBatch(loans) {
     l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
     l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
     l.processing = adminFee;
-    // Safety check: Avoid mismatched older payments on reloans
-    const isMismatchedPayment = payment && (
-      (isReloan && payment.loan_id && !String(payment.loan_id).toUpperCase().includes('R')) ||
-      (payment.disbursed_at && l.startDate && Math.abs(new Date(l.startDate) - new Date(payment.disbursed_at)) > 20 * 86400000)
-    );
-    const validPayment = isMismatchedPayment ? null : payment;
 
     // Standard Net Disbursement Calculation (Matches Accountant bank transfer exactly)
     let netDisbursed = 0;
     if (validPayment?.amount && Number(validPayment.amount) > 0) {
       netDisbursed = Number(validPayment.amount);
-    } else if (sanction?.disbursed_amount && Number(sanction.disbursed_amount) > 0) {
-      netDisbursed = Number(sanction.disbursed_amount);
+    } else if (validSanction?.disbursed_amount && Number(validSanction.disbursed_amount) > 0) {
+      netDisbursed = Number(validSanction.disbursed_amount);
     } else if (principal > totalAdminFee && totalAdminFee > 0) {
       netDisbursed = principal - totalAdminFee;
     } else if (principal > 0) {
       netDisbursed = Math.round(principal * 0.882);
     }
     l.disbursedAmount = netDisbursed;
-    l.loanRepayAmount = Number(sanction?.repayment_amount || l.totalAmount || Math.round(principal * 1.12));
+    l.loanRepayAmount = Number(validSanction?.repayment_amount || l.totalAmount || Math.round(principal * 1.12));
     l.repaymentAmount = l.loanRepayAmount;
-    l.tenure = Number(sanction?.tenure_days || 30);
-    l.roi = Number(sanction?.interest_rate || l.interestRate || 1.0);
+    l.tenure = Number(validSanction?.tenure_days || 30);
+    l.roi = Number(validSanction?.interest_rate || l.interestRate || 1.0);
 
     // Dates
-    l.disbursedDate = validPayment?.disbursed_at ? getLocalDate(validPayment.disbursed_at) : (validPayment?.paid_at ? getLocalDate(validPayment.paid_at) : (sanction?.agreement_date ? getLocalDate(sanction.agreement_date) : (l.startDate || null)));
+    l.disbursedDate = validPayment?.disbursed_at ? getLocalDate(validPayment.disbursed_at) : (validPayment?.paid_at ? getLocalDate(validPayment.paid_at) : (validSanction?.agreement_date && (!l.startDate || Math.abs(new Date(validSanction.agreement_date) - new Date(l.startDate)) < 15 * 86400000) ? getLocalDate(validSanction.agreement_date) : (l.startDate || null)));
     l.loanDisbursedDate = l.disbursedDate;
     l.repaymentDate = l.dueDate || null;
 

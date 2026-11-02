@@ -603,6 +603,7 @@ export function Reports() {
   const [interestReports, setInterestReports] = useState<InterestReportsResponse | null>(null);
   const [collectionDeepReport, setCollectionDeepReport] = useState<CollectionDeepReport | null>(null);
   const [collections, setCollections] = useState<CollectionReportRow[]>([]);
+  const [loansList, setLoansList] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [reloansReportData, setReloansReportData] = useState<ReloanReportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -647,25 +648,33 @@ export function Reports() {
 
     const leadsRequest = (isAccountant || isCollection) && !isSuperadmin
       ? Promise.resolve<Lead[]>([])
-      : apiGet<Lead[]>(isTelecaller ? "/leads/telecaller-workbench" : "/leads", controller.signal);
+      : apiGet<Lead[]>(isTelecaller ? "/leads/telecaller-workbench" : "/leads", controller.signal).catch(() => [] as Lead[]);
     const slaRequest = isTelecaller || isSuperadmin
-      ? apiGet<SlaReport>(`/leads/telecaller-sla-report?period=${selectedPeriod}`, controller.signal)
+      ? apiGet<SlaReport>(`/leads/telecaller-sla-report?period=${selectedPeriod}`, controller.signal).catch(() => null)
       : Promise.resolve(null);
     const accountRequest = isAccountant || isSuperadmin
-      ? apiGet<AccountantReport>("/dashboard/accountant", controller.signal)
+      ? apiGet<AccountantReport>("/dashboard/accountant", controller.signal).catch(() => null)
       : Promise.resolve(null);
     const interestRequest = isAccountant || isSuperadmin
-      ? apiGet<InterestReportsResponse>("/accounts/reports/interest", controller.signal)
+      ? apiGet<InterestReportsResponse>("/accounts/reports/interest", controller.signal).catch(() => null)
       : Promise.resolve(null);
     const collectionRequest = isAccountant || isCollection || isSuperadmin
-      ? apiGet<CollectionReportRow[]>("/collections", controller.signal)
+      ? apiGet<CollectionReportRow[]>("/collections", controller.signal).catch(() => [] as CollectionReportRow[])
       : Promise.resolve<CollectionReportRow[]>([]);
     const collectionDeepRequest = isCollection || isSuperadmin
-      ? apiGet<CollectionDeepReport>("/collections/reports", controller.signal)
+      ? apiGet<CollectionDeepReport>("/collections/reports", controller.signal).catch(() => null)
       : Promise.resolve(null);
     const auditLogsRequest = isAccountant || currentRole === "credit-manager" || isSuperadmin
-      ? apiGet<AuditLog[]>("/dashboard/audit-logs", controller.signal)
+      ? apiGet<AuditLog[]>("/dashboard/audit-logs", controller.signal).catch(() => [] as AuditLog[])
       : Promise.resolve<AuditLog[]>([]);
+    const loansRequest = apiGet<any[]>("/loans?page=1&limit=5000", controller.signal)
+      .then((res: any) => {
+        if (Array.isArray(res)) return res;
+        if (res && Array.isArray(res.data)) return res.data;
+        if (res && Array.isArray(res.loans)) return res.loans;
+        return [];
+      })
+      .catch(() => []);
     const reloansRequest = apiGet<any>("/leads/reports/reloans", controller.signal)
       .then((res: any) => {
         if (Array.isArray(res)) return res as ReloanReportItem[];
@@ -674,8 +683,8 @@ export function Reports() {
       })
       .catch(() => [] as ReloanReportItem[]);
 
-    Promise.all([leadsRequest, slaRequest, accountRequest, interestRequest, collectionRequest, collectionDeepRequest, auditLogsRequest, reloansRequest])
-      .then(([leadRows, report, account, interest, collectionRows, collectionDeep, logs, reloansList]) => {
+    Promise.all([leadsRequest, slaRequest, accountRequest, interestRequest, collectionRequest, collectionDeepRequest, auditLogsRequest, loansRequest, reloansRequest])
+      .then(([leadRows, report, account, interest, collectionRows, collectionDeep, logs, loansData, reloansList]) => {
         const schemes = ["Payday Loan (Standard)", "Payday Loan (Express)", "Payday Loan (Flexi)", "Payday Loan (Premium)"];
         const activeIdx = schemes.indexOf(activeProduct);
         const filterList = (arr: any[]) => arr;
@@ -739,6 +748,7 @@ export function Reports() {
         setCollections(filteredCollections);
         setCollectionDeepReport(filteredCollectionDeep);
         setAuditLogs(filteredLogs);
+        setLoansList(loansData || []);
         setReloansReportData(reloansList || []);
       })
       .catch((error) => {
@@ -1549,7 +1559,6 @@ export function Reports() {
 
   return (
     <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-      <PartialDataNotice rows={leads} />
       <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Telecaller Reports</h2>
@@ -1975,11 +1984,11 @@ function SingleReportView({
       pCollections = collections.filter(c => filterByDate(c.disbursementDate || c.dueDate));
     }
 
-    let pTransfers = (accountantReport?.recentTransfers || []).filter(t => filterByDate(t.disbursedAt || t.dueDate));
+    let pTransfers = (loansList.length > 0 ? loansList : (accountantReport?.recentTransfers || [])).filter(t => filterByDate(t.disbursedDate || t.disbursedAt || t.startDate || t.dueDate));
     if (reportType === "due-report") {
       pTransfers = collections.filter(c => filterByDate(c.dueDate));
     } else if (reportType === "disbursement-report") {
-      pTransfers = collections.filter(c => filterByDate(c.disbursementDate));
+      pTransfers = (loansList.length > 0 ? loansList : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate));
     }
     const pInterest = (interestReports?.reports.accruedInterest || []).filter(i => filterByDate(i.dueDate));
     const pCustomerInterest = (interestReports?.reports.customerMonthWise || []).filter(c => {
@@ -2329,11 +2338,11 @@ function SingleReportView({
       periodCollections = collections.filter(c => filterByDate(c.disbursementDate || c.dueDate));
     }
 
-    let periodTransfers = (accountantReport?.recentTransfers || []).filter(t => filterByDate(t.disbursedAt || t.dueDate));
+    let periodTransfers = (loansList.length > 0 ? loansList : (accountantReport?.recentTransfers || [])).filter(t => filterByDate(t.disbursedDate || t.disbursedAt || t.startDate || t.dueDate));
     if (reportType === "due-report") {
       periodTransfers = collections.filter(c => filterByDate(c.dueDate));
     } else if (reportType === "disbursement-report") {
-      periodTransfers = collections.filter(c => filterByDate(c.disbursementDate));
+      periodTransfers = (loansList.length > 0 ? loansList : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate));
     }
     const periodInterest = (interestReports?.reports.accruedInterest || []).filter(i => filterByDate(i.dueDate));
     const periodCustomerInterest = (interestReports?.reports.customerMonthWise || []).filter(c => {
@@ -2418,13 +2427,13 @@ function SingleReportView({
 
       case "disbursement-report":
         rawData = periodTransfers.map(row => ({
-          customer: row.customerName || row.borrowerName || "Customer",
-          loanId: row.loanId,
-          sanctionAmount: formatCurrency(row.principal || row.sanctionAmount || row.loanAmount || row.disbursementAmount || 0),
-          disbursed: formatCurrency(row.disbursementAmount),
-          repayment: formatCurrency(row.repaymentAmount || (row as any).baseRepayment || row.totalDue),
-          disbursedOn: formatDate(row.disbursedAt || row.disbursementDate),
-          dueDate: formatDate(row.dueDate),
+          customer: row.customer || row.customerName || row.borrowerName || "Customer",
+          loanId: row.id || row.loanId,
+          sanctionAmount: formatCurrency(row.principal || row.sanctionAmount || row.loanAmount || row.disbursedAmount || row.disbursementAmount || 0),
+          disbursed: formatCurrency(row.disbursedAmount || row.disbursementAmount),
+          repayment: formatCurrency(row.loanRepayAmount || row.repaymentAmount || (row as any).baseRepayment || row.totalDue),
+          disbursedOn: formatDate(row.disbursedDate || row.disbursedAt || row.startDate || row.disbursementDate),
+          dueDate: formatDate(row.repaymentDate || row.dueDate),
         }));
         break;
 
