@@ -539,18 +539,15 @@ export function DiwaliCelebration() {
         </div>
       )}
 
-      {/* Replay Trigger Badge Bottom Right */}
+      {/* Replay Trigger Badge Bottom Right - offset to left of the purple FAB button */}
       <button
         type="button"
         onClick={startAnimation}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-amber-400/50 bg-black/85 px-3.5 py-1.5 text-xs font-semibold text-amber-200 shadow-xl backdrop-blur-md hover:bg-black hover:border-amber-400 hover:scale-105 active:scale-95 transition cursor-pointer"
+        className="fixed bottom-6 right-20 sm:right-22 z-40 flex items-center gap-2 rounded-full border border-amber-400/50 bg-slate-950/90 hover:bg-black px-4 py-2.5 text-xs font-semibold text-amber-200 shadow-xl backdrop-blur-md hover:border-amber-400 hover:scale-105 active:scale-95 transition-all cursor-pointer"
         title="Happy Diwali Celebration"
       >
         <span className="text-base leading-none select-none">🪔</span>
-        <span
-          className="tracking-wider font-semibold text-[13px] text-amber-200 select-none"
-          style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
-        >
+        <span className="tracking-wide font-medium text-sm text-amber-100 select-none">
           Happy Diwali
         </span>
         <span className="text-amber-400 text-xs select-none">✨</span>
