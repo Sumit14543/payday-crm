@@ -7,10 +7,10 @@ export function DiwaliCelebration() {
 
   useEffect(() => {
     // Automatically trigger on page load during Diwali season
-    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v10_2026");
+    const hasSeen = sessionStorage.getItem("diwali_wishes_artistic_v11_2026");
     if (!hasSeen) {
       setIsOpen(true);
-      sessionStorage.setItem("diwali_wishes_artistic_v10_2026", "true");
+      sessionStorage.setItem("diwali_wishes_artistic_v11_2026", "true");
     }
   }, []);
 
@@ -246,7 +246,7 @@ export function DiwaliCelebration() {
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/15 backdrop-blur-[1.5px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/65 backdrop-blur-[3px] px-4 select-none cursor-pointer animate-in fade-in duration-300"
         >
           {/* Fireworks & Rockets Canvas */}
           <canvas
@@ -366,7 +366,7 @@ export function DiwaliCelebration() {
                 style={{
                   fontFamily: "'Kaushan Script', cursive",
                   color: "#ea580c",
-                  background: "linear-gradient(180deg, #fbbf24 0%, #f97316 40%, #ea580c 80%, #c2410c 100%)",
+                  background: "linear-gradient(180deg, #fef08a 0%, #fbbf24 25%, #f97316 65%, #ea580c 100%)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   filter: "drop-shadow(0 4px 10px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 16px rgba(234, 88, 12, 0.35))",
