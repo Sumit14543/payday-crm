@@ -284,7 +284,7 @@ export function DiwaliCelebration() {
         }
       `}</style>
 
-      {/* FULL BESPOKE CELEBRATION OVERLAY */}
+      {/* FULL BESPOKE CELEBRATION OVERLAY (EXTRA DARK & CINEMATIC) */}
       {isActive && (
         <div
           onClick={closeCelebration}
@@ -292,9 +292,9 @@ export function DiwaliCelebration() {
             isFadingOut ? "animate-diwali-fadeout" : ""
           }`}
           style={{
-            background: "radial-gradient(circle at 50% 45%, rgba(12, 6, 24, 0.88) 0%, rgba(5, 3, 12, 0.94) 100%)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)"
+            background: "radial-gradient(circle at 50% 45%, rgba(6, 3, 14, 0.94) 0%, rgba(2, 1, 6, 0.98) 100%)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)"
           }}
         >
           {/* Close button top right */}
@@ -316,7 +316,7 @@ export function DiwaliCelebration() {
             className="absolute inset-0 w-full h-full pointer-events-none z-10"
           />
 
-          {/* 1. Cartoon Red & Yellow Rocket Launch */}
+          {/* 1. Red & Yellow Rocket Launch */}
           <div className="animate-diwali-rocket pointer-events-none">
             <svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" className="w-full h-full overflow-visible filter drop-shadow-[0_0_15px_#f59e0b]">
               <path
@@ -413,7 +413,7 @@ export function DiwaliCelebration() {
 
             {/* 1. "W I S H I N G   Y O U   A" - Highly Prominent, Luminous Gold */}
             <div
-              className="text-[13px] sm:text-[15px] font-bold tracking-[0.42em] uppercase mb-4 sm:mb-5 text-[#fef08a] px-5 py-1 rounded-full bg-black/40 border border-amber-400/30 backdrop-blur-sm shadow-[0_2px_12px_rgba(0,0,0,0.8)]"
+              className="text-[13px] sm:text-[15px] font-bold tracking-[0.42em] uppercase mb-4 sm:mb-5 text-[#fef08a] px-5 py-1.5 rounded-full bg-black/60 border border-amber-400/40 backdrop-blur-sm shadow-[0_2px_14px_rgba(0,0,0,0.9)]"
               style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
             >
               ✦ &nbsp; W I S H I N G &nbsp; Y O U &nbsp; A &nbsp; ✦
@@ -541,17 +541,32 @@ export function DiwaliCelebration() {
         </div>
       )}
 
-      {/* Replay Trigger Badge Bottom Right */}
+      {/* Replay Trigger Badge Bottom Right - Handcrafted Deepak Button */}
       <button
         type="button"
         onClick={startAnimation}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-amber-400/40 bg-black/80 px-4 py-2 text-xs font-semibold text-amber-300 shadow-xl backdrop-blur-md hover:bg-black hover:scale-105 active:scale-95 transition cursor-pointer"
+        className="fixed bottom-4 right-4 z-40 flex items-center gap-2.5 rounded-full border border-amber-400/60 bg-gradient-to-r from-black/90 via-slate-950/95 to-black/90 px-4 py-2 shadow-[0_4px_20px_rgba(0,0,0,0.8),0_0_16px_rgba(245,158,11,0.25)] backdrop-blur-md hover:border-amber-300 hover:shadow-[0_0_24px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95 transition cursor-pointer group"
         title="Play Diwali Wishes"
       >
-        <span className="text-base animate-bounce" style={{ animationDuration: "2s" }}>
-          🚀
+        {/* Handcrafted Glowing Deepak Icon */}
+        <div className="relative flex items-center justify-center w-5 h-5 -mt-0.5">
+          {/* Flame */}
+          <div className="absolute -top-1 w-2.5 h-3.5 rounded-full bg-gradient-to-t from-orange-500 via-amber-300 to-yellow-100 shadow-[0_0_10px_#f59e0b] group-hover:scale-115 transition-transform animate-pulse" />
+          {/* Ceramic Bowl */}
+          <svg className="w-5 h-2.5 mt-2.5 overflow-visible" viewBox="0 0 20 10">
+            <path d="M1 2 Q10 10 19 2 Q10 4 1 2Z" fill="#b45309" stroke="#f59e0b" strokeWidth="1" />
+            <path d="M3 2 Q10 6 17 2" fill="none" stroke="#fef08a" strokeWidth="0.8" />
+          </svg>
+        </div>
+
+        {/* Text */}
+        <span
+          className="tracking-wider font-semibold text-[13px] bg-gradient-to-r from-amber-100 via-yellow-200 to-amber-300 bg-clip-text text-transparent group-hover:from-white group-hover:to-yellow-200 select-none"
+          style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
+        >
+          Happy Diwali
         </span>
-        <span className="tracking-wider uppercase font-serif">Happy Diwali</span>
+        <span className="text-amber-400 text-xs opacity-75 group-hover:rotate-45 group-hover:opacity-100 transition-all">✦</span>
       </button>
     </>
   );
