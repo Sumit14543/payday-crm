@@ -1869,9 +1869,43 @@ export function LoanCollection() {
           const isWebsite = !rawAgent || /website|online|system|gateway|razorpay|cashfree|auto/i.test(rawAgent);
           const collectorName = isWebsite ? "Website" : rawAgent;
 
+          // For secondary part payments (pIdx > 0), don't duplicate loan-level totals
+          // (Principal, Disbursement, Base Repayment, Total Paid, Outstanding)
+          // so that sum of columns in Excel is exact and not multiplied by number of part payments
+          const rowInfo = pIdx === 0 ? baseInfo : [
+            formattedMemberCode,
+            item.borrowerName || item.customer || "",
+            item.gender || "",
+            item.pan || "",
+            formattedAadhaar,
+            formattedPhone,
+            formatDobCompact(item.dob),
+            item.address || "",
+            item.pincode || "",
+            item.reference1Name || "",
+            item.reference1Phone ? `\t${item.reference1Phone}` : "",
+            item.reference1Relation || "",
+            item.reference1Address || "",
+            item.reference2Name || "",
+            item.reference2Phone ? `\t${item.reference2Phone}` : "",
+            item.reference2Relation || "",
+            item.reference2Address || "",
+            item.loanId || "",
+            item.loanType ? "Payday Loan" : "Payday Loan",
+            "0", // Principal (0 on subsequent rows to prevent double counting in Excel)
+            "0", // Disbursement amount (0 on subsequent rows to prevent double counting in Excel)
+            "0", // Base Repayment Amount (0 on subsequent rows to prevent double counting in Excel)
+            formatDate(item.disbursementDate),
+            formatDate(item.dueDate || item.originalDueDate),
+            "0", // Total Amount Paid (0 on subsequent rows to prevent double counting in Excel)
+            "0", // Outstanding Balance (0 on subsequent rows to prevent double counting in Excel)
+            item.emiStatus || item.status || "",
+            String(getDaysPastDue(item)),
+          ];
+
           rows.push([
             `${rowCounter}.${pIdx + 1}`,
-            ...baseInfo,
+            ...rowInfo,
             `Part Payment ${pIdx + 1} of ${loanPayments.length}`,
             formatDate(p.receivedAt) || (p.receivedAt ? String(p.receivedAt).slice(0, 10) : "-"),
             String(p.amount || 0),
