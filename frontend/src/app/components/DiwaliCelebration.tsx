@@ -52,10 +52,10 @@ export function DiwaliCelebration() {
       }
     }, 3200);
 
-    // Auto-dismiss after 5 seconds of celebration
+    // Auto-dismiss after 5 seconds of celebration after bloom (total 6.35s)
     autoCloseTimerRef.current = window.setTimeout(() => {
       closeCelebration();
-    }, 6250);
+    }, 6350);
   };
 
   useEffect(() => {
@@ -190,7 +190,7 @@ export function DiwaliCelebration() {
           width: 60px;
           height: 100px;
           opacity: 0;
-          z-index: 20;
+          z-index: 30;
           will-change: transform, opacity;
           animation: diwaliRocketLaunch 1.25s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
         }
@@ -209,12 +209,12 @@ export function DiwaliCelebration() {
         @keyframes grandBloomEntrance {
           0% {
             opacity: 0;
-            transform: translate(-50%, -50%) scale(0.65);
-            filter: blur(8px);
+            transform: translate(-50%, -50%) scale(0.7);
+            filter: blur(10px);
           }
           70% {
             opacity: 1;
-            transform: translate(-50%, -50%) scale(1.04);
+            transform: translate(-50%, -50%) scale(1.03);
             filter: blur(0);
           }
           100% {
@@ -227,7 +227,7 @@ export function DiwaliCelebration() {
           position: absolute;
           left: 50%;
           top: 45%;
-          width: min(92%, 840px);
+          width: min(94%, 860px);
           transform: translate(-50%, -50%);
           opacity: 0;
           animation: grandBloomEntrance 0.9s cubic-bezier(0.18, 0.89, 0.32, 1.2) forwards;
@@ -260,7 +260,7 @@ export function DiwaliCelebration() {
           to { transform: rotate(360deg); }
         }
         .animate-spin-mandala {
-          animation: spinMandala 55s linear infinite;
+          animation: spinMandala 60s linear infinite;
         }
 
         /* Hanging Lamps Gentle Sway */
@@ -288,10 +288,14 @@ export function DiwaliCelebration() {
       {isActive && (
         <div
           onClick={closeCelebration}
-          className={`fixed inset-0 z-50 overflow-hidden cursor-pointer select-none ${
+          className={`fixed inset-0 z-50 overflow-hidden cursor-pointer select-none flex items-center justify-center ${
             isFadingOut ? "animate-diwali-fadeout" : ""
           }`}
-          style={{ background: "rgba(8, 6, 18, 0.76)" }}
+          style={{
+            background: "radial-gradient(circle at 50% 45%, rgba(12, 6, 24, 0.88) 0%, rgba(5, 3, 12, 0.94) 100%)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)"
+          }}
         >
           {/* Close button top right */}
           <button
@@ -300,7 +304,7 @@ export function DiwaliCelebration() {
               e.stopPropagation();
               closeCelebration();
             }}
-            className="absolute top-6 right-6 z-50 rounded-full border border-amber-400/30 bg-black/50 p-2.5 text-amber-200 hover:bg-black/80 hover:text-white transition cursor-pointer backdrop-blur-sm"
+            className="absolute top-6 right-6 z-50 rounded-full border border-amber-400/40 bg-black/60 p-2.5 text-amber-200 hover:bg-black/90 hover:text-white transition cursor-pointer backdrop-blur-md shadow-lg"
             title="Close"
           >
             <X className="h-5 w-5" />
@@ -309,7 +313,7 @@ export function DiwaliCelebration() {
           {/* Fireworks Canvas */}
           <canvas
             ref={canvasRef}
-            className="absolute inset-0 w-full h-full pointer-events-none"
+            className="absolute inset-0 w-full h-full pointer-events-none z-10"
           />
 
           {/* 1. Cartoon Red & Yellow Rocket Launch */}
@@ -334,39 +338,39 @@ export function DiwaliCelebration() {
           </div>
 
           {/* 2. Flanked Hanging Lamps on Threads */}
-          <div className="absolute top-0 inset-x-0 h-48 pointer-events-none z-10 flex justify-between px-6 sm:px-14">
+          <div className="absolute top-0 inset-x-0 h-48 pointer-events-none z-20 flex justify-between px-6 sm:px-14">
             {/* Left Flank */}
             <div className="flex gap-8 sm:gap-14">
-              <div className="flex flex-col items-center animate-sway-left" style={{ height: "135px" }}>
-                <div className="w-[1.2px] h-26 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
-                <div className="flex flex-col items-center -mt-1">
-                  <div className="h-3.5 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_12px_#f59e0b] animate-pulse" />
-                  <div className="h-2.5 w-7 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
-                </div>
-              </div>
-              <div className="flex flex-col items-center hidden sm:flex animate-sway-right" style={{ height: "185px" }}>
-                <div className="w-[1.2px] h-38 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center animate-sway-left" style={{ height: "140px" }}>
+                <div className="w-[1.5px] h-28 bg-gradient-to-b from-orange-400/40 via-amber-400/80 to-amber-300" />
                 <div className="flex flex-col items-center -mt-1">
                   <div className="h-4 w-2.5 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_14px_#f59e0b] animate-pulse" />
-                  <div className="h-3 w-8 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                  <div className="h-3 w-8 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/90 -mt-0.5" />
+                </div>
+              </div>
+              <div className="flex flex-col items-center hidden sm:flex animate-sway-right" style={{ height: "195px" }}>
+                <div className="w-[1.5px] h-40 bg-gradient-to-b from-orange-400/40 via-amber-400/80 to-amber-300" />
+                <div className="flex flex-col items-center -mt-1">
+                  <div className="h-4.5 w-3 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_16px_#f59e0b] animate-pulse" />
+                  <div className="h-3.5 w-9 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/90 -mt-0.5" />
                 </div>
               </div>
             </div>
 
             {/* Right Flank */}
             <div className="flex gap-8 sm:gap-14">
-              <div className="flex flex-col items-center hidden sm:flex animate-sway-left" style={{ height: "165px" }}>
-                <div className="w-[1.2px] h-32 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center hidden sm:flex animate-sway-left" style={{ height: "175px" }}>
+                <div className="w-[1.5px] h-34 bg-gradient-to-b from-orange-400/40 via-amber-400/80 to-amber-300" />
                 <div className="flex flex-col items-center -mt-1">
-                  <div className="h-4 w-2.5 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_14px_#f59e0b] animate-pulse" />
-                  <div className="h-3 w-8 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                  <div className="h-4.5 w-3 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_16px_#f59e0b] animate-pulse" />
+                  <div className="h-3.5 w-9 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/90 -mt-0.5" />
                 </div>
               </div>
-              <div className="flex flex-col items-center animate-sway-right" style={{ height: "140px" }}>
-                <div className="w-[1.2px] h-28 bg-gradient-to-b from-orange-400/40 via-amber-400/70 to-amber-300" />
+              <div className="flex flex-col items-center animate-sway-right" style={{ height: "145px" }}>
+                <div className="w-[1.5px] h-28 bg-gradient-to-b from-orange-400/40 via-amber-400/80 to-amber-300" />
                 <div className="flex flex-col items-center -mt-1">
-                  <div className="h-3.5 w-2 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_12px_#f59e0b] animate-pulse" />
-                  <div className="h-2.5 w-7 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/80 -mt-0.5" />
+                  <div className="h-4 w-2.5 rounded-full bg-gradient-to-t from-orange-500 to-yellow-200 shadow-[0_0_14px_#f59e0b] animate-pulse" />
+                  <div className="h-3 w-8 rounded-b-full bg-gradient-to-b from-orange-600 to-amber-900 border border-amber-400/90 -mt-0.5" />
                 </div>
               </div>
             </div>
@@ -375,13 +379,16 @@ export function DiwaliCelebration() {
           {/* 3. Bespoke Handcrafted Centerpiece */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="animate-grand-bloom pointer-events-auto flex flex-col items-center justify-center text-center px-4"
+            className="animate-grand-bloom pointer-events-auto flex flex-col items-center justify-center text-center px-4 relative z-20"
           >
-            {/* Rotating Lace Mandala Ring */}
+            {/* Radial Contrast Halo: Blocks background clutter and provides warm radiant atmosphere */}
+            <div className="absolute inset-0 -m-16 rounded-full bg-radial from-amber-500/15 via-black/40 to-transparent blur-3xl pointer-events-none" />
+
+            {/* Rotating Lace Mandala Ring (Subtle & Elegant) */}
             <div
-              className="absolute -top-14 w-[420px] sm:w-[520px] h-[420px] sm:h-[520px] pointer-events-none opacity-45 animate-spin-mandala"
+              className="absolute -top-16 w-[430px] sm:w-[530px] h-[430px] sm:h-[530px] pointer-events-none opacity-30 animate-spin-mandala"
             >
-              <svg viewBox="0 0 400 400" className="w-full h-full stroke-amber-400/90 fill-none" strokeWidth="1.3">
+              <svg viewBox="0 0 400 400" className="w-full h-full stroke-amber-300/80 fill-none" strokeWidth="1.2">
                 <g transform="translate(200,200)">
                   <circle cx="0" cy="0" r="175" strokeDasharray="3,6" />
                   <circle cx="0" cy="0" r="150" />
@@ -402,34 +409,39 @@ export function DiwaliCelebration() {
             </div>
 
             {/* Ambient Warm Backlight Glow */}
-            <div className="absolute -bottom-8 w-88 h-44 bg-gradient-to-t from-yellow-500/25 via-amber-500/15 to-transparent rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-10 w-96 h-48 bg-gradient-to-t from-yellow-500/25 via-amber-500/15 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-            {/* 1. "W I S H I N G   Y O U   A" */}
+            {/* 1. "W I S H I N G   Y O U   A" - Highly Prominent, Luminous Gold */}
             <div
-              className="text-[12px] sm:text-[14px] font-semibold tracking-[0.45em] text-[#fed7aa] uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] mb-5 sm:mb-6 opacity-95"
+              className="text-[13px] sm:text-[15px] font-bold tracking-[0.42em] uppercase mb-4 sm:mb-5 text-[#fef08a] px-5 py-1 rounded-full bg-black/40 border border-amber-400/30 backdrop-blur-sm shadow-[0_2px_12px_rgba(0,0,0,0.8)]"
               style={{ fontFamily: "'Cinzel', 'Montserrat', serif" }}
             >
               ✦ &nbsp; W I S H I N G &nbsp; Y O U &nbsp; A &nbsp; ✦
             </div>
 
-            {/* 2. "Happy" in Flowing Crimson Red Brush Script */}
+            {/* 2. "Happy" in Flowing Royal Festive Calligraphy in Luminous Gold/Cream */}
             <h2
-              className="text-4xl sm:text-6xl font-normal tracking-wide text-[#f43f5e] drop-shadow-[0_2px_10px_rgba(244,63,94,0.6)] -mb-2 sm:-mb-3 select-none"
-              style={{ fontFamily: "'Marck Script', cursive" }}
+              className="text-6xl sm:text-7xl md:text-8xl font-normal leading-[0.95] tracking-wide select-none -mb-3 sm:-mb-5"
+              style={{
+                fontFamily: "'Great Vibes', cursive",
+                background: "linear-gradient(180deg, #ffffff 0%, #fff6cc 40%, #fed7aa 80%, #f59e0b 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.95)) drop-shadow(0 0 16px rgba(251,191,36,0.85))",
+              }}
             >
               Happy
             </h2>
 
-            {/* 3. "Diwali" in Radiant Saffron-Gold Festive Calligraphy */}
+            {/* 3. "Diwali" in Grand Saffron-Gold Majestic Script with 3D Depth & High Contrast */}
             <h1
-              className="text-7xl sm:text-9xl md:text-[9.2rem] font-bold leading-[1.02] tracking-wide select-none whitespace-nowrap px-6"
+              className="text-8xl sm:text-[9.5rem] md:text-[11rem] font-bold leading-[0.9] tracking-normal select-none whitespace-nowrap px-8"
               style={{
-                fontFamily: "'Kaushan Script', cursive",
-                color: "#fde047",
-                background: "linear-gradient(180deg, #ffffff 0%, #fef08a 25%, #f59e0b 60%, #ea580c 90%, #c2410c 100%)",
+                fontFamily: "'Great Vibes', cursive",
+                background: "linear-gradient(180deg, #ffffff 0%, #fef08a 25%, #fbbf24 55%, #f59e0b 80%, #d97706 100%)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
-                filter: "drop-shadow(0 0 22px rgba(245, 158, 11, 0.75)) drop-shadow(0 0 45px rgba(234, 88, 12, 0.45))",
+                filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.95)) drop-shadow(0 0 24px rgba(245,158,11,0.85)) drop-shadow(0 0 55px rgba(234,88,12,0.45))",
               }}
             >
               Diwali
@@ -438,12 +450,12 @@ export function DiwaliCelebration() {
             {/* 4. HANDCRAFTED 3D DIYA ON SLEEK GOLDEN PEDESTAL LINE */}
             <div className="relative flex items-center justify-center w-full max-w-lg mt-1 mb-2 z-20">
               {/* Left Line */}
-              <div className="flex-1 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/80 to-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+              <div className="flex-1 h-[1.8px] bg-gradient-to-r from-transparent via-amber-400/90 to-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.9)]" />
 
               {/* Center Glowing 3D Diya */}
-              <div className="relative flex flex-col items-center mx-3 sm:mx-6">
+              <div className="relative flex flex-col items-center mx-4 sm:mx-7">
                 {/* Flame */}
-                <div className="relative w-14 h-24 flex items-center justify-center -mb-6 z-20">
+                <div className="relative w-16 h-26 flex items-center justify-center -mb-7 z-20">
                   <svg className="w-full h-full animate-vibrant-flame" viewBox="0 0 50 90">
                     <defs>
                       <linearGradient id="nbFlameGradReact" x1="50%" y1="100%" x2="50%" y2="0%">
@@ -471,7 +483,7 @@ export function DiwaliCelebration() {
                 </div>
 
                 {/* Ceramic Bowl */}
-                <div className="relative z-10 scale-105 sm:scale-115">
+                <div className="relative z-10 scale-110 sm:scale-120">
                   <svg className="w-40 sm:w-44 h-14" viewBox="0 0 160 55">
                     <defs>
                       <linearGradient id="nbBowlGradReact" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -489,7 +501,7 @@ export function DiwaliCelebration() {
                       d="M10,18 Q80,56 150,18 Q80,24 10,18 Z"
                       fill="url(#nbBowlGradReact)"
                       stroke="#f59e0b"
-                      strokeWidth="1.6"
+                      strokeWidth="1.8"
                     />
                     <path
                       d="M16,18 Q80,36 144,18 Q80,20 16,18 Z"
@@ -514,15 +526,15 @@ export function DiwaliCelebration() {
                 </div>
 
                 {/* Ground Light */}
-                <div className="w-36 h-4 rounded-[100%] bg-amber-400/40 blur-md -mt-2" />
+                <div className="w-40 h-4 rounded-[100%] bg-amber-400/40 blur-md -mt-2" />
               </div>
 
               {/* Right Line */}
-              <div className="flex-1 h-[1.5px] bg-gradient-to-l from-transparent via-amber-400/80 to-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+              <div className="flex-1 h-[1.8px] bg-gradient-to-l from-transparent via-amber-400/90 to-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.9)]" />
             </div>
 
             {/* 5. Subtitle */}
-            <p className="mt-7 sm:mt-9 text-base sm:text-lg font-medium text-[#fffbeb] tracking-wider drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-lg">
+            <p className="mt-8 sm:mt-10 text-base sm:text-xl font-medium text-[#fffbeb] tracking-wider drop-shadow-[0_2px_14px_rgba(0,0,0,0.95)] max-w-lg">
               May your life shine with happiness and prosperity
             </p>
           </div>
@@ -533,7 +545,7 @@ export function DiwaliCelebration() {
       <button
         type="button"
         onClick={startAnimation}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-amber-400/40 bg-black/70 px-3.5 py-1.5 text-xs font-semibold text-amber-300 shadow-xl backdrop-blur-md hover:bg-black/90 hover:scale-105 active:scale-95 transition cursor-pointer"
+        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-amber-400/40 bg-black/80 px-4 py-2 text-xs font-semibold text-amber-300 shadow-xl backdrop-blur-md hover:bg-black hover:scale-105 active:scale-95 transition cursor-pointer"
         title="Play Diwali Wishes"
       >
         <span className="text-base animate-bounce" style={{ animationDuration: "2s" }}>
