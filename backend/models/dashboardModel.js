@@ -69,6 +69,36 @@ async function getStats() {
     `).catch(() => []),
   ]);
 
+  // Resilient fallback: If loans table has no disbursed data yet, read from lead_accounting_payments
+  if (!loanStats || Number(loanStats.totalDisbursedAmount || 0) === 0) {
+    try {
+      const [lapStats] = await query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN DATE(COALESCE(disbursed_at, paid_at, created_at)) = CURDATE() THEN amount ELSE 0 END), 0) AS todayDisbursed,
+          COALESCE(SUM(CASE WHEN MONTH(COALESCE(disbursed_at, paid_at, created_at)) = ? AND YEAR(COALESCE(disbursed_at, paid_at, created_at)) = ? THEN amount ELSE 0 END), 0) AS monthDisbursed,
+          COALESCE(SUM(amount), 0) AS totalDisbursed
+        FROM lead_accounting_payments
+        WHERE LOWER(TRIM(status)) = 'paid'
+      `, [currentMonth, currentYear]).catch(() => [{}]);
+
+      if (lapStats && Number(lapStats.totalDisbursed || 0) > 0) {
+        const totD = Number(lapStats.totalDisbursed || 0);
+        const monD = Number(lapStats.monthDisbursed || 0);
+        const todD = Number(lapStats.todayDisbursed || 0);
+        if (loanStats) {
+          loanStats.totalDisbursedAmount = Math.round(totD * 0.882);
+          loanStats.thisMonthDisbursedAmount = Math.round(monD * 0.882);
+          loanStats.todayDisbursedAmount = Math.round(todD * 0.882);
+          loanStats.totalFeesGst = Math.round(totD * 0.118);
+          loanStats.monthlyFeesGst = Math.round(monD * 0.118);
+          loanStats.todayFeesGst = Math.round(todD * 0.118);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   const todayRevenue = Number(loanStats?.todayFeesGst || 0) + Number(repaymentStats?.todayRoi || 0);
   const monthlyRevenue = Number(loanStats?.monthlyFeesGst || 0) + Number(repaymentStats?.monthlyRoi || 0);
   const totalRevenue = Number(loanStats?.totalFeesGst || 0) + Number(repaymentStats?.totalRoi || 0);

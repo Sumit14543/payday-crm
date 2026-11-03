@@ -899,6 +899,98 @@ async function enrichLoansBatch(loans) {
   });
 }
 
+let lastDisbursedSyncAt = 0;
+const DISBURSED_SYNC_THROTTLE_MS = 30 * 1000;
+
+async function syncDisbursedPayments() {
+  if (Date.now() - lastDisbursedSyncAt < DISBURSED_SYNC_THROTTLE_MS) return;
+  lastDisbursedSyncAt = Date.now();
+  try {
+    const missingPayments = await query(`
+      SELECT 
+        lap.id AS paymentId,
+        COALESCE(NULLIF(lap.loan_id, ''), CONCAT('LN', lap.id)) AS loanId,
+        COALESCE(NULLIF(lap.lead_id, ''), NULLIF(lap.application_id, ''), CONCAT('CUS', lap.id)) AS leadOrAppId,
+        lap.amount,
+        COALESCE(lap.disbursed_at, lap.paid_at, NOW()) AS disbursedAt,
+        sanction.borrower,
+        sanction.borrower_email,
+        sanction.borrower_phone,
+        sanction.repayment_amount,
+        sanction.interest_rate,
+        sanction.due_date,
+        la.full_name AS laName,
+        la.mobile AS laPhone,
+        la.email AS laEmail
+      FROM lead_accounting_payments lap
+      LEFT JOIN loans l ON (l.id = lap.loan_id OR (lap.loan_id IS NULL AND l.id = CONCAT('LN', lap.id)))
+      LEFT JOIN lead_sanctions sanction ON (
+        (lap.loan_id <> '' AND sanction.agreement_number = lap.loan_id)
+        OR (lap.application_id <> '' AND sanction.application_id = lap.application_id)
+        OR (lap.lead_id <> '' AND sanction.lead_id = lap.lead_id)
+      )
+      LEFT JOIN loan_applications la ON (
+        (lap.application_id <> '' AND la.application_id = lap.application_id)
+        OR (lap.lead_id <> '' AND la.id = CAST(lap.lead_id AS UNSIGNED))
+      )
+      WHERE l.id IS NULL
+        AND LOWER(lap.status) = 'paid'
+      ORDER BY lap.id DESC
+      LIMIT 200
+    `);
+
+    if (missingPayments && missingPayments.length > 0) {
+      for (const p of missingPayments) {
+        try {
+          const loanId = String(p.loanId).trim();
+          const custName = p.borrower || p.laName || 'Borrower';
+          const custPhone = p.borrower_phone || p.laPhone || '';
+          const custEmail = p.borrower_email || p.laEmail || '';
+          const customerId = `CUS${String(p.leadOrAppId).replace(/[^a-z0-9]/gi, '').toUpperCase()}`.slice(0, 32);
+
+          await query(`
+            INSERT INTO customers (id, name, email, phone, credit_score, total_loans, active_loans, total_borrowed, join_date, last_loan_date, risk_level)
+            VALUES (?, ?, ?, ?, 650, 1, 1, ?, DATE(?), DATE(?), 'Medium')
+            ON DUPLICATE KEY UPDATE
+              name = COALESCE(NULLIF(VALUES(name), ''), name),
+              phone = COALESCE(NULLIF(VALUES(phone), ''), phone),
+              email = COALESCE(NULLIF(VALUES(email), ''), email),
+              total_borrowed = GREATEST(total_borrowed, VALUES(total_borrowed)),
+              active_loans = GREATEST(active_loans, 1)
+          `, [customerId, custName, custEmail, custPhone, p.amount, p.disbursedAt, p.disbursedAt]);
+
+          const principal = Number(p.amount || 0);
+          const totalAmount = Number(p.repayment_amount || Math.round(principal * 1.12));
+          const interestRate = Number(p.interest_rate || 10.0);
+          const startDate = new Date(p.disbursedAt).toISOString().slice(0, 10);
+          let dueDate = p.due_date ? new Date(p.due_date).toISOString().slice(0, 10) : null;
+          if (!dueDate) {
+            const d = new Date(p.disbursedAt);
+            d.setDate(d.getDate() + 30);
+            dueDate = d.toISOString().slice(0, 10);
+          }
+
+          await query(`
+            INSERT INTO loans (
+              id, customer_id, principal, interest_rate, total_amount, amount_paid,
+              balance, start_date, due_date, status, payment_status, next_payment_date, next_payment_amount
+            ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'Active', 'Pending', ?, ?)
+            ON DUPLICATE KEY UPDATE
+              principal = VALUES(principal),
+              total_amount = VALUES(total_amount),
+              balance = VALUES(balance)
+          `, [loanId, customerId, principal, interestRate, totalAmount, totalAmount, startDate, dueDate, dueDate, totalAmount]);
+        } catch (err) {
+          console.warn('[LoanModel] Auto-heal disbursement error:', err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[LoanModel] syncDisbursedPayments error:', err.message);
+  }
+}
+
+
 async function findAll({ search = '', status = 'all', page = 1, limit = 50, pageSize, dateFilter = 'all', disbursedFilter = 'all', fromDate = '', toDate = '', dateType = 'disbursed', sortBy = '', sortOrder = 'desc' } = {}) {
   const effectiveLimit = pageSize || limit;
   const parsedPage = Math.min(Math.max(Math.trunc(Number(page)) || 1, 1), 1000000);
@@ -915,6 +1007,7 @@ async function findAll({ search = '', status = 'all', page = 1, limit = 50, page
   const cached = loansListCache.get(cacheKey);
   if (cached) return cached;
   return loansListCache.getOrLoad(cacheKey, async () => {
+    await syncDisbursedPayments();
 
     const clauses = [];
     const params = [];
