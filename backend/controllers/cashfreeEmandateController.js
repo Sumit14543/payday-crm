@@ -125,7 +125,8 @@ async function resolveLead(applicationIdOrLeadId) {
 }
 
 async function createEmandateLink(req, res) {
-  const { applicationId, leadId, id, maxAmount, bankName, accountNumber, ifscCode } = req.body || {};
+  const { applicationId, leadId, id, maxAmount, bankName, accountNumber, ifscCode, email, customerEmail: bodyEmail } = req.body || {};
+  const inputEmail = String(email || bodyEmail || '').trim();
   const targetId = applicationId || leadId || id || req.params?.id;
 
   if (!targetId) {
@@ -143,25 +144,30 @@ async function createEmandateLink(req, res) {
     });
   }
 
-  // Update bank details if credit manager modified them in eMandate modal
-  if (bankName !== undefined || accountNumber !== undefined || ifscCode !== undefined) {
+  // Update bank details and email if modified in eMandate modal
+  if (bankName !== undefined || accountNumber !== undefined || ifscCode !== undefined || (inputEmail && inputEmail.includes('@'))) {
     await query(`
       UPDATE loan_applications
       SET bank_name = COALESCE(NULLIF(?, ''), bank_name),
           account_number = COALESCE(NULLIF(?, ''), account_number),
-          ifsc_code = COALESCE(NULLIF(?, ''), ifsc_code)
+          ifsc_code = COALESCE(NULLIF(?, ''), ifsc_code),
+          email = COALESCE(NULLIF(?, ''), email)
       WHERE id = ? OR application_id = ?
     `, [
       String(bankName || '').trim(),
       String(accountNumber || '').trim(),
       String(ifscCode || '').trim().toUpperCase(),
+      inputEmail || '',
       lead.rawId,
       lead.id,
     ]);
+    if (inputEmail && inputEmail.includes('@')) {
+      lead.email = inputEmail;
+    }
   }
 
   const customerName = String(lead.name || lead.fullName || 'Applicant').trim();
-  const customerEmail = String(lead.email || lead.personalEmail || '').trim() || 'customer@example.com';
+  const customerEmail = inputEmail || String(lead.email || lead.personalEmail || lead.officeEmail || '').trim() || 'customer@example.com';
   const rawMobile = lead.mobile || lead.phone || lead.mobileNumber || lead.contact || req.body?.mobile || '';
   const customerMobile = String(rawMobile).replace(/\D/g, '').slice(-10);
   const rawMaxAmount = Number(maxAmount || lead.approvedAmount || lead.loanAmount || 50000);
@@ -295,8 +301,35 @@ async function createEmandateLink(req, res) {
       console.warn('[Cashfree eMandate] WhatsApp dispatch error:', waErr.message);
     }
 
-    // Cashfree automatically dispatches official email via notification_channel: ['EMAIL', 'SMS']
-    // Duplicate CRM email disabled to prevent multiple emails to customer
+    // Direct CRM email notification to ensure customer receives eMandate link immediately at their specific email
+    if (customerEmail && customerEmail.includes('@') && !customerEmail.endsWith('@example.com')) {
+      emailService.sendMail({
+        to: customerEmail,
+        subject: `Repayment eMandate Auto-Debit Authorization - Application ${lead.id}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+            <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Waqt Finance - Repayment eMandate Authorization</h2>
+            <p style="font-size: 14px; color: #334155;">Dear <strong>${customerName}</strong>,</p>
+            <p style="font-size: 14px; color: #334155; line-height: 1.6;">
+              Please complete your Repayment Auto-Debit (eMandate) authorization for your loan application (<strong>${lead.id}</strong>).
+            </p>
+            <div style="background-color: #f8fafc; border-left: 4px solid #059669; padding: 12px 16px; margin: 20px 0; border-radius: 4px;">
+              <p style="margin: 0; font-size: 13px; color: #475569;">Mandate Ceiling Limit: <strong style="color: #0f172a; font-size: 15px;">₹${mandateMaxAmount.toLocaleString('en-IN')}</strong></p>
+            </div>
+            <p style="margin: 25px 0; text-align: center;">
+              <a href="${authUrl}" style="background-color: #059669; color: #ffffff; padding: 13px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 2px 4px rgba(5,150,105,0.2);">
+                Complete eMandate Registration &rarr;
+              </a>
+            </p>
+            <p style="color: #64748b; font-size: 12px; margin-top: 25px;">If the button above does not work, copy and paste this link in your browser:</p>
+            <p style="word-break: break-all; font-size: 12px; color: #0284c7;"><a href="${authUrl}" style="color: #0284c7;">${authUrl}</a></p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="color: #94a3b8; font-size: 11px; margin: 0;">Waqt Finance Official Lending Team &bull; Support: support@waqtmoney.com</p>
+          </div>
+        `,
+        text: `Hello ${customerName},\n\nPlease complete your Repayment Auto-Debit (eMandate) registration for your loan application (${lead.id}): ${authUrl}\n\nMandate Limit: ₹${mandateMaxAmount}\n\nRegards,\nWaqt Finance`,
+      }).catch((err) => console.warn('[Cashfree eMandate] Direct email dispatch error:', err.message));
+    }
 
     await auditModel.create(req, {
       action: 'CASHFREE_EMANDATE_CREATED',

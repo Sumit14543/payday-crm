@@ -2529,6 +2529,9 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
   const [emandateBankName, setEmandateBankName] = useState("");
   const [emandateAccountNumber, setEmandateAccountNumber] = useState("");
   const [emandateIfscCode, setEmandateIfscCode] = useState("");
+  const [emandateEmail, setEmandateEmail] = useState("");
+  const [isEditingSanctionEmail, setIsEditingSanctionEmail] = useState(false);
+  const [resendSanctionEmailInput, setResendSanctionEmailInput] = useState("");
 
   const openEmandateModal = () => {
     const defaultAmount = lead.approvedAmount || lead.loanAmount || lead.emandateMaxAmount || 50000;
@@ -2536,6 +2539,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     setEmandateBankName(lead.bankName || "");
     setEmandateAccountNumber(lead.accountNumber || "");
     setEmandateIfscCode(lead.ifscCode || "");
+    setEmandateEmail(lead.email || lead.officeEmail || lead.officialEmail || "");
     setEmandateModalError("");
     setShowEmandateModal(true);
   };
@@ -2551,6 +2555,12 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     setEmandateModalError("");
     try {
       const endpoint = "/credit/cashfree-emandate/create-link";
+      if (emandateEmail.trim() && !emandateEmail.includes("@")) {
+        setEmandateModalError("Please enter a valid recipient email address.");
+        setIsCreatingEmandateLink(false);
+        return;
+      }
+
       const res = await apiPost<{
         success: boolean;
         message: string;
@@ -2565,14 +2575,17 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
         bankName: emandateBankName,
         accountNumber: emandateAccountNumber,
         ifscCode: emandateIfscCode,
+        email: emandateEmail.trim(),
       });
 
       if (res) {
+        const trimmedEmail = emandateEmail.trim();
         setLead((prev) => ({
           ...prev,
           bankName: emandateBankName || prev.bankName,
           accountNumber: emandateAccountNumber || prev.accountNumber,
           ifscCode: emandateIfscCode || prev.ifscCode,
+          email: trimmedEmail || prev.email,
           emandateProvider: "cashfree",
           emandateStatus: res.emandateStatus || "PENDING",
           emandateId: res.emandateId || prev.emandateId,
@@ -3642,18 +3655,28 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     }
   };
 
-  const resendSanctionEmail = async () => {
+  const resendSanctionEmail = async (overrideEmail?: string) => {
     if (!leadId || !latestSanction) return;
+
+    const targetEmail = (overrideEmail || resendSanctionEmailInput || latestSanction.emailTo || lead.email || "").trim();
+    if (!targetEmail || !targetEmail.includes("@")) {
+      toast.error("Valid email address is required to send sanction letter.");
+      return;
+    }
 
     try {
       setIsSanctionResending(true);
       setLoanAgreementFeedback("");
       const sanction = await apiPost<SanctionLetter>(`/leads/${encodeURIComponent(leadId)}/sanction/resend`, {
         user: user?.name || "Credit Manager",
+        email: targetEmail,
+        emailTo: targetEmail,
       });
       setLatestSanction(sanction);
-      setLoanAgreementFeedback("Sanction email resent successfully.");
-      toast.success("Sanction email resent");
+      setLead((prev) => ({ ...prev, email: targetEmail }));
+      setIsEditingSanctionEmail(false);
+      setLoanAgreementFeedback(`Sanction email resent successfully to ${targetEmail}.`);
+      toast.success(`Sanction email resent to ${targetEmail}`);
       refreshActivities();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to resend sanction email";
@@ -6376,7 +6399,64 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                     )}
                     <p>Principal: {formatCurrency(latestSanction.principalAmount)} - Disbursed: {formatCurrency(latestSanction.disbursedAmount)}</p>
                     <p>Due: {formatActivityDate(latestSanction.dueDate)} - Repayment: {formatCurrency(latestSanction.repaymentAmount)}</p>
-                    <p>Email: {latestSanction.emailTo || lead.email || "Not available"}</p>
+                    <div className="flex items-center justify-between py-0.5">
+                      <span className="text-slate-500 font-medium">Recipient Email:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-800 text-xs font-mono truncate max-w-[200px]" title={latestSanction.emailTo || lead.email || ""}>
+                          {latestSanction.emailTo || lead.email || "Not available"}
+                        </span>
+                        {isCreditManagerRole && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResendSanctionEmailInput(latestSanction.emailTo || lead.email || "");
+                              setIsEditingSanctionEmail((prev) => !prev);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                            title="Edit recipient email to send sanction letter"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {isEditingSanctionEmail && (
+                      <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 space-y-2 text-xs animate-in fade-in">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[11px] font-bold text-blue-900">
+                            Send Sanction to Different Email:
+                          </label>
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                            Custom Recipient
+                          </span>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="email"
+                            value={resendSanctionEmailInput}
+                            onChange={(e) => setResendSanctionEmailInput(e.target.value)}
+                            placeholder="Enter new email address"
+                            className="flex-1 px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => resendSanctionEmail(resendSanctionEmailInput)}
+                            disabled={isSanctionResending}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs disabled:opacity-50"
+                          >
+                            {isSanctionResending ? "Sending..." : "Send"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingSanctionEmail(false)}
+                            className="px-2 py-1.5 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-xs cursor-pointer shadow-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-semibold uppercase text-slate-500">Sanction WhatsApp</span>
@@ -6478,22 +6558,36 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                       </AppTooltip>
                     )}
                     {isCreditManagerRole && (
-                      <button
-                        type="button"
-                        onClick={resendSanctionEmail}
-                        disabled={isSanctionResending || !latestSanction.emailTo}
-                        className={`inline-flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${latestSanction.emailStatus === "failed"
-                          ? "bg-red-600 text-white hover:bg-red-700"
-                          : "border border-blue-200 text-blue-700 hover:bg-blue-50"
-                          }`}
-                      >
-                        <RefreshCw className={`h-4 w-4 ${isSanctionResending ? "animate-spin" : ""}`} />
-                        {isSanctionResending
-                          ? "Resending..."
-                          : latestSanction.emailStatus === "sent"
-                            ? "Resend Sanction Email & WhatsApp"
-                            : "Retry Sanction Email & WhatsApp"}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => resendSanctionEmail()}
+                          disabled={isSanctionResending || (!latestSanction.emailTo && !lead.email)}
+                          className={`inline-flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${latestSanction.emailStatus === "failed"
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "border border-blue-200 text-blue-700 hover:bg-blue-50"
+                            }`}
+                        >
+                          <RefreshCw className={`h-4 w-4 ${isSanctionResending ? "animate-spin" : ""}`} />
+                          {isSanctionResending
+                            ? "Resending..."
+                            : latestSanction.emailStatus === "sent"
+                              ? "Resend Sanction Email & WhatsApp"
+                              : "Retry Sanction Email & WhatsApp"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResendSanctionEmailInput(latestSanction.emailTo || lead.email || "");
+                            setIsEditingSanctionEmail((prev) => !prev);
+                          }}
+                          className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs"
+                          title="Change recipient email address"
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                          <span>Edit Mail</span>
+                        </button>
+                      </div>
                     )}
 
                     {latestSanction.customerDecision !== 'accepted' && latestSanction.decisionToken && (
@@ -8670,6 +8764,28 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500 font-medium">Mobile Number:</span>
                       <span className="font-semibold text-slate-800">{lead.mobile || lead.phone || 'N/A'}</span>
+                    </div>
+                    {/* Editable Recipient Email Field */}
+                    <div className="pt-2.5 border-t border-slate-200">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-slate-800 font-bold text-[11px] flex items-center gap-1.5">
+                          <Mail className="h-3.5 w-3.5 text-emerald-600" />
+                          Send eMandate to Email <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                          Editable
+                        </span>
+                      </div>
+                      <input
+                        type="email"
+                        value={emandateEmail}
+                        onChange={(e) => setEmandateEmail(e.target.value)}
+                        placeholder="Enter recipient email address"
+                        className="w-full px-3 py-2 text-xs font-semibold border border-slate-300 rounded-xl bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        eMandate authorization link will be sent to this email address.
+                      </p>
                     </div>
                   </div>
 

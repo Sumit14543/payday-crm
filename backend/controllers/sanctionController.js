@@ -134,7 +134,19 @@ async function resendLeadSanction(req, res) {
   }
 
   try {
-    const targetEmail = lead.email || sanction.emailTo;
+    const inputEmail = String(req.body?.email || req.body?.emailTo || '').trim();
+    const targetEmail = inputEmail || lead.email || sanction.emailTo;
+    if (!targetEmail) {
+      const error = new Error('Recipient email address is required.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (inputEmail && inputEmail.includes('@')) {
+      sanction.emailTo = inputEmail;
+      await query('UPDATE loan_applications SET email = ? WHERE id = ? OR application_id = ?', [inputEmail, lead.rawId, lead.id]);
+      await query('UPDATE lead_sanctions SET email_to = ? WHERE id = ?', [inputEmail, sanction.id]);
+    }
     await sanctionLetterService.emailSanctionLetter({ ...sanction, emailTo: targetEmail, sourceSystem: lead.sourceSystem || lead.source }, pdfAbsolutePath);
     const whatsapp = await authkeyWhatsAppService.sendSanctionLetter({
       amount: sanction.principalAmount,
@@ -154,6 +166,7 @@ async function resendLeadSanction(req, res) {
     sanction = await sanctionModel.updateWhatsappDelivery(sanction.id, whatsapp);
     sanction = await sanctionModel.updateDelivery(sanction.id, {
       pdfPath: sanction.pdfPath,
+      emailTo: targetEmail,
       emailStatus: 'sent',
       emailError: '',
     });
@@ -165,7 +178,7 @@ async function resendLeadSanction(req, res) {
       metadata: {
         sanctionId: sanction.id,
         agreementNumber: sanction.agreementNumber,
-        emailTo: sanction.emailTo,
+        emailTo: targetEmail,
         whatsapp,
       },
     });
@@ -176,7 +189,7 @@ async function resendLeadSanction(req, res) {
       lead,
       metadata: {
         agreementNumber: sanction.agreementNumber,
-        emailTo: sanction.emailTo,
+        emailTo: targetEmail,
         whatsapp,
       },
     });

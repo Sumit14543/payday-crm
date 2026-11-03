@@ -294,13 +294,11 @@ async function markSupersededForLead(lead, replacementSanctionId) {
 async function updateDelivery(id, payload = {}) {
   await query(`
     UPDATE lead_sanctions
-    SET pdf_path = COALESCE(NULLIF(?, ''), pdf_path),
-        email_status = ?,
+    SET pdf_path = COALESCE(NULLIF(?, ''), pdf_path),        email_to = COALESCE(NULLIF(?, ''), email_to),        email_status = ?,
         email_error = ?,
         sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END
     WHERE id = ?
-  `, [
-    payload.pdfPath || '',
+  `, [    payload.pdfPath || '',    payload.emailTo || '',
     payload.emailStatus || 'pending',
     payload.emailError || '',
     payload.emailStatus || 'pending',
