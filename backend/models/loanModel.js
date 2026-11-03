@@ -189,12 +189,12 @@ async function getLoanStats() {
         `),
         query(`
           SELECT
-            SUM(CASE WHEN DATE(disbursed_at) = CURDATE() THEN 1 ELSE 0 END) AS todayDisbursedCount,
-            COALESCE(SUM(CASE WHEN DATE(disbursed_at) = CURDATE() THEN amount ELSE 0 END), 0) AS todayDisbursedAmount,
-            SUM(CASE WHEN DATE_FORMAT(disbursed_at, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN 1 ELSE 0 END) AS monthDisbursedCount,
-            COALESCE(SUM(CASE WHEN DATE_FORMAT(disbursed_at, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN amount ELSE 0 END), 0) AS monthDisbursedAmount
+            SUM(CASE WHEN DATE(COALESCE(disbursed_at, paid_at)) = CURDATE() THEN 1 ELSE 0 END) AS todayDisbursedCount,
+            COALESCE(SUM(CASE WHEN DATE(COALESCE(disbursed_at, paid_at)) = CURDATE() THEN amount ELSE 0 END), 0) AS todayDisbursedAmount,
+            SUM(CASE WHEN DATE_FORMAT(COALESCE(disbursed_at, paid_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN 1 ELSE 0 END) AS monthDisbursedCount,
+            COALESCE(SUM(CASE WHEN DATE_FORMAT(COALESCE(disbursed_at, paid_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN amount ELSE 0 END), 0) AS monthDisbursedAmount
           FROM lead_accounting_payments
-          WHERE LOWER(status) = 'paid'
+          WHERE LOWER(status) IN ('paid', 'disbursed', 'success')
         `)
       ]);
       const s = loanRows[0] || {};
@@ -582,6 +582,8 @@ async function enrichLoansBatch(loans) {
 
   // Fast in-memory decoration
   loans.forEach(l => {
+    const principal = Number(l.principal || 0);
+    l.principal = principal;
     const rawId = String(l.id || '').trim();
     const strippedLn = rawId.replace(/^LN/i, '').trim();
     const strippedCus = String(l.customerId || '').replace(/^CUS/i, '').trim();
@@ -669,8 +671,6 @@ async function enrichLoansBatch(loans) {
       null;
 
     // Calculate Repayments & ROI
-    const principal = Number(l.principal || 0);
-    l.principal = principal;
     const reps = repaymentsByLoan.get(rawId) || repaymentsByLoan.get(strippedLn) || [];
 
     let cumulativePaid = 0;
