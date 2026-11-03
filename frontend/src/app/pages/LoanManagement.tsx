@@ -72,6 +72,7 @@ type Loan = {
   cgst?: number;
   sgst?: number;
   processing?: number;
+  interest?: number;
   tenure?: number;
   roi?: number;
   repaymentAmount?: number;
@@ -139,11 +140,11 @@ const DISBURSEMENT_HEADERS = [
   "Disbursed Amount",
   "Taxable Fee",
   "Admin Fee GST",
-  "Total Admin Fee",
   "IGST",
   "CGST",
   "SGST",
-  "Processing",
+  "Processing Fee",
+  "Interest",
   "Tenure",
   "ROI(%)",
   "Loan Repay Amount",
@@ -353,7 +354,8 @@ function parseLoanRow(loan: Loan) {
   const igst = isUP ? 0 : Number(loan.igst !== undefined ? loan.igst : adminFeeGst);
   const cgst = isUP ? Number(loan.cgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
   const sgst = isUP ? Number(loan.sgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
-  const processing = Number(loan.processing || adminFee);
+  const processing = Number(loan.totalAdminFee || (adminFee + adminFeeGst));
+  const interest = Number(loan.totalRoi !== undefined ? loan.totalRoi : (Number(loan.amountPaid || 0) > principal ? Number(loan.amountPaid || 0) - principal : 0));
   const disbursedAmount = Number(loan.disbursedAmount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
   const loanRepayAmount = Number(loan.loanRepayAmount || loan.repaymentAmount || loan.totalAmount || Math.round(principal * 1.12));
 
@@ -433,6 +435,7 @@ function parseLoanRow(loan: Loan) {
     cgst,
     sgst,
     processing,
+    interest,
     modeOfPayment: loan.modeOfPayment || "Bank Transfer",
     companyBankAccount: loan.companyBankAccount || "000705001234",
     accountNumber: loan.accountNumber || "-",
@@ -1007,11 +1010,11 @@ export function LoanManagement() {
           "Disbursed Amount",
           "Taxable Fee",
           "Admin Fee GST",
-          "Total Admin Fee",
           "IGST",
           "CGST",
           "SGST",
-          "Processing",
+          "Processing Fee",
+          "Interest",
           "Tenure",
           "ROI(%)",
           "Loan Repay Amount",
@@ -1053,13 +1056,13 @@ export function LoanManagement() {
           `"${(l.email || "").replace(/"/g, '""')}"`,
           l.principal || 0,
           l.disbursedAmount || l.principal || 0,
-          l.adminFee || l.processing || 0,
+          l.adminFee || 0,
           l.adminFeeGst || 0,
-          l.totalAdminFee || 0,
           l.igst || 0,
           l.cgst || 0,
           l.sgst || 0,
-          l.processing || l.adminFee || 0,
+          l.processing || (Number(l.adminFee || 0) + Number(l.adminFeeGst || 0)) || 0,
+          l.interest || 0,
           `"${l.tenure || 30} Days"`,
           `"${l.roi || l.interestRate || 0}%"`,
           l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
@@ -1916,7 +1919,7 @@ export function LoanManagement() {
                         {formatCurrency(loan.disbursedAmount)}
                       </td>
 
-                      {/* 16. Admin Fee */}
+                      {/* 16. Taxable Fee */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
                         {formatCurrency(loan.adminFee)}
                       </td>
@@ -1926,29 +1929,29 @@ export function LoanManagement() {
                         {formatCurrency(loan.adminFeeGst)}
                       </td>
 
-                      {/* 18. Total Admin Fee */}
-                      <td className="whitespace-nowrap px-4 py-3.5 font-semibold text-slate-800 dark:text-slate-200">
-                        {formatCurrency(loan.totalAdminFee)}
-                      </td>
-
-                      {/* 19. IGST */}
+                      {/* 18. IGST */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
                         {formatCurrency(loan.igst)}
                       </td>
 
-                      {/* 20. CGST */}
+                      {/* 19. CGST */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
                         {formatCurrency(loan.cgst)}
                       </td>
 
-                      {/* 21. SGST */}
+                      {/* 20. SGST */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
                         {formatCurrency(loan.sgst)}
                       </td>
 
-                      {/* 22. Processing */}
-                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                      {/* 21. Processing Fee (with GST) */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300 font-semibold">
                         {formatCurrency(loan.processing)}
+                      </td>
+
+                      {/* 22. Interest */}
+                      <td className="whitespace-nowrap px-4 py-3.5 font-bold text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(loan.interest)}
                       </td>
 
                       {/* 23. Tenure */}
