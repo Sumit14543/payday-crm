@@ -75,66 +75,57 @@ export function RevenueAnalytics() {
         if (active && Array.isArray(loans) && loans.length > 0) {
           setLeads(loans);
 
-          if (loans.length > 0) {
-            const today = getLocalDateStr(new Date().toISOString());
-            const currentMonthStr = new Date().toISOString().slice(0, 7);
+          const today = getTodayStr();
+          const currentMonthStr = today.slice(0, 7);
 
-            let tRoi = 0, tPf = 0, tGst = 0;
-            let mRoi = 0, mPf = 0, mGst = 0;
-            let totRoi = 0, totPf = 0, totGst = 0;
+          let tRoi = 0, tPf = 0, tGst = 0;
+          let mRoi = 0, mPf = 0, mGst = 0;
+          let totRoi = 0, totPf = 0, totGst = 0;
 
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const currentYear = now.getFullYear();
+          loans.forEach((l) => {
+            const principal = Number(l.principal || 0);
+            const pf = Number(l.processingFee || l.adminFee || l.processing || Math.round(principal * 0.10));
+            const gst = Number(l.gstAmount || l.adminFeeGst || Math.round(pf * 0.18));
 
-            loans.forEach((l) => {
-              const principal = Number(l.principal || 0);
-              const amountPaid = Number(l.amountPaid || 0);
-              
-              const pf = Number(l.processingFee || Math.round(principal * 0.10));
-              const gst = Number(l.gstAmount || Math.round(pf * 0.18));
-              const roi = Number(l.interestAmount || (Number(l.repaymentAmount || 0) - principal) || 0);
+            // PF and GST are booked on DISBURSEMENT (disbursedDate, startDate or createdAt)
+            totPf += pf;
+            totGst += gst;
 
-              // PF and GST are booked on DISBURSEMENT (disbursedDate, startDate or createdAt)
-              totPf += pf;
-              totGst += gst;
+            const disbDateStr = getLocalDateStr(l.disbursedDate || l.startDate || l.createdAt);
+            const isToday = disbDateStr === today;
+            const isThisMonth = disbDateStr.slice(0, 7) === currentMonthStr;
 
-              const disbDate = l.disbursedDate ? new Date(l.disbursedDate) : (l.startDate ? new Date(l.startDate) : (l.createdAt ? new Date(l.createdAt) : new Date()));
-              const isToday = disbDate.toDateString() === now.toDateString();
-              const isThisMonth = disbDate.getMonth() === currentMonth && disbDate.getFullYear() === currentYear;
+            if (isToday) {
+              tPf += pf;
+              tGst += gst;
+            }
+            if (isThisMonth) {
+              mPf += pf;
+              mGst += gst;
+            }
 
-              if (isToday) {
-                tPf += pf;
-                tGst += gst;
-              }
-              if (isThisMonth) {
-                mPf += pf;
-                mGst += gst;
-              }
+            // ROI is booked ONLY on REPAYMENT - retrieved directly from exact DB repayments subqueries
+            tRoi += Number(l.todayRoi || 0);
+            mRoi += Number(l.monthRoi || 0);
+            totRoi += Number(l.totalRoi || 0);
+          });
 
-              // ROI is booked ONLY on REPAYMENT - retrieved directly from exact DB repayments subqueries
-              tRoi += Number(l.todayRoi || 0);
-              mRoi += Number(l.monthRoi || 0);
-              totRoi += Number(l.totalRoi || 0);
-            });
+          setMetrics({
+            todayRoi: tRoi,
+            todayPf: tPf,
+            todayGst: tGst,
+            todayTotal: tRoi + tPf + tGst,
 
-            setMetrics({
-              todayRoi: tRoi,
-              todayPf: tPf,
-              todayGst: tGst,
-              todayTotal: tRoi + tPf + tGst,
+            monthRoi: mRoi,
+            monthPf: mPf,
+            monthGst: mGst,
+            monthTotal: mRoi + mPf + mGst,
 
-              monthRoi: mRoi,
-              monthPf: mPf,
-              monthGst: mGst,
-              monthTotal: mRoi + mPf + mGst,
-
-              totalRoi: totRoi,
-              totalPf: totPf,
-              totalGst: totGst,
-              grandTotal: totRoi + totPf + totGst
-            });
-          }
+            totalRoi: totRoi,
+            totalPf: totPf,
+            totalGst: totGst,
+            grandTotal: totRoi + totPf + totGst
+          });
           setLoading(false);
 
         } else if (active) {
@@ -187,7 +178,7 @@ export function RevenueAnalytics() {
       const matchesStatus = statusFilter === "all" || status === statusFilter;
       if (!matchesSearch || !matchesStatus) return false;
 
-      const disbDateStr = getLocalDateStr(l.startDate || l.createdAt);
+      const disbDateStr = getLocalDateStr(l.disbursedDate || l.startDate || l.createdAt);
       const isDisbInTimeframe = isDateInTimeframe(disbDateStr);
       const hasRepaymentInTimeframe = l.repayments && l.repayments.some((r: any) => isDateInTimeframe(getLocalDateStr(r.receivedAt)));
 

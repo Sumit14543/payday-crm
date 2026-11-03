@@ -16,7 +16,7 @@ async function verifyTenantSession(req, res, next) {
   }
   // If user is authenticated and is not a superadmin,
   // verify they exist and are active in the currently resolved tenant database.
-  if (req.user && req.user.role !== 'superadmin') {
+  if (req.user && req.user.role !== 'superadmin' && req.user.role !== 'product-admin') {
     const tenantSlug = req.tenant ? req.tenant.slug : 'default';
     const cacheKey = getSessionCacheKey(tenantSlug, req.user.email, req.user.role);
     const now = Date.now();

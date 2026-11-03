@@ -1044,6 +1044,8 @@ async function enrichLoansBatch(loans) {
       l.sgst = 0;
     }
     l.processing = adminFee;
+    l.processingFee = adminFee;
+    l.gstAmount = adminFeeGst;
 
     // Standard Net Disbursement Calculation (Matches Accountant bank transfer exactly)
     let netDisbursed = 0;
