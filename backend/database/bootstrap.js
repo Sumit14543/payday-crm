@@ -506,6 +506,38 @@ async function bootstrap() {
         } catch (sErr) {
           console.error('⚠️ Failed to ensure Shruti credit user in bootstrap:', sErr.message);
         }
+
+        // Seed Compliance Accounts user if missing or update credentials
+        try {
+          const complianceEmail = 'compliance@waqtfinance.com';
+          const complianceName = 'Compliance';
+          const complianceRole = 'accountant';
+          const complianceSalt = '4116952008a98847b49b39a113a2e5dc';
+          const complianceHash = '43cdf720249121cb8d3261082499fa2a1139edd22ec54549805d94596bcbedbe';
+
+          await runQuery(
+            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+               name = VALUES(name),
+               role = VALUES(role),
+               password_salt = VALUES(password_salt),
+               password_hash = VALUES(password_hash),
+               is_active = 1`,
+            [complianceName, complianceEmail, complianceRole, complianceSalt, complianceHash]
+          );
+
+          const compRows = await runQuery(`SELECT id FROM crm_users WHERE email = ? AND role = ? LIMIT 1`, [complianceEmail, complianceRole]);
+          if (compRows && compRows[0]) {
+            await runQuery(
+              `INSERT IGNORE INTO user_product_mappings (user_id, product_slug) VALUES (?, ?)`,
+              [compRows[0].id, tenant.slug || 'waqtfinance']
+            );
+          }
+          console.log(`[SEED] Ensured Compliance Accounts account in database (${complianceEmail})`);
+        } catch (cErr) {
+          console.error('⚠️ Failed to seed Compliance accountant user:', cErr.message);
+        }
       }
     } catch (healError) {
       console.error('⚠️ Failed to run database startup due-date healer:', healError);
