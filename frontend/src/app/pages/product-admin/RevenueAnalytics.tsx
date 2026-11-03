@@ -23,18 +23,26 @@ import {
   Printer
 } from "lucide-react";
 
-const getLocalDateStr = (dtStr: string) => {
+const getLocalDateStr = (dtStr: string | Date | undefined | null) => {
   if (!dtStr) return "";
   try {
-    const date = new Date(dtStr);
+    const date = typeof dtStr === "string" ? new Date(dtStr) : dtStr;
     if (isNaN(date.getTime())) return "";
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   } catch {
-    return dtStr.slice(0, 10);
+    return String(dtStr).slice(0, 10);
   }
+};
+
+const getTodayStr = () => {
+  const date = new Date();
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 };
 
 export function RevenueAnalytics() {
@@ -105,9 +113,40 @@ export function RevenueAnalytics() {
             }
 
             // ROI is booked ONLY on REPAYMENT - retrieved directly from exact DB repayments subqueries
-            tRoi += Number(l.todayRoi || 0);
-            mRoi += Number(l.monthRoi || 0);
-            totRoi += Number(l.totalRoi || 0);
+            let lTodayRoi = Number(l.todayRoi || 0);
+            let lMonthRoi = Number(l.monthRoi || 0);
+            let lTotRoi = Number(l.totalRoi || 0);
+
+            // Dynamic fallback if loan has repayments array but ROI was 0
+            if (lTotRoi === 0 && Array.isArray(l.repayments) && l.repayments.length > 0) {
+              let cumulativePaid = 0;
+              l.repayments.forEach((r: any) => {
+                const amount = Number(r.amount || 0);
+                const prevCumulative = cumulativePaid;
+                cumulativePaid += amount;
+                const prevRoi = Math.max(0, prevCumulative - principal);
+                const currRoi = Math.max(0, cumulativePaid - principal);
+                const realized = currRoi - prevRoi;
+                if (realized > 0) {
+                  lTotRoi += realized;
+                  const repDate = getLocalDateStr(r.receivedAt || r.received_at || r.date);
+                  if (repDate === today) lTodayRoi += realized;
+                  if (repDate.slice(0, 7) === currentMonthStr) lMonthRoi += realized;
+                }
+              });
+            }
+
+            // Fallback: If loan is realized and amountPaid > principal
+            if (lTotRoi === 0 && Number(l.amountPaid || 0) > principal) {
+              const fallbackRoi = Number(l.amountPaid || 0) - principal;
+              lTotRoi += fallbackRoi;
+              if (isThisMonth) lMonthRoi += fallbackRoi;
+              if (isToday) lTodayRoi += fallbackRoi;
+            }
+
+            tRoi += lTodayRoi;
+            mRoi += lMonthRoi;
+            totRoi += lTotRoi;
           });
 
           setMetrics({
