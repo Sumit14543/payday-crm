@@ -161,7 +161,7 @@ async function createEmandateLink(req, res) {
   }
 
   const customerName = String(lead.name || lead.fullName || 'Applicant').trim();
-  const customerEmail = String(lead.officeEmail || lead.officialEmail || lead.email || 'customer@example.com').trim();
+  const customerEmail = String(lead.email || lead.personalEmail || '').trim() || 'customer@example.com';
   const rawMobile = lead.mobile || lead.phone || lead.mobileNumber || lead.contact || req.body?.mobile || '';
   const customerMobile = String(rawMobile).replace(/\D/g, '').slice(-10);
   const rawMaxAmount = Number(maxAmount || lead.approvedAmount || lead.loanAmount || 50000);
@@ -469,7 +469,7 @@ async function getPublicCashfreeDetails(req, res) {
       const requestHost = `${req.protocol}://${req.get('host')}`;
       const baseUrl = process.env.PUBLIC_APP_URL || requestHost || 'https://payday.waqtmoney.com';
       const customerName = String(lead.name || lead.fullName || 'Applicant').trim();
-      const customerEmail = String(lead.officeEmail || lead.officialEmail || lead.email || 'customer@example.com').trim();
+      const customerEmail = String(lead.email || lead.personalEmail || '').trim() || 'customer@example.com';
       
       const bankAccount = String(lead.accountNumber || '').trim();
       const bankIfsc = String(lead.ifscCode || '').trim().toUpperCase();
@@ -551,7 +551,7 @@ async function getPublicCashfreeDetails(req, res) {
     env,
     applicationId: lead.id,
     customerName: String(lead.name || lead.fullName || 'Applicant').trim(),
-    customerEmail: String(lead.officeEmail || lead.officialEmail || lead.email || 'customer@example.com').trim(),
+    customerEmail: String(lead.email || lead.personalEmail || '').trim() || 'customer@example.com',
     customerMobile,
     amount: 0,
     loanAmount,

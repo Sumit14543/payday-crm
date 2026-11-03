@@ -101,7 +101,7 @@ async function createEmandateLink(req, res) {
   }
 
   const customerName = String(lead.name || lead.fullName || 'Applicant').trim();
-  const customerEmail = String(lead.officeEmail || lead.officialEmail || lead.email || 'customer@example.com').trim();
+  const customerEmail = String(lead.email || lead.personalEmail || '').trim() || 'customer@example.com';
   const rawMobile = lead.mobile || lead.phone || lead.mobileNumber || lead.contact || req.body?.mobile || '';
   const customerMobile = String(rawMobile).replace(/\D/g, '').slice(-10);
   const rawMaxAmount = Number(maxAmount || lead.approvedAmount || lead.loanAmount || 50000);
@@ -337,7 +337,7 @@ async function getPublicEmandateDetails(req, res) {
     mercId: config.mercId,
     applicationId: lead.id,
     customerName: lead.name || 'Applicant',
-    customerEmail: lead.officeEmail || lead.officialEmail || lead.email || '',
+    customerEmail: lead.email || lead.personalEmail || '',
     customerMobile,
     amount: 0,
     loanAmount,

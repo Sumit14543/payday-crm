@@ -8,7 +8,7 @@ const { notFound, requireFields, success } = require('../utils/http');
 
 async function sendAaLinkToCustomer({ lead, redirectionUrl }) {
   const phone = lead.phone || lead.mobile;
-  const targetEmail = lead.email || lead.officeEmail || lead.officialEmail;
+  const targetEmail = lead.email || lead.personalEmail || '';
   const customerName = lead.name || 'Customer';
 
   let waResult = { sent: false };
@@ -491,7 +491,7 @@ async function sendWhatsAppLink(req, res) {
   const { waResult, emailResult } = await sendAaLinkToCustomer({ lead, redirectionUrl: session.redirectionUrl });
 
   const phone = lead.phone || lead.mobile;
-  const targetEmail = lead.email || lead.officeEmail || lead.officialEmail;
+  const targetEmail = lead.email || lead.personalEmail || '';
 
   await activityModel.createForLead(lead, {
     type: 'whatsapp_sent',
