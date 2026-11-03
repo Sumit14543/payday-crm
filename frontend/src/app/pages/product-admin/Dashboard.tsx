@@ -171,58 +171,14 @@ export function Dashboard() {
         if (active) setSummaryLoading(false);
       });
 
-    // Fetch loans & accounting payments
-    Promise.all([
-      apiGet<any>("/loans?page=1&limit=5000&pageSize=5000").catch(() => []),
-      apiGet<any>("/leads/accounting-payments/recent?limit=5000").catch(() => [])
-    ])
-      .then(([loansRes, paymentsRes]) => {
-        if (!active) return;
-        const rawLoans = Array.isArray(loansRes) ? loansRes : (loansRes?.data || loansRes?.loans || loansRes?.items || []);
-        const rawPayments = Array.isArray(paymentsRes) ? paymentsRes : (paymentsRes?.data || paymentsRes?.items || []);
-
-        const seenIds = new Set<string>();
-        const combinedList: any[] = [];
-
-        (rawLoans || []).forEach((l: any) => {
-          const id = String(l.id || l.loanId || "").trim();
-          if (id) seenIds.add(id.toLowerCase());
-          combinedList.push(l);
-        });
-
-        (rawPayments || []).forEach((p: any) => {
-          const id = String(p.loanId || p.transactionId || p.reference || p.paymentId || "").trim();
-          const cleanIdLower = id.toLowerCase();
-          if (id && !seenIds.has(cleanIdLower)) {
-            seenIds.add(cleanIdLower);
-            const amt = Number(p.disbursementAmount || p.amount || 0);
-            combinedList.push({
-              id: p.loanId || p.transactionId || `LN-${p.paymentId || p.id}`,
-              loanId: p.loanId || p.transactionId || `LN-${p.paymentId || p.id}`,
-              customer: p.customerName || p.customer || "Applicant",
-              principal: amt,
-              repaymentAmount: Number(p.repaymentAmount || Math.round(amt * 1.12)),
-              disbursedDate: p.disbursedAt || p.paidAt,
-              startDate: p.disbursedAt || p.paidAt,
-              createdAt: p.disbursedAt || p.paidAt,
-              status: p.paymentStatus === "paid" ? "Active" : (p.loanStatus || "Active"),
-              transferType: p.transferType || p.method || "IMPS",
-              accountNumber: p.accountNumber,
-              bankName: p.bankName,
-              ifscCode: p.ifscCode,
-              utrNumber: p.transactionId || p.reference,
-              amountPaid: 0,
-              todayRoi: 0,
-              monthRoi: 0,
-              totalRoi: 0,
-              processingFee: Math.round(amt * 0.10),
-              gstAmount: Math.round(amt * 0.10 * 0.18),
-            });
-          }
-        });
-
-        setLoansList(combinedList);
-        setLoansLoading(false);
+    // Fetch loans
+    apiGet<any>("/loans?page=1&limit=5000&pageSize=5000")
+      .then((data) => {
+        if (active) {
+          const list = Array.isArray(data) ? data : (data?.data || data?.loans || data?.items || []);
+          setLoansList(list);
+          setLoansLoading(false);
+        }
       })
       .catch((err) => {
         console.error("Failed to load loans:", err);

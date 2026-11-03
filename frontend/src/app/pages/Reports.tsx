@@ -665,43 +665,12 @@ export function Reports() {
     const auditLogsRequest = isAccountant || currentRole === "credit-manager" || isSuperadmin
       ? apiGet<AuditLog[]>("/dashboard/audit-logs", controller.signal).catch(() => [] as AuditLog[])
       : Promise.resolve<AuditLog[]>([]);
-    const loansRequest = Promise.all([
-      apiGet<any[]>("/loans?page=1&limit=5000", controller.signal).catch(() => []),
-      apiGet<any>("/leads/accounting-payments/recent?limit=5000", controller.signal).catch(() => [])
-    ])
-      .then(([loansRes, paymentsRes]: [any, any]) => {
-        const rawLoans = Array.isArray(loansRes) ? loansRes : (loansRes?.data || loansRes?.loans || []);
-        const rawPayments = Array.isArray(paymentsRes) ? paymentsRes : (paymentsRes?.data || paymentsRes?.items || []);
-        const seenIds = new Set<string>();
-        const list: any[] = [];
-        (rawLoans || []).forEach((l: any) => {
-          const id = String(l.id || l.loanId || "").trim();
-          if (id) seenIds.add(id.toLowerCase());
-          list.push(l);
-        });
-        (rawPayments || []).forEach((p: any) => {
-          const id = String(p.loanId || p.transactionId || p.reference || p.paymentId || "").trim();
-          const cleanIdLower = id.toLowerCase();
-          if (id && !seenIds.has(cleanIdLower)) {
-            seenIds.add(cleanIdLower);
-            const amt = Number(p.disbursementAmount || p.amount || 0);
-            list.push({
-              id: p.loanId || p.transactionId || `LN-${p.paymentId || p.id}`,
-              loanId: p.loanId || p.transactionId || `LN-${p.paymentId || p.id}`,
-              customer: p.customerName || p.customer || "Applicant",
-              customerName: p.customerName || p.customer || "Applicant",
-              principal: amt,
-              disbursedAmount: amt,
-              repaymentAmount: Number(p.repaymentAmount || Math.round(amt * 1.12)),
-              disbursedDate: p.disbursedAt || p.paidAt,
-              disbursedAt: p.disbursedAt || p.paidAt,
-              startDate: p.disbursedAt || p.paidAt,
-              dueDate: p.dueDate,
-              status: p.paymentStatus === "paid" ? "Active" : (p.loanStatus || "Active"),
-            });
-          }
-        });
-        return list;
+    const loansRequest = apiGet<any[]>("/loans?page=1&limit=5000", controller.signal)
+      .then((res: any) => {
+        if (Array.isArray(res)) return res;
+        if (res && Array.isArray(res.data)) return res.data;
+        if (res && Array.isArray(res.loans)) return res.loans;
+        return [];
       })
       .catch(() => []);
     const reloansRequest = apiGet<any>("/leads/reports/reloans", controller.signal)
@@ -1967,7 +1936,7 @@ function SingleReportView({
     if (reportType === "due-report") {
       pTransfers = collections.filter(c => filterByDate(c.dueDate));
     } else if (reportType === "disbursement-report") {
-      pTransfers = (safeLoans.length > 0 ? safeLoans : (accountantReport?.recentTransfers && accountantReport.recentTransfers.length > 0 ? accountantReport.recentTransfers : collections)).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate || c.createdAt));
+      pTransfers = (safeLoans.length > 0 ? safeLoans : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate || c.createdAt));
     }
     const pInterest = (interestReports?.reports.accruedInterest || []).filter(i => filterByDate(i.dueDate));
     const pCustomerInterest = (interestReports?.reports.customerMonthWise || []).filter(c => {
@@ -2323,7 +2292,7 @@ function SingleReportView({
     if (reportType === "due-report") {
       periodTransfers = collections.filter(c => filterByDate(c.dueDate));
     } else if (reportType === "disbursement-report") {
-      periodTransfers = (safePeriodLoans.length > 0 ? safePeriodLoans : (accountantReport?.recentTransfers && accountantReport.recentTransfers.length > 0 ? accountantReport.recentTransfers : collections)).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate || c.createdAt));
+      periodTransfers = (safePeriodLoans.length > 0 ? safePeriodLoans : collections).filter(c => filterByDate(c.disbursedDate || c.disbursedAt || c.startDate || c.disbursementDate || c.createdAt));
     }
     const periodInterest = (interestReports?.reports.accruedInterest || []).filter(i => filterByDate(i.dueDate));
     const periodCustomerInterest = (interestReports?.reports.customerMonthWise || []).filter(c => {

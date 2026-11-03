@@ -77,48 +77,9 @@ export function Disbursals() {
   const fetchLoans = useCallback(async () => {
     setLoading(true);
     try {
-      const [loansRes, paymentsRes] = await Promise.all([
-        apiGet<any>("/loans?page=1&limit=5000").catch(() => []),
-        apiGet<any>("/leads/accounting-payments/recent?limit=5000").catch(() => [])
-      ]);
-      const rawLoans = Array.isArray(loansRes) ? loansRes : (loansRes?.data || loansRes?.loans || []);
-      const rawPayments = Array.isArray(paymentsRes) ? paymentsRes : (paymentsRes?.data || paymentsRes?.items || []);
-
-      const seenIds = new Set<string>();
-      const combinedList: any[] = [];
-
-      (rawLoans || []).forEach((l: any) => {
-        const id = String(l.id || l.loanId || "").trim();
-        if (id) seenIds.add(id.toLowerCase());
-        combinedList.push(l);
-      });
-
-      (rawPayments || []).forEach((p: any) => {
-        const id = String(p.loanId || p.transactionId || p.reference || p.paymentId || "").trim();
-        const cleanIdLower = id.toLowerCase();
-        if (id && !seenIds.has(cleanIdLower)) {
-          seenIds.add(cleanIdLower);
-          const amt = Number(p.disbursementAmount || p.amount || 0);
-          combinedList.push({
-            id: p.loanId || p.transactionId || `LN-${p.paymentId || p.id}`,
-            loanId: p.loanId || p.transactionId || `LN-${p.paymentId || p.id}`,
-            customer: p.customerName || p.customer || "Applicant",
-            principal: amt,
-            repaymentAmount: Number(p.repaymentAmount || Math.round(amt * 1.12)),
-            disbursedDate: p.disbursedAt || p.paidAt,
-            startDate: p.disbursedAt || p.paidAt,
-            status: p.paymentStatus === "paid" ? "Active" : (p.loanStatus || "Active"),
-            transferType: p.transferType || p.method || "IMPS",
-            accountNumber: p.accountNumber,
-            bankName: p.bankName,
-            ifscCode: p.ifscCode,
-            utrNumber: p.transactionId || p.reference,
-            balance: Number(p.repaymentAmount || Math.round(amt * 1.12)),
-          });
-        }
-      });
-
-      setLoans(combinedList);
+      const data = await apiGet<any>("/loans?page=1&limit=5000");
+      const list = Array.isArray(data) ? data : (data?.data || data?.loans || []);
+      setLoans(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error("Failed to fetch loans ledger:", err);
       setLoans([]);
