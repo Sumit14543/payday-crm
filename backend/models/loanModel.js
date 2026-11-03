@@ -18,6 +18,47 @@ const INDIAN_STATES = [
   'Puducherry', 'Andaman and Nicobar', 'Dadra and Nagar Haveli', 'Daman and Diu', 'Lakshadweep'
 ];
 
+
+const UP_CITIES = [
+  'noida', 'greater noida', 'ghaziabad', 'lucknow', 'kanpur', 'agra', 'varanasi', 'meerut',
+  'prayagraj', 'allahabad', 'bareilly', 'aligarh', 'moradabad', 'saharanpur', 'gorakhpur',
+  'firozabad', 'jhansi', 'muzaffarnagar', 'mathura', 'ayodhya', 'rampur', 'shahjahanpur',
+  'farrukhabad', 'budaun', 'hapur', 'etawah', 'mirzapur', 'bulandshahr', 'sambhal', 'amroha',
+  'hardoi', 'fatehpur', 'raebareli', 'orai', 'sitapur', 'bahraich', 'modinagar', 'unnao',
+  'jaunpur', 'lakhimpur', 'hathras', 'banda', 'pilibhit', 'barabanki', 'khurja', 'gonda',
+  'mainpuri', 'lalitpur', 'etah', 'deoria', 'ghazipur', 'sultanpur', 'azamgarh', 'bijnor',
+  'basti', 'ballia', 'kasganj'
+];
+
+function isCustomerFromUttarPradesh(stateName, cityName, address, pincode) {
+  const stateStr = String(stateName || '').trim();
+  const cityStr = String(cityName || '').trim();
+  const addrStr = String(address || '').trim();
+  const pinStr = String(pincode || '').trim();
+  const combined = `${stateStr} ${cityStr} ${addrStr}`.toLowerCase();
+
+  if (
+    /^u\.?p\.?$/i.test(stateStr) ||
+    /uttar\s*pradesh/i.test(combined) ||
+    /\bu\.?p\.?\b/i.test(combined)
+  ) {
+    return true;
+  }
+
+  for (const c of UP_CITIES) {
+    if (new RegExp('\\b' + c + '\\b', 'i').test(combined)) {
+      return true;
+    }
+  }
+
+  const pinMatch = pinStr.match(/\b(2[0-8]\d{4})\b/) || addrStr.match(/\b(2[0-8]\d{4})\b/);
+  if (pinMatch) {
+    return true;
+  }
+
+  return false;
+}
+
 function cleanStr(val) {
   if (val === null || val === undefined) return '';
   const s = String(val).trim();
@@ -849,9 +890,17 @@ async function enrichLoansBatch(loans) {
     l.adminFee = adminFee;
     l.adminFeeGst = adminFeeGst;
     l.totalAdminFee = totalAdminFee;
-    l.igst = adminFeeGst;
-    l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
-    l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
+    // GST split: For Uttar Pradesh customer, IGST is 0 and GST is split 50:50 between CGST and SGST
+    const isUP = isCustomerFromUttarPradesh(l.stateName, l.cityName, l.address, l.pincode);
+    if (isUP) {
+      l.igst = 0;
+      l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
+      l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
+    } else {
+      l.igst = adminFeeGst;
+      l.cgst = 0;
+      l.sgst = 0;
+    }
     l.processing = adminFee;
 
     // Standard Net Disbursement Calculation (Matches Accountant bank transfer exactly)

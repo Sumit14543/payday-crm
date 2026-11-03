@@ -168,6 +168,47 @@ const DISBURSEMENT_HEADERS = [
   "Actions",
 ];
 
+
+const UP_CITIES_LIST = [
+  "noida", "greater noida", "ghaziabad", "lucknow", "kanpur", "agra", "varanasi", "meerut",
+  "prayagraj", "allahabad", "bareilly", "aligarh", "moradabad", "saharanpur", "gorakhpur",
+  "firozabad", "jhansi", "muzaffarnagar", "mathura", "ayodhya", "rampur", "shahjahanpur",
+  "farrukhabad", "budaun", "hapur", "etawah", "mirzapur", "bulandshahr", "sambhal", "amroha",
+  "hardoi", "fatehpur", "raebareli", "orai", "sitapur", "bahraich", "modinagar", "unnao",
+  "jaunpur", "lakhimpur", "hathras", "banda", "pilibhit", "barabanki", "khurja", "gonda",
+  "mainpuri", "lalitpur", "etah", "deoria", "ghazipur", "sultanpur", "azamgarh", "bijnor",
+  "basti", "ballia", "kasganj"
+];
+
+function isCustomerFromUttarPradesh(stateName?: string | null, cityName?: string | null, address?: string | null, pincode?: string | null): boolean {
+  const stateStr = String(stateName || "").trim();
+  const cityStr = String(cityName || "").trim();
+  const addrStr = String(address || "").trim();
+  const pinStr = String(pincode || "").trim();
+  const combined = `${stateStr} ${cityStr} ${addrStr}`.toLowerCase();
+
+  if (
+    /^u\.?p\.?$/i.test(stateStr) ||
+    /uttar\s*pradesh/i.test(combined) ||
+    /\bu\.?p\.?\b/i.test(combined)
+  ) {
+    return true;
+  }
+
+  for (const c of UP_CITIES_LIST) {
+    if (new RegExp(`\\b${c}\\b`, "i").test(combined)) {
+      return true;
+    }
+  }
+
+  const pinMatch = pinStr.match(/\b(2[0-8]\d{4})\b/) || addrStr.match(/\b(2[0-8]\d{4})\b/);
+  if (pinMatch) {
+    return true;
+  }
+
+  return false;
+}
+
 function parseLoanRow(loan: Loan) {
   let leadId = loan.leadId || "";
   let loanNo = loan.loanNo || loan.id || "";
@@ -186,9 +227,17 @@ function parseLoanRow(loan: Loan) {
   const adminFee = Number(loan.adminFee || loan.processing || Math.round(principal * 0.10));
   const adminFeeGst = Number(loan.adminFeeGst || Math.round(adminFee * 0.18));
   const totalAdminFee = Number(loan.totalAdminFee || (adminFee + adminFeeGst));
-  const igst = Number(loan.igst || adminFeeGst);
-  const cgst = Number(loan.cgst || Math.round((adminFeeGst / 2) * 100) / 100);
-  const sgst = Number(loan.sgst || Math.round((adminFeeGst / 2) * 100) / 100);
+  // GST split: For Uttar Pradesh customer, IGST is 0 and GST is split 50:50 between CGST and SGST
+  const isUP = isCustomerFromUttarPradesh(
+    loan.stateName || (loan as any).state,
+    loan.cityName || (loan as any).city,
+    loan.address || (loan as any).customerAddress,
+    loan.pincode
+  );
+
+  const igst = isUP ? 0 : Number(loan.igst !== undefined ? loan.igst : adminFeeGst);
+  const cgst = isUP ? Number(loan.cgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
+  const sgst = isUP ? Number(loan.sgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
   const processing = Number(loan.processing || adminFee);
   const disbursedAmount = Number(loan.disbursedAmount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
   const loanRepayAmount = Number(loan.loanRepayAmount || loan.repaymentAmount || loan.totalAmount || Math.round(principal * 1.12));
