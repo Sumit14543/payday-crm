@@ -180,11 +180,11 @@ export function RevenueAnalytics() {
   }, []);
 
   const filteredLeads = useMemo(() => {
-    const todayStr = getLocalDateStr(new Date().toISOString());
+    const todayStr = getTodayStr();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yesterday.toISOString());
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    const yesterdayStr = getLocalDateStr(yesterday);
+    const currentMonthStr = todayStr.slice(0, 7);
 
     const isDateInTimeframe = (dateStr: string) => {
       if (!dateStr) return false;
@@ -249,11 +249,11 @@ export function RevenueAnalytics() {
   };
 
   const exportLedgerCsv = () => {
-    const todayStr = getLocalDateStr(new Date().toISOString());
+    const todayStr = getTodayStr();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yesterday.toISOString());
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    const yesterdayStr = getLocalDateStr(yesterday);
+    const currentMonthStr = todayStr.slice(0, 7);
 
     const isDateInTimeframe = (dateStr: string) => {
       if (!dateStr) return false;
@@ -274,7 +274,7 @@ export function RevenueAnalytics() {
       const itemPrincipal = Number(l.principal || 0);
       const pf = Number(l.processingFee || 0);
       
-      const disbDateStr = getLocalDateStr(l.startDate || l.createdAt);
+      const disbDateStr = getLocalDateStr(l.disbursedDate || l.startDate || l.createdAt);
       const isDisbInTimeframe = isDateInTimeframe(disbDateStr);
 
       const principalVal = isDisbInTimeframe ? itemPrincipal : 0;
@@ -768,11 +768,11 @@ export function RevenueAnalytics() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-semibold text-slate-700 dark:text-slate-300">  {(() => {
-    const todayStr = getLocalDateStr(new Date().toISOString());
+    const todayStr = getTodayStr();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yesterday.toISOString());
-    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    const yesterdayStr = getLocalDateStr(yesterday);
+    const currentMonthStr = todayStr.slice(0, 7);
 
     const isDateInTimeframe = (dateStr: string) => {
       if (!dateStr) return false;
@@ -804,11 +804,11 @@ export function RevenueAnalytics() {
       const itemPrincipal = Number(item.principal || 0);
       const pf = Number(item.processingFee || 0);
       
-      const disbDateStr = getLocalDateStr(item.startDate || item.createdAt);
+      const disbDateStr = getLocalDateStr(item.disbursedDate || item.startDate || item.createdAt);
       const isDisbInTimeframe = isDateInTimeframe(disbDateStr);
 
-      const principalVal = itemPrincipal;
-      const pfVal = pf;
+      const principalVal = isDisbInTimeframe ? itemPrincipal : 0;
+      const pfVal = isDisbInTimeframe ? pf : 0;
 
       let roiVal = 0;
       let cumulativePaid = 0;
