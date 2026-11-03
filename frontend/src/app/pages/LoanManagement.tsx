@@ -123,6 +123,7 @@ const COLLECTION_HEADERS = [
 const DISBURSEMENT_HEADERS = [
   "LeadID",
   "State Name",
+  "Supply",
   "City Name",
   "Branch Name",
   "Customer ID",
@@ -136,7 +137,7 @@ const DISBURSEMENT_HEADERS = [
   "Email",
   "Loan Amount",
   "Disbursed Amount",
-  "Admin Fee",
+  "Taxable Fee",
   "Admin Fee GST",
   "Total Admin Fee",
   "IGST",
@@ -169,45 +170,157 @@ const DISBURSEMENT_HEADERS = [
 ];
 
 
-const UP_CITIES_LIST = [
-  "noida", "greater noida", "ghaziabad", "lucknow", "kanpur", "agra", "varanasi", "meerut",
-  "prayagraj", "allahabad", "bareilly", "aligarh", "moradabad", "saharanpur", "gorakhpur",
-  "firozabad", "jhansi", "muzaffarnagar", "mathura", "ayodhya", "rampur", "shahjahanpur",
-  "farrukhabad", "budaun", "hapur", "etawah", "mirzapur", "bulandshahr", "sambhal", "amroha",
-  "hardoi", "fatehpur", "raebareli", "orai", "sitapur", "bahraich", "modinagar", "unnao",
-  "jaunpur", "lakhimpur", "hathras", "banda", "pilibhit", "barabanki", "khurja", "gonda",
-  "mainpuri", "lalitpur", "etah", "deoria", "ghazipur", "sultanpur", "azamgarh", "bijnor",
-  "basti", "ballia", "kasganj"
-];
+const CITY_STATE_MAP: Record<string, string> = {
+  // Uttar Pradesh
+  'noida': 'Uttar Pradesh', 'greater noida': 'Uttar Pradesh', 'ghaziabad': 'Uttar Pradesh',
+  'lucknow': 'Uttar Pradesh', 'kanpur': 'Uttar Pradesh', 'agra': 'Uttar Pradesh',
+  'varanasi': 'Uttar Pradesh', 'meerut': 'Uttar Pradesh', 'prayagraj': 'Uttar Pradesh',
+  'allahabad': 'Uttar Pradesh', 'bareilly': 'Uttar Pradesh', 'aligarh': 'Uttar Pradesh',
+  'moradabad': 'Uttar Pradesh', 'saharanpur': 'Uttar Pradesh', 'gorakhpur': 'Uttar Pradesh',
+  'firozabad': 'Uttar Pradesh', 'jhansi': 'Uttar Pradesh', 'muzaffarnagar': 'Uttar Pradesh',
+  'mathura': 'Uttar Pradesh', 'ayodhya': 'Uttar Pradesh', 'rampur': 'Uttar Pradesh',
+  'shahjahanpur': 'Uttar Pradesh', 'farrukhabad': 'Uttar Pradesh', 'budaun': 'Uttar Pradesh',
+  'hapur': 'Uttar Pradesh', 'etawah': 'Uttar Pradesh', 'mirzapur': 'Uttar Pradesh',
+  'bulandshahr': 'Uttar Pradesh', 'sambhal': 'Uttar Pradesh', 'amroha': 'Uttar Pradesh',
+  'hardoi': 'Uttar Pradesh', 'fatehpur': 'Uttar Pradesh', 'raebareli': 'Uttar Pradesh',
+  'orai': 'Uttar Pradesh', 'sitapur': 'Uttar Pradesh', 'bahraich': 'Uttar Pradesh',
+  'modinagar': 'Uttar Pradesh', 'unnao': 'Uttar Pradesh', 'jaunpur': 'Uttar Pradesh',
+  'lakhimpur': 'Uttar Pradesh', 'hathras': 'Uttar Pradesh', 'banda': 'Uttar Pradesh',
+  'pilibhit': 'Uttar Pradesh', 'barabanki': 'Uttar Pradesh', 'khurja': 'Uttar Pradesh',
+  'gonda': 'Uttar Pradesh', 'mainpuri': 'Uttar Pradesh', 'lalitpur': 'Uttar Pradesh',
+  'etah': 'Uttar Pradesh', 'deoria': 'Uttar Pradesh', 'ghazipur': 'Uttar Pradesh',
+  'sultanpur': 'Uttar Pradesh', 'azamgarh': 'Uttar Pradesh', 'bijnor': 'Uttar Pradesh',
+  'basti': 'Uttar Pradesh', 'ballia': 'Uttar Pradesh', 'kasganj': 'Uttar Pradesh',
 
-function isCustomerFromUttarPradesh(stateName?: string | null, cityName?: string | null, address?: string | null, pincode?: string | null): boolean {
-  const stateStr = String(stateName || "").trim();
-  const cityStr = String(cityName || "").trim();
-  const addrStr = String(address || "").trim();
-  const pinStr = String(pincode || "").trim();
-  const combined = `${stateStr} ${cityStr} ${addrStr}`.toLowerCase();
+  // Haryana
+  'gurgaon': 'Haryana', 'gurugram': 'Haryana', 'faridabad': 'Haryana', 'panipat': 'Haryana',
+  'karnal': 'Haryana', 'sonipat': 'Haryana', 'ambala': 'Haryana', 'rohtak': 'Haryana',
+  'hisar': 'Haryana', 'panchkula': 'Haryana', 'rewari': 'Haryana', 'yamunanagar': 'Haryana',
 
-  if (
-    /^u\.?p\.?$/i.test(stateStr) ||
-    /uttar\s*pradesh/i.test(combined) ||
-    /\bu\.?p\.?\b/i.test(combined)
-  ) {
-    return true;
+  // Delhi NCR
+  'delhi': 'Delhi', 'new delhi': 'Delhi', 'central delhi': 'Delhi', 'south delhi': 'Delhi',
+  'north delhi': 'Delhi', 'west delhi': 'Delhi', 'east delhi': 'Delhi', 'dwarka': 'Delhi',
+  'rohini': 'Delhi',
+
+  // Rajasthan
+  'jaipur': 'Rajasthan', 'jodhpur': 'Rajasthan', 'udaipur': 'Rajasthan', 'kota': 'Rajasthan',
+  'ajmer': 'Rajasthan', 'bikaner': 'Rajasthan', 'alwar': 'Rajasthan', 'bhilwara': 'Rajasthan',
+
+  // Maharashtra
+  'mumbai': 'Maharashtra', 'pune': 'Maharashtra', 'nagpur': 'Maharashtra', 'thane': 'Maharashtra',
+  'nashik': 'Maharashtra', 'aurangabad': 'Maharashtra', 'navi mumbai': 'Maharashtra',
+
+  // Karnataka
+  'bengaluru': 'Karnataka', 'bangalore': 'Karnataka', 'mysuru': 'Karnataka', 'mysore': 'Karnataka',
+
+  // Gujarat
+  'ahmedabad': 'Gujarat', 'surat': 'Gujarat', 'vadodara': 'Gujarat', 'rajkot': 'Gujarat',
+
+  // Madhya Pradesh
+  'bhopal': 'Madhya Pradesh', 'indore': 'Madhya Pradesh', 'gwalior': 'Madhya Pradesh',
+
+  // Bihar
+  'patna': 'Bihar', 'gaya': 'Bihar', 'muzaffarpur': 'Bihar', 'bhagalpur': 'Bihar',
+
+  // Jharkhand
+  'ranchi': 'Jharkhand', 'jamshedpur': 'Jharkhand', 'dhanbad': 'Jharkhand',
+
+  // West Bengal
+  'kolkata': 'West Bengal', 'howrah': 'West Bengal', 'durgapur': 'West Bengal',
+
+  // Punjab & Chandigarh
+  'chandigarh': 'Chandigarh', 'ludhiana': 'Punjab', 'amritsar': 'Punjab',
+
+  // Uttarakhand
+  'dehradun': 'Uttarakhand', 'haridwar': 'Uttarakhand', 'roorkee': 'Uttarakhand'
+};
+
+function getStateFromPincode(pin?: string | null): string {
+  if (!pin) return '';
+  const m = String(pin).trim().match(/\b([1-8]\d{5})\b/);
+  if (!m) return '';
+  const prefix2 = Number(m[1].slice(0, 2));
+  const prefix3 = Number(m[1].slice(0, 3));
+  if (prefix2 === 11) return 'Delhi';
+  if (prefix2 >= 12 && prefix2 <= 13) return 'Haryana';
+  if (prefix3 === 160) return 'Chandigarh';
+  if (prefix2 >= 14 && prefix2 <= 16) return 'Punjab';
+  if (prefix2 === 17) return 'Himachal Pradesh';
+  if (prefix2 >= 18 && prefix2 <= 19) return 'Jammu and Kashmir';
+  if (prefix3 >= 248 && prefix3 <= 249) return 'Uttarakhand';
+  if (prefix3 >= 262 && prefix3 <= 263) return 'Uttarakhand';
+  if (prefix2 >= 20 && prefix2 <= 28) return 'Uttar Pradesh';
+  if (prefix2 >= 30 && prefix2 <= 34) return 'Rajasthan';
+  if (prefix2 >= 36 && prefix2 <= 39) return 'Gujarat';
+  if (prefix3 === 403) return 'Goa';
+  if (prefix2 >= 40 && prefix2 <= 44) return 'Maharashtra';
+  if (prefix2 === 49) return 'Chhattisgarh';
+  if (prefix2 >= 45 && prefix2 <= 48) return 'Madhya Pradesh';
+  if (prefix2 >= 50 && prefix2 <= 53) return 'Telangana';
+  if (prefix2 >= 56 && prefix2 <= 59) return 'Karnataka';
+  if (prefix3 === 605) return 'Puducherry';
+  if (prefix2 >= 60 && prefix2 <= 64) return 'Tamil Nadu';
+  if (prefix2 >= 67 && prefix2 <= 69) return 'Kerala';
+  if (prefix2 >= 70 && prefix2 <= 74) return 'West Bengal';
+  if (prefix2 >= 75 && prefix2 <= 77) return 'Odisha';
+  if (prefix2 >= 81 && prefix2 <= 83) return 'Jharkhand';
+  if (prefix2 >= 80 && prefix2 <= 85) return 'Bihar';
+  if (prefix2 >= 78 && prefix2 <= 79) return 'Assam';
+  return '';
+}
+
+function resolveAccurateGeo(rawState?: string | null, rawCity?: string | null, rawAddress?: string | null, rawPincode?: string | null) {
+  let state = String(rawState || '').trim();
+  let city = String(rawCity || '').trim();
+  const addr = String(rawAddress || '').trim();
+  let pin = String(rawPincode || '').trim();
+
+  if (!pin && addr) {
+    const pinMatch = addr.match(/\b([1-8]\d{5})\b/);
+    if (pinMatch) pin = pinMatch[1];
   }
 
-  for (const c of UP_CITIES_LIST) {
-    if (new RegExp(`\\b${c}\\b`, "i").test(combined)) {
-      return true;
+  const cityLower = city.toLowerCase();
+  if (cityLower && CITY_STATE_MAP[cityLower]) {
+    state = CITY_STATE_MAP[cityLower];
+  }
+
+  const pinState = getStateFromPincode(pin);
+  if (!state || (state.toLowerCase() === 'delhi' && cityLower && !cityLower.includes('delhi'))) {
+    if (pinState) {
+      state = pinState;
     }
   }
 
-  const pinMatch = pinStr.match(/\b(2[0-8]\d{4})\b/) || addrStr.match(/\b(2[0-8]\d{4})\b/);
-  if (pinMatch) {
-    return true;
+  if (!state && addr) {
+    const addrLower = addr.toLowerCase();
+    for (const [c, s] of Object.entries(CITY_STATE_MAP)) {
+      if (new RegExp('\\b' + c + '\\b', 'i').test(addrLower)) {
+        state = s;
+        if (!city || city === '-') city = c.charAt(0).toUpperCase() + c.slice(1);
+        break;
+      }
+    }
   }
 
-  return false;
+  if (!city || city === '-') {
+    city = '-';
+  }
+
+  if (!state) {
+    state = pinState || '-';
+  }
+
+  const isUP = /^u\.?p\.?$/i.test(state) || /uttar\s*pradesh/i.test(state);
+  return {
+    state,
+    city,
+    pincode: pin || '-',
+    isUP,
+    supply: isUP ? 'Intra State' : 'Inter State'
+  };
 }
+
 
 function parseLoanRow(loan: Loan) {
   let leadId = loan.leadId || "";
@@ -227,13 +340,15 @@ function parseLoanRow(loan: Loan) {
   const adminFee = Number(loan.adminFee || loan.processing || Math.round(principal * 0.10));
   const adminFeeGst = Number(loan.adminFeeGst || Math.round(adminFee * 0.18));
   const totalAdminFee = Number(loan.totalAdminFee || (adminFee + adminFeeGst));
-  // GST split: For Uttar Pradesh customer, IGST is 0 and GST is split 50:50 between CGST and SGST
-  const isUP = isCustomerFromUttarPradesh(
+  // Accurate Geo & Supply resolution
+  const geo = resolveAccurateGeo(
     loan.stateName || (loan as any).state,
     loan.cityName || (loan as any).city,
     loan.address || (loan as any).customerAddress,
     loan.pincode
   );
+  const isUP = geo.isUP;
+  const supply = geo.supply;
 
   const igst = isUP ? 0 : Number(loan.igst !== undefined ? loan.igst : adminFeeGst);
   const cgst = isUP ? Number(loan.cgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
@@ -302,8 +417,11 @@ function parseLoanRow(loan: Loan) {
     collectedAmount: Number(loan.collectedAmount || loan.amountPaid || 0),
     collectedMode: loan.collectedMode || (Number(loan.amountPaid || 0) > 0 ? "Bank Transfer" : "-"),
     collectedDate: loan.collectedDate || loan.lastPaymentDate || null,
-    stateName: loan.stateName || "-",
-    cityName: loan.cityName || "-",
+    stateName: geo.state,
+    cityName: geo.city,
+    pincode: geo.pincode,
+    isUP,
+    supply,
     branchName: loan.branchName || "Main Branch",
     alternativeNumber: loan.alternativeNumber || "-",
     gender: loan.gender || "-",
@@ -331,7 +449,6 @@ function parseLoanRow(loan: Loan) {
     loanDisbursedDate: loan.loanDisbursedDate || loan.disbursedDate || loan.startDate || null,
     houseType: loan.houseType || "Owned",
     address: loan.address || "-",
-    pincode: loan.pincode || "-",
   };
 }
 
@@ -874,6 +991,7 @@ export function LoanManagement() {
         const headers = [
           "LeadID",
           "State Name",
+          "Supply",
           "City Name",
           "Branch Name",
           "Customer ID",
@@ -887,7 +1005,7 @@ export function LoanManagement() {
           "Email",
           "Loan Amount",
           "Disbursed Amount",
-          "Admin Fee",
+          "Taxable Fee",
           "Admin Fee GST",
           "Total Admin Fee",
           "IGST",
@@ -921,6 +1039,7 @@ export function LoanManagement() {
         const rows = sortedLoans.map((l) => [
           `"${(l.leadId || "").replace(/"/g, '""')}"`,
           `"${(l.stateName || "-").replace(/"/g, '""')}"`,
+          `"${l.isUP ? "Intra State" : "Inter State"}"`,
           `"${(l.cityName || "-").replace(/"/g, '""')}"`,
           `"${(l.branchName || "Main Branch").replace(/"/g, '""')}"`,
           `"${(l.customerId || "").replace(/"/g, '""')}"`,
@@ -1721,11 +1840,18 @@ export function LoanManagement() {
                       </td>
 
                       {/* 2. State Name */}
-                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300 font-medium">
                         {loan.stateName}
                       </td>
 
-                      {/* 3. City Name */}
+                      {/* 3. Supply */}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${loan.isUP ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"}`}>
+                          {loan.isUP ? "Intra State" : "Inter State"}
+                        </span>
+                      </td>
+
+                      {/* 4. City Name */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-700 dark:text-slate-300">
                         {loan.cityName}
                       </td>

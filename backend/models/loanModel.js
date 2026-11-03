@@ -19,45 +19,176 @@ const INDIAN_STATES = [
 ];
 
 
-const UP_CITIES = [
-  'noida', 'greater noida', 'ghaziabad', 'lucknow', 'kanpur', 'agra', 'varanasi', 'meerut',
-  'prayagraj', 'allahabad', 'bareilly', 'aligarh', 'moradabad', 'saharanpur', 'gorakhpur',
-  'firozabad', 'jhansi', 'muzaffarnagar', 'mathura', 'ayodhya', 'rampur', 'shahjahanpur',
-  'farrukhabad', 'budaun', 'hapur', 'etawah', 'mirzapur', 'bulandshahr', 'sambhal', 'amroha',
-  'hardoi', 'fatehpur', 'raebareli', 'orai', 'sitapur', 'bahraich', 'modinagar', 'unnao',
-  'jaunpur', 'lakhimpur', 'hathras', 'banda', 'pilibhit', 'barabanki', 'khurja', 'gonda',
-  'mainpuri', 'lalitpur', 'etah', 'deoria', 'ghazipur', 'sultanpur', 'azamgarh', 'bijnor',
-  'basti', 'ballia', 'kasganj'
-];
+const CITY_STATE_MAP = {
+  // Uttar Pradesh
+  'noida': 'Uttar Pradesh', 'greater noida': 'Uttar Pradesh', 'ghaziabad': 'Uttar Pradesh',
+  'lucknow': 'Uttar Pradesh', 'kanpur': 'Uttar Pradesh', 'agra': 'Uttar Pradesh',
+  'varanasi': 'Uttar Pradesh', 'meerut': 'Uttar Pradesh', 'prayagraj': 'Uttar Pradesh',
+  'allahabad': 'Uttar Pradesh', 'bareilly': 'Uttar Pradesh', 'aligarh': 'Uttar Pradesh',
+  'moradabad': 'Uttar Pradesh', 'saharanpur': 'Uttar Pradesh', 'gorakhpur': 'Uttar Pradesh',
+  'firozabad': 'Uttar Pradesh', 'jhansi': 'Uttar Pradesh', 'muzaffarnagar': 'Uttar Pradesh',
+  'mathura': 'Uttar Pradesh', 'ayodhya': 'Uttar Pradesh', 'rampur': 'Uttar Pradesh',
+  'shahjahanpur': 'Uttar Pradesh', 'farrukhabad': 'Uttar Pradesh', 'budaun': 'Uttar Pradesh',
+  'hapur': 'Uttar Pradesh', 'etawah': 'Uttar Pradesh', 'mirzapur': 'Uttar Pradesh',
+  'bulandshahr': 'Uttar Pradesh', 'sambhal': 'Uttar Pradesh', 'amroha': 'Uttar Pradesh',
+  'hardoi': 'Uttar Pradesh', 'fatehpur': 'Uttar Pradesh', 'raebareli': 'Uttar Pradesh',
+  'orai': 'Uttar Pradesh', 'sitapur': 'Uttar Pradesh', 'bahraich': 'Uttar Pradesh',
+  'modinagar': 'Uttar Pradesh', 'unnao': 'Uttar Pradesh', 'jaunpur': 'Uttar Pradesh',
+  'lakhimpur': 'Uttar Pradesh', 'hathras': 'Uttar Pradesh', 'banda': 'Uttar Pradesh',
+  'pilibhit': 'Uttar Pradesh', 'barabanki': 'Uttar Pradesh', 'khurja': 'Uttar Pradesh',
+  'gonda': 'Uttar Pradesh', 'mainpuri': 'Uttar Pradesh', 'lalitpur': 'Uttar Pradesh',
+  'etah': 'Uttar Pradesh', 'deoria': 'Uttar Pradesh', 'ghazipur': 'Uttar Pradesh',
+  'sultanpur': 'Uttar Pradesh', 'azamgarh': 'Uttar Pradesh', 'bijnor': 'Uttar Pradesh',
+  'basti': 'Uttar Pradesh', 'ballia': 'Uttar Pradesh', 'kasganj': 'Uttar Pradesh',
 
-function isCustomerFromUttarPradesh(stateName, cityName, address, pincode) {
-  const stateStr = String(stateName || '').trim();
-  const cityStr = String(cityName || '').trim();
-  const addrStr = String(address || '').trim();
-  const pinStr = String(pincode || '').trim();
-  const combined = `${stateStr} ${cityStr} ${addrStr}`.toLowerCase();
+  // Haryana
+  'gurgaon': 'Haryana', 'gurugram': 'Haryana', 'faridabad': 'Haryana', 'panipat': 'Haryana',
+  'karnal': 'Haryana', 'sonipat': 'Haryana', 'ambala': 'Haryana', 'rohtak': 'Haryana',
+  'hisar': 'Haryana', 'panchkula': 'Haryana', 'rewari': 'Haryana', 'yamunanagar': 'Haryana',
+  'bahadurgarh': 'Haryana', 'bhiwani': 'Haryana', 'sirsa': 'Haryana', 'jind': 'Haryana',
 
-  if (
-    /^u\.?p\.?$/i.test(stateStr) ||
-    /uttar\s*pradesh/i.test(combined) ||
-    /\bu\.?p\.?\b/i.test(combined)
-  ) {
-    return true;
+  // Delhi NCR
+  'delhi': 'Delhi', 'new delhi': 'Delhi', 'central delhi': 'Delhi', 'south delhi': 'Delhi',
+  'north delhi': 'Delhi', 'west delhi': 'Delhi', 'east delhi': 'Delhi', 'dwarka': 'Delhi',
+  'rohini': 'Delhi',
+
+  // Rajasthan
+  'jaipur': 'Rajasthan', 'jodhpur': 'Rajasthan', 'udaipur': 'Rajasthan', 'kota': 'Rajasthan',
+  'ajmer': 'Rajasthan', 'bikaner': 'Rajasthan', 'alwar': 'Rajasthan', 'bhilwara': 'Rajasthan',
+  'sikar': 'Rajasthan', 'pali': 'Rajasthan', 'bharatpur': 'Rajasthan',
+
+  // Maharashtra
+  'mumbai': 'Maharashtra', 'pune': 'Maharashtra', 'nagpur': 'Maharashtra', 'thane': 'Maharashtra',
+  'nashik': 'Maharashtra', 'aurangabad': 'Maharashtra', 'navi mumbai': 'Maharashtra',
+  'solapur': 'Maharashtra', 'kolhapur': 'Maharashtra', 'amravati': 'Maharashtra',
+
+  // Karnataka
+  'bengaluru': 'Karnataka', 'bangalore': 'Karnataka', 'mysuru': 'Karnataka', 'mysore': 'Karnataka',
+  'hubli': 'Karnataka', 'hubballi': 'Karnataka', 'mangaluru': 'Karnataka', 'mangalore': 'Karnataka',
+
+  // Gujarat
+  'ahmedabad': 'Gujarat', 'surat': 'Gujarat', 'vadodara': 'Gujarat', 'rajkot': 'Gujarat',
+  'bhavnagar': 'Gujarat', 'jamnagar': 'Gujarat', 'gandhinagar': 'Gujarat',
+
+  // Madhya Pradesh
+  'bhopal': 'Madhya Pradesh', 'indore': 'Madhya Pradesh', 'gwalior': 'Madhya Pradesh',
+  'jabalpur': 'Madhya Pradesh', 'ujjain': 'Madhya Pradesh', 'sagar': 'Madhya Pradesh',
+
+  // Bihar
+  'patna': 'Bihar', 'gaya': 'Bihar', 'muzaffarpur': 'Bihar', 'bhagalpur': 'Bihar',
+  'darbhanga': 'Bihar', 'bihar sharif': 'Bihar', 'purnia': 'Bihar',
+
+  // Jharkhand
+  'ranchi': 'Jharkhand', 'jamshedpur': 'Jharkhand', 'dhanbad': 'Jharkhand', 'bokaro': 'Jharkhand',
+
+  // West Bengal
+  'kolkata': 'West Bengal', 'howrah': 'West Bengal', 'durgapur': 'West Bengal',
+  'asansol': 'West Bengal', 'siliguri': 'West Bengal',
+
+  // Punjab & Chandigarh
+  'chandigarh': 'Chandigarh', 'ludhiana': 'Punjab', 'amritsar': 'Punjab',
+  'jalandhar': 'Punjab', 'patiala': 'Punjab', 'bathinda': 'Punjab', 'mohali': 'Punjab',
+
+  // Uttarakhand
+  'dehradun': 'Uttarakhand', 'haridwar': 'Uttarakhand', 'roorkee': 'Uttarakhand',
+  'haldwani': 'Uttarakhand', 'rishikesh': 'Uttarakhand', 'nainital': 'Uttarakhand'
+};
+
+function getStateFromPincode(pin) {
+  if (!pin) return '';
+  const m = String(pin).trim().match(/\b([1-8]\d{5})\b/);
+  if (!m) return '';
+  const prefix2 = Number(m[1].slice(0, 2));
+  const prefix3 = Number(m[1].slice(0, 3));
+  if (prefix2 === 11) return 'Delhi';
+  if (prefix2 >= 12 && prefix2 <= 13) return 'Haryana';
+  if (prefix3 === 160) return 'Chandigarh';
+  if (prefix2 >= 14 && prefix2 <= 16) return 'Punjab';
+  if (prefix2 === 17) return 'Himachal Pradesh';
+  if (prefix2 >= 18 && prefix2 <= 19) return 'Jammu and Kashmir';
+  if (prefix3 >= 248 && prefix3 <= 249) return 'Uttarakhand';
+  if (prefix3 >= 262 && prefix3 <= 263) return 'Uttarakhand';
+  if (prefix2 >= 20 && prefix2 <= 28) return 'Uttar Pradesh';
+  if (prefix2 >= 30 && prefix2 <= 34) return 'Rajasthan';
+  if (prefix2 >= 36 && prefix2 <= 39) return 'Gujarat';
+  if (prefix3 === 403) return 'Goa';
+  if (prefix2 >= 40 && prefix2 <= 44) return 'Maharashtra';
+  if (prefix2 === 49) return 'Chhattisgarh';
+  if (prefix2 >= 45 && prefix2 <= 48) return 'Madhya Pradesh';
+  if (prefix2 >= 50 && prefix2 <= 53) return 'Telangana';
+  if (prefix2 >= 56 && prefix2 <= 59) return 'Karnataka';
+  if (prefix3 === 605) return 'Puducherry';
+  if (prefix2 >= 60 && prefix2 <= 64) return 'Tamil Nadu';
+  if (prefix2 >= 67 && prefix2 <= 69) return 'Kerala';
+  if (prefix2 >= 70 && prefix2 <= 74) return 'West Bengal';
+  if (prefix2 >= 75 && prefix2 <= 77) return 'Odisha';
+  if (prefix2 >= 81 && prefix2 <= 83) return 'Jharkhand';
+  if (prefix2 >= 80 && prefix2 <= 85) return 'Bihar';
+  if (prefix2 >= 78 && prefix2 <= 79) return 'Assam';
+  return '';
+}
+
+function resolveAccurateGeo(rawState, rawCity, rawAddress, rawPincode) {
+  let state = cleanStr(rawState);
+  let city = cleanStr(rawCity);
+  const addr = cleanStr(rawAddress);
+  let pin = cleanStr(rawPincode);
+
+  if (!pin && addr) {
+    const pinMatch = addr.match(/\b([1-8]\d{5})\b/);
+    if (pinMatch) pin = pinMatch[1];
   }
 
-  for (const c of UP_CITIES) {
-    if (new RegExp('\\b' + c + '\\b', 'i').test(combined)) {
-      return true;
+  // 1. City known check
+  const cityLower = city.toLowerCase();
+  if (cityLower && CITY_STATE_MAP[cityLower]) {
+    state = CITY_STATE_MAP[cityLower];
+  }
+
+  // 2. PIN code authoritative state
+  const pinState = getStateFromPincode(pin);
+  if (!state || (state.toLowerCase() === 'delhi' && cityLower && !cityLower.includes('delhi'))) {
+    if (pinState) {
+      state = pinState;
     }
   }
 
-  const pinMatch = pinStr.match(/\b(2[0-8]\d{4})\b/) || addrStr.match(/\b(2[0-8]\d{4})\b/);
-  if (pinMatch) {
-    return true;
+  // 3. State from address
+  if (!state || state.toLowerCase() === 'delhi') {
+    const addrState = extractStateFromAddress(addr);
+    if (addrState) state = addrState;
   }
 
-  return false;
+  // 4. City from address
+  if (!state && addr) {
+    const addrLower = addr.toLowerCase();
+    for (const [c, s] of Object.entries(CITY_STATE_MAP)) {
+      if (new RegExp('\\b' + c + '\\b', 'i').test(addrLower)) {
+        state = s;
+        if (!city || city === '-') city = c.charAt(0).toUpperCase() + c.slice(1);
+        break;
+      }
+    }
+  }
+
+  if (!city || city === '-') {
+    city = extractCityFromAddress(addr) || '-';
+  }
+
+  if (!state) {
+    state = pinState || '-';
+  }
+
+  const isUP = /^u\.?p\.?$/i.test(state) || /uttar\s*pradesh/i.test(state);
+  return {
+    state,
+    city,
+    pincode: pin || '-',
+    isUP,
+    supply: isUP ? 'Intra State' : 'Inter State'
+  };
 }
+
 
 function cleanStr(val) {
   if (val === null || val === undefined) return '';
@@ -832,26 +963,37 @@ async function enrichLoansBatch(loans) {
       cleanStr(aadhaar?.address) ||
       cleanStr(app?.office_address) ||
       cleanStr(payload?.address || payload?.currentAddress) ||
+      cleanStr(cibilAnalysis?.personalDetails?.address || cibil?.address) ||
       '-';
 
-    l.city = cleanStr(app?.city) ||
+    const rawCityCandidate = cleanStr(app?.city) ||
       cleanStr(payload?.city) ||
-      cleanStr(aadhaarRaw?.dist || aadhaarRaw?.city) ||
+      cleanStr(aadhaarRaw?.dist || aadhaarRaw?.city || aadhaarRaw?.split_address?.district) ||
+      cleanStr(cibil?.city || cibilAnalysis?.personalDetails?.city) ||
       extractCityFromAddress(l.address) ||
       '-';
-    l.cityName = l.city;
 
-    l.stateName = cleanStr(payload?.state || payload?.stateName) ||
-      cleanStr(aadhaarRaw?.state) ||
-      extractStateFromAddress(l.address) ||
-      'Delhi';
-    l.state = l.stateName;
+    const rawStateCandidate = cleanStr(payload?.state || payload?.stateName || payload?.currentState) ||
+      cleanStr(aadhaarRaw?.state || aadhaarRaw?.split_address?.state || aadhaar?.state) ||
+      cleanStr(cibilAnalysis?.personalDetails?.state || cibil?.state) ||
+      cleanStr(sanction?.borrower_state) ||
+      extractStateFromAddress(l.address);
 
-    l.pincode = cleanStr(app?.pincode) ||
+    const rawPincodeCandidate = cleanStr(app?.pincode) ||
       cleanStr(payload?.pincode || payload?.pinCode) ||
-      cleanStr(aadhaarRaw?.pc || aadhaarRaw?.pincode) ||
+      cleanStr(aadhaarRaw?.pc || aadhaarRaw?.pincode || aadhaarRaw?.split_address?.pincode) ||
+      cleanStr(cibilAnalysis?.personalDetails?.pincode) ||
       extractPincodeFromAddress(l.address) ||
       '-';
+
+    const geo = resolveAccurateGeo(rawStateCandidate, rawCityCandidate, l.address, rawPincodeCandidate);
+    l.city = geo.city;
+    l.cityName = geo.city;
+    l.stateName = geo.state;
+    l.state = geo.state;
+    l.pincode = geo.pincode;
+    l.isUP = geo.isUP;
+    l.supply = geo.supply;
 
     l.branchName = cleanStr(app?.branch_name) || 'Main Branch';
 
@@ -891,8 +1033,8 @@ async function enrichLoansBatch(loans) {
     l.adminFeeGst = adminFeeGst;
     l.totalAdminFee = totalAdminFee;
     // GST split: For Uttar Pradesh customer, IGST is 0 and GST is split 50:50 between CGST and SGST
-    const isUP = isCustomerFromUttarPradesh(l.stateName, l.cityName, l.address, l.pincode);
-    if (isUP) {
+    l.taxableFee = adminFee;
+    if (l.isUP) {
       l.igst = 0;
       l.cgst = Math.round((adminFeeGst / 2) * 100) / 100;
       l.sgst = Math.round((adminFeeGst / 2) * 100) / 100;
