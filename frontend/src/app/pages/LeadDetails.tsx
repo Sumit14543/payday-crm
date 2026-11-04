@@ -6215,12 +6215,9 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                       type="text"
                       value={leadProceededBy}
                       onChange={(event) => setLeadProceededBy(event.target.value)}
-                      placeholder="Enter name of person who proceeded this lead"
+                      placeholder="Enter name"
                       className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
-                    <p className="mt-1 text-xs text-gray-400">
-                      Name of the telecaller/agent proceeding this lead to Credit Manager.
-                    </p>
                   </div>
                   <label className="text-sm font-medium text-gray-600">Credit Manager Handoff Note</label>
                   <textarea
