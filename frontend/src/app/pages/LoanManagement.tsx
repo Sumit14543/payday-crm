@@ -355,9 +355,34 @@ function parseLoanRow(loan: Loan) {
   const cgst = isUP ? Number(loan.cgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
   const sgst = isUP ? Number(loan.sgst || Math.round((adminFeeGst / 2) * 100) / 100) : 0;
   const processing = Number(loan.totalAdminFee || (adminFee + adminFeeGst));
-  const interest = Number(loan.totalRoi !== undefined ? loan.totalRoi : (Number(loan.amountPaid || 0) > principal ? Number(loan.amountPaid || 0) - principal : 0));
+
+  const tenure = Number(loan.tenure || (loan as any).tenure_days || 30);
+  const roi = Number(loan.roi || loan.interestRate || (loan as any).roiRate || 1.0);
+
+  // Disbursement-time Interest (agreed interest booked at disbursement, NOT closure receipts)
+  let interest = 0;
+  if (loan.interest !== undefined && Number(loan.interest) > 0) {
+    interest = Number(loan.interest);
+  } else if (loan.disbursementInterest !== undefined && Number(loan.disbursementInterest) > 0) {
+    interest = Number(loan.disbursementInterest);
+  } else if (loan.repaymentAmount && Number(loan.repaymentAmount) > principal) {
+    interest = Math.round(Number(loan.repaymentAmount) - principal);
+  } else if (loan.loanRepayAmount && Number(loan.loanRepayAmount) > principal) {
+    interest = Math.round(Number(loan.loanRepayAmount) - principal);
+  } else if (loan.totalAmount && Number(loan.totalAmount) > principal) {
+    interest = Math.round(Number(loan.totalAmount) - principal);
+  } else if (principal > 0 && tenure > 0 && roi > 0) {
+    if (roi > 5) {
+      interest = Math.round(principal * (roi / 100));
+    } else {
+      interest = Math.round((principal * roi * tenure) / 100);
+    }
+  } else if (principal > 0) {
+    interest = Math.round(principal * 0.12);
+  }
+
   const disbursedAmount = Number(loan.disbursedAmount || (principal > totalAdminFee ? principal - totalAdminFee : principal));
-  const loanRepayAmount = Number(loan.loanRepayAmount || loan.repaymentAmount || loan.totalAmount || Math.round(principal * 1.12));
+  const loanRepayAmount = Number(loan.loanRepayAmount || loan.repaymentAmount || (principal + interest));
 
   const mobile = loan.mobile || loan.mobileNumber || (loan as any).phone || (loan as any).customerPhone || "-";
   const email = loan.email || (loan as any).customerEmail || "-";
@@ -968,7 +993,7 @@ export function LoanManagement() {
           `"${formatCsvDate(l.dob)}"`,
           `"${(l.panNumber || "").replace(/"/g, '""')}"`,
           l.principal || 0,
-          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || 0,
+          l.loanRepayAmount || l.repaymentAmount || l.totalAmount || (Number(l.principal || 0) + Number(l.interest || 0)),
           l.monthlyIncome || 0,
           `"${formatCsvDate(l.disbursedDate || l.startDate)}"`,
           `"${formatCsvDate(l.repaymentDate || l.dueDate)}"`,

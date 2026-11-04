@@ -646,7 +646,7 @@ async function enrichLoansBatch(loans) {
   if (camConds.length) {
     promises.push(
       query(`
-        SELECT id, lead_id, application_id, monthly_income, net_income, decided_by
+        SELECT id, lead_id, application_id, monthly_income, net_income, decided_by, approved_amount, loan_term_days, interest_rate, total_repayment
         FROM lead_cam_sheets
         WHERE ${camConds.join(' OR ')}
         ORDER BY id DESC
@@ -1046,7 +1046,33 @@ async function enrichLoansBatch(loans) {
     l.processing = totalAdminFee;
     l.processingFee = totalAdminFee;
     l.gstAmount = adminFeeGst;
-    l.interest = Number(l.totalRoi || (l.amountPaid > principal ? l.amountPaid - principal : 0));
+
+    // Tenure and ROI Rate at disbursement
+    const tenure = Number(validSanction?.tenure_days || cam?.loan_term_days || l.tenure || l.tenure_days || 30);
+    const roiRate = Number(validSanction?.interest_rate || cam?.interest_rate || l.interestRate || l.roi || 1.0);
+    l.tenure = tenure;
+    l.roi = roiRate;
+
+    // Disbursement-time Interest (agreed/booked interest on loan at origination/disbursement, NOT closure collections)
+    let disbursementInterest = 0;
+    if (validSanction?.repayment_amount && Number(validSanction.repayment_amount) > principal) {
+      disbursementInterest = Math.round(Number(validSanction.repayment_amount) - principal);
+    } else if (cam?.total_repayment && Number(cam.total_repayment) > principal) {
+      disbursementInterest = Math.round(Number(cam.total_repayment) - Number(cam.approved_amount || principal));
+    } else if (l.totalAmount && Number(l.totalAmount) > principal) {
+      disbursementInterest = Math.round(Number(l.totalAmount) - principal);
+    } else if (principal > 0 && tenure > 0 && roiRate > 0) {
+      if (roiRate > 5) {
+        disbursementInterest = Math.round(principal * (roiRate / 100));
+      } else {
+        disbursementInterest = Math.round((principal * roiRate * tenure) / 100);
+      }
+    } else if (principal > 0) {
+      disbursementInterest = Math.round(principal * 0.12);
+    }
+
+    l.interest = disbursementInterest;
+    l.disbursementInterest = disbursementInterest;
 
     // Standard Net Disbursement Calculation (Matches Accountant bank transfer exactly)
     let netDisbursed = 0;
@@ -1060,10 +1086,8 @@ async function enrichLoansBatch(loans) {
       netDisbursed = Math.round(principal * 0.882);
     }
     l.disbursedAmount = netDisbursed;
-    l.loanRepayAmount = Number(validSanction?.repayment_amount || l.totalAmount || Math.round(principal * 1.12));
+    l.loanRepayAmount = Number(validSanction?.repayment_amount || (l.totalAmount && Number(l.totalAmount) > principal ? l.totalAmount : (principal + disbursementInterest)));
     l.repaymentAmount = l.loanRepayAmount;
-    l.tenure = Number(validSanction?.tenure_days || 30);
-    l.roi = Number(validSanction?.interest_rate || l.interestRate || 1.0);
 
     // Dates
     l.disbursedDate = validPayment?.disbursed_at ? getLocalDate(validPayment.disbursed_at) : (validPayment?.paid_at ? getLocalDate(validPayment.paid_at) : (validSanction?.agreement_date && (!l.startDate || Math.abs(new Date(validSanction.agreement_date) - new Date(l.startDate)) < 15 * 86400000) ? getLocalDate(validSanction.agreement_date) : (l.startDate || null)));
