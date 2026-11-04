@@ -143,10 +143,13 @@ async function createForLead(lead, event = {}) {
       is_customer_visible, occurred_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
+      stage_key = VALUES(stage_key),
+      status = VALUES(status),
+      public_status = VALUES(public_status),
       metadata = VALUES(metadata),
       title = VALUES(title),
       description = VALUES(description),
-      occurred_at = LEAST(occurred_at, VALUES(occurred_at))
+      occurred_at = VALUES(occurred_at)
   `, [
     lead.rawId || '',
     lead.id,

@@ -6901,7 +6901,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                       {latestLoanAgreement.signedPdfPath ? "Download Signed PDF" : "Fetch Signed PDF"}
                     </button>
                   )}
-                  {isCreditManagerRole && latestLoanAgreement?.status === "signed" && lead.status !== "Converted" && (
+                  {isCreditManagerRole && (latestLoanAgreement?.status === "signed" || latestEsign?.status === "signed") && lead.status !== "Converted" && (
                     <button
                       type="button"
                       onClick={sendLeadToAccounting}

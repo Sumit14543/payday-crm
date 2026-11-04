@@ -858,7 +858,7 @@ async function sendLeadToAccounting(req, res) {
     assignedTo: req.body.assignedTo || 'Accountant',
   });
   const actor = req.body.user || req.body.actor || req.user?.name || 'Credit Manager';
-  const sourceKey = `accounting-handoff:${signedLoanAgreement?.id || signedEsign?.id || sanction.id}`;
+  const sourceKey = `accounting-handoff:${lead.rawId || lead.id}:${signedLoanAgreement?.id || signedEsign?.id || sanction.id}:${Date.now()}`;
 
   await leadStatusModel.recordStatusChange(updatedLead || lead, lead, {
     force: true,

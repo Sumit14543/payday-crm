@@ -1200,6 +1200,8 @@ function mapCreditApplication(row) {
     stage = 'Closed';
   } else if (agreementStatus === 'signed' && accountingHandoffAt) {
     stage = 'Sent to Accountant';
+  } else if (row.assignedTo === 'Accountant' || leadStatus === 'Qualified') {
+    stage = 'Sent to Accountant';
   } else if (agreementStatus === 'signed') {
     stage = 'Agreement Signed';
   } else if (agreementStatus === 'sent') {
@@ -1445,6 +1447,10 @@ async function listCreditApplications(filters = {}) {
         SELECT id, application_id, lead_id, status, provider_status, ${dateTimeSql('sent_at')} AS sent_at,
                ${dateTimeSql('signed_at')} AS signed_at, signing_url, pdf_path, signed_pdf_path
         FROM lead_loan_agreements
+        UNION ALL
+        SELECT id, application_id, lead_id, status, 'esign' AS provider_status, ${dateTimeSql('created_at')} AS sent_at,
+               ${dateTimeSql('signed_at')} AS signed_at, agreement_url AS signing_url, agreement_url AS pdf_path, signed_file_url AS signed_pdf_path
+        FROM lead_esign_requests
         ORDER BY id ASC
       `).catch(() => []),
 
@@ -1710,47 +1716,52 @@ async function listAccountingQueue() {
         ELSE la.status
       END AS status,
       sanction.id AS sanctionId,
-      sanction.agreement_number AS agreementNumber,
-      sanction.principal_amount AS loanAmount,
-      sanction.processing_fee AS processingFee,
-      sanction.gst_amount AS gstAmount,
-      sanction.disbursed_amount AS disbursementAmount,
-      sanction.repayment_amount AS repaymentAmount,
-      sanction.tenure_days AS tenureDays,
+      COALESCE(NULLIF(sanction.agreement_number, ''), la.application_id, CONCAT('APP-', la.id)) AS agreementNumber,
+      COALESCE(sanction.principal_amount, la.loan_amount, 0) AS loanAmount,
+      COALESCE(sanction.processing_fee, 0) AS processingFee,
+      COALESCE(sanction.gst_amount, 0) AS gstAmount,
+      COALESCE(sanction.disbursed_amount, sanction.principal_amount, la.loan_amount, 0) AS disbursementAmount,
+      COALESCE(sanction.repayment_amount, sanction.principal_amount, la.loan_amount, 0) AS repaymentAmount,
+      COALESCE(sanction.tenure_days, 30) AS tenureDays,
       sanction.due_date AS dueDate,
       COALESCE(NULLIF(sanction.bank_name, ''), la.bank_name, '') AS bankName,
       COALESCE(NULLIF(sanction.account_number, ''), la.account_number, '') AS accountNumber,
       COALESCE(NULLIF(sanction.ifsc_code, ''), la.ifsc_code, '') AS ifscCode,
-      agreement.id AS signedAgreementId,
-      agreement.signed_at AS esignDate
+      COALESCE(agreement.id, esign.id) AS signedAgreementId,
+      COALESCE(agreement.signed_at, esign.signed_at) AS esignDate
     FROM loan_applications la
-    INNER JOIN lead_sanctions sanction
+    LEFT JOIN lead_sanctions sanction
       ON sanction.id = COALESCE(
         (SELECT s2.id FROM lead_sanctions s2 WHERE la.application_id <> '' AND s2.application_id = la.application_id ORDER BY s2.created_at DESC, s2.id DESC LIMIT 1),
         (SELECT s2.id FROM lead_sanctions s2 WHERE s2.lead_id = CAST(la.id AS CHAR) ORDER BY s2.created_at DESC, s2.id DESC LIMIT 1)
       )
-    INNER JOIN lead_loan_agreements agreement
+    LEFT JOIN lead_loan_agreements agreement
       ON agreement.id = COALESCE(
         (SELECT a2.id FROM lead_loan_agreements a2 WHERE la.application_id <> '' AND a2.application_id = la.application_id AND a2.status = 'signed' ORDER BY a2.signed_at DESC, a2.id DESC LIMIT 1),
         (SELECT a2.id FROM lead_loan_agreements a2 WHERE a2.lead_id = CAST(la.id AS CHAR) AND a2.status = 'signed' ORDER BY a2.signed_at DESC, a2.id DESC LIMIT 1)
       )
+    LEFT JOIN lead_esign_requests esign
+      ON esign.id = COALESCE(
+        (SELECT e2.id FROM lead_esign_requests e2 WHERE la.application_id <> '' AND e2.application_id = la.application_id AND e2.status = 'signed' ORDER BY e2.signed_at DESC, e2.id DESC LIMIT 1),
+        (SELECT e2.id FROM lead_esign_requests e2 WHERE e2.lead_id = CAST(la.id AS CHAR) AND e2.status = 'signed' ORDER BY e2.signed_at DESC, e2.id DESC LIMIT 1)
+      )
     LEFT JOIN lead_accounting_payments payment
       ON payment.id = COALESCE(
-        (SELECT p2.id FROM lead_accounting_payments p2 WHERE la.application_id <> '' AND p2.application_id = la.application_id ORDER BY p2.paid_at DESC, p2.id DESC LIMIT 1),
-        (SELECT p2.id FROM lead_accounting_payments p2 WHERE p2.lead_id = CAST(la.id AS CHAR) ORDER BY p2.paid_at DESC, p2.id DESC LIMIT 1)
+        (SELECT p2.id FROM lead_accounting_payments p2 WHERE la.application_id <> '' AND p2.application_id = la.application_id AND LOWER(p2.status) IN ('paid', 'disbursed', 'success') ORDER BY p2.paid_at DESC, p2.id DESC LIMIT 1),
+        (SELECT p2.id FROM lead_accounting_payments p2 WHERE p2.lead_id = CAST(la.id AS CHAR) AND LOWER(p2.status) IN ('paid', 'disbursed', 'success') ORDER BY p2.paid_at DESC, p2.id DESC LIMIT 1)
       )
     LEFT JOIN lead_status_events accounting_handoff
       ON accounting_handoff.id = COALESCE(
         (SELECT se2.id FROM lead_status_events se2 WHERE la.application_id <> '' AND se2.application_id = la.application_id AND se2.stage_key = 'accounting_handoff' ORDER BY se2.occurred_at DESC, se2.id DESC LIMIT 1),
         (SELECT se2.id FROM lead_status_events se2 WHERE se2.lead_id = CAST(la.id AS CHAR) AND se2.stage_key = 'accounting_handoff' ORDER BY se2.occurred_at DESC, se2.id DESC LIMIT 1)
       )
-    WHERE la.status = 'approved'
+    WHERE (la.status = 'approved' OR la.assigned_to = 'Accountant')
       AND payment.id IS NULL
-      AND accounting_handoff.id IS NOT NULL
+      AND (accounting_handoff.id IS NOT NULL OR la.assigned_to = 'Accountant')
       AND la.id NOT IN (1986, 127, '1986', '127')
       AND COALESCE(la.application_id, '') NOT IN ('LNWQTMN01986', 'LNWQTMN00127', 'WQTMN01986', 'WQTMN00127', 'WAQTFN-PD-1782455676578', 'WAQTMN-PD-890903924560')
       AND COALESCE(sanction.agreement_number, '') NOT IN ('LNWQTMN01986', 'LNWQTMN00127', 'WQTMN01986', 'WQTMN00127', '01986', '00127')
-    ORDER BY accounting_handoff.occurred_at DESC, accounting_handoff.id DESC, agreement.signed_at DESC, sanction.created_at DESC
+    ORDER BY COALESCE(accounting_handoff.occurred_at, la.updated_at) DESC, accounting_handoff.id DESC, COALESCE(agreement.signed_at, esign.signed_at) DESC, sanction.created_at DESC
   `);
 
   const excludedSet = new Set([
@@ -2319,7 +2330,8 @@ async function hasAccountingPayment(lead) {
   const rows = await query(`
     SELECT id
     FROM lead_accounting_payments
-    WHERE lead_id = ? OR application_id = ?
+    WHERE (lead_id = ? OR application_id = ?)
+      AND LOWER(status) IN ('paid', 'disbursed', 'success')
     LIMIT 1
   `, [leadId, applicationId]);
 
