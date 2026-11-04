@@ -1755,7 +1755,8 @@ async function listAccountingQueue() {
         (SELECT se2.id FROM lead_status_events se2 WHERE la.application_id <> '' AND se2.application_id = la.application_id AND se2.stage_key = 'accounting_handoff' ORDER BY se2.occurred_at DESC, se2.id DESC LIMIT 1),
         (SELECT se2.id FROM lead_status_events se2 WHERE se2.lead_id = CAST(la.id AS CHAR) AND se2.stage_key = 'accounting_handoff' ORDER BY se2.occurred_at DESC, se2.id DESC LIMIT 1)
       )
-    WHERE (la.status = 'approved' OR la.assigned_to = 'Accountant')
+    WHERE la.status = 'approved'
+      AND la.status NOT IN ('disbursed', 'closed', 'rejected')
       AND payment.id IS NULL
       AND (accounting_handoff.id IS NOT NULL OR la.assigned_to = 'Accountant')
       AND la.id NOT IN (1986, 127, '1986', '127')
@@ -1772,8 +1773,15 @@ async function listAccountingQueue() {
     'WAQTFN-PD-1782455676578', 'WAQTMN-PD-890903924560'
   ]);
 
+  const seenIds = new Set();
   return rows
     .filter(r => !excludedSet.has(String(r.id)) && !excludedSet.has(String(r.rawId)) && !excludedSet.has(String(r.agreementNumber)))
+    .filter(r => {
+      const key = String(r.id || r.rawId);
+      if (seenIds.has(key)) return false;
+      seenIds.add(key);
+      return true;
+    })
     .map(mapAccountingQueueItem);
 }
 
