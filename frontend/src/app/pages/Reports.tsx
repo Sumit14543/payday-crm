@@ -840,6 +840,7 @@ export function Reports() {
     dueDate: formatDate(item.dueDate),
     emiStatus: item.emiStatus || "-",
     loanId: item.loanId,
+    lastLogin: (item.lastLoginAt || item.lastLogin) ? formatDateTime(item.lastLoginAt || item.lastLogin) : "-",
     outstanding: formatCurrency(item.outstanding || item.totalDue),
     pan: item.pan || "-",
     phone: item.phone || "-",
@@ -854,6 +855,7 @@ export function Reports() {
     PAN: row.pan,
     Aadhaar: row.aadhaar,
     "Loan Account": row.loanId,
+    "Customer Last Login": row.lastLogin,
     Disbursement: row.disbursement,
     "Disbursement Date": row.disbursementDate,
     "Due Date": row.dueDate,
@@ -2196,7 +2198,7 @@ function SingleReportView({
         break;
       case "collection-report":
         title = "Collection Report";
-        headers = ["Borrower", "Phone", "PAN", "Aadhaar", "Loan Account", "Disbursement", "Outstanding", "EMI Status", "DPD"];
+        headers = ["Borrower", "Phone", "PAN", "Aadhaar", "Loan Account", "Customer Last Login", "Disbursement", "Outstanding", "EMI Status", "DPD"];
         break;
       case "due-report":
         title = "Due Report";
@@ -2394,6 +2396,7 @@ function SingleReportView({
           pan: row.pan || "-",
           aadhaar: row.aadhaar || "-",
           loanId: row.loanId,
+          lastLogin: (row.lastLoginAt || row.lastLogin) ? formatDateTime(row.lastLoginAt || row.lastLogin) : "-",
           disbursement: formatCurrency(row.disbursementAmount),
           outstanding: formatCurrency(row.outstanding || row.totalDue),
           status: row.emiStatus || "-",
