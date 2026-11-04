@@ -178,6 +178,7 @@ function leadSqlWhere(whereClause = '') {
       END`)} AS status,
       ${textSql(`COALESCE(NULLIF(priority, ''), ${defaultPrioritySql()})`)} AS priority,
       ${textSql("COALESCE(NULLIF(assigned_to, ''), 'Unassigned')")} AS assignedTo,
+      ${textSql("COALESCE(NULLIF(lead_proceeded_by, ''), '')")} AS leadProceededBy,
       ${textSql(`CASE
         WHEN assigned_to IS NULL OR assigned_to = '' THEN 'Intake Queue'
         ELSE 'Telecaller'
@@ -1309,6 +1310,12 @@ async function updateOperations(id, payload = {}) {
   if (priority !== undefined) {
     updates.push('priority = ?');
     params.push(priority);
+  }
+
+  if (payload.leadProceededBy !== undefined || payload.proceededBy !== undefined) {
+    const val = clean(payload.leadProceededBy || payload.proceededBy);
+    updates.push('lead_proceeded_by = ?');
+    params.push(val);
   }
 
   if (payload.assignedTo !== undefined) {

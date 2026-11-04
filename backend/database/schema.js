@@ -629,6 +629,7 @@ async function migrate() {
       status VARCHAR(40) NOT NULL DEFAULT 'ready',
       checklist_snapshot LONGTEXT DEFAULT NULL,
       notes TEXT DEFAULT NULL,
+      proceeded_by VARCHAR(120) DEFAULT NULL,
       submitted_by VARCHAR(120) NOT NULL DEFAULT 'CRM User',
       submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       reviewed_by VARCHAR(120) DEFAULT NULL,
@@ -1325,6 +1326,8 @@ async function migrate() {
   await ensureIndex('lead_accounting_payments', 'idx_lead_accounting_payments_loan_id', 'INDEX idx_lead_accounting_payments_loan_id (loan_id)');
   await ensureIndex('lead_accounting_payments', 'idx_lead_accounting_payments_transaction_id', 'INDEX idx_lead_accounting_payments_transaction_id (transaction_id)');
   await ensureIndex('lead_accounting_payments', 'uq_lead_accounting_payments_transaction_id', 'UNIQUE KEY uq_lead_accounting_payments_transaction_id (transaction_id)');
+  await ensureColumn('lead_credit_handoffs', 'proceeded_by', 'proceeded_by VARCHAR(120) DEFAULT NULL');
+  await ensureColumn('loan_applications', 'lead_proceeded_by', 'lead_proceeded_by VARCHAR(120) DEFAULT NULL');
 
   // Performance Indexes for high-speed dashboard and lead filtering
   await ensureIndex('loan_applications', 'idx_loan_applications_created_at', 'INDEX idx_loan_applications_created_at (created_at DESC)');

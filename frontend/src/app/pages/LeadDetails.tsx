@@ -253,6 +253,7 @@ type CreditHandoff = {
   id: number;
   status: string;
   notes: string;
+  proceededBy?: string;
   submittedBy: string;
   submittedAt: string;
 };
@@ -2715,7 +2716,21 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     notes: "",
     subDisposition: "",
   });
+  const [leadProceededBy, setLeadProceededBy] = useState("");
   const [handoffNote, setHandoffNote] = useState("");
+
+  useEffect(() => {
+    if (telecallerWorkspace.latestHandoff?.proceededBy) {
+      setLeadProceededBy(telecallerWorkspace.latestHandoff.proceededBy);
+    } else if (!leadProceededBy) {
+      const fallback = (lead.assignedTo && lead.assignedTo !== "Unassigned" && lead.assignedTo !== "Credit Manager")
+        ? lead.assignedTo
+        : user?.name || "";
+      if (fallback) {
+        setLeadProceededBy(fallback);
+      }
+    }
+  }, [telecallerWorkspace.latestHandoff?.proceededBy, lead.assignedTo, user?.name]);
   const [documentRequests, setDocumentRequests] = useState<LeadDocumentRequest[]>([]);
   const [selectedDocumentKeys, setSelectedDocumentKeys] = useState<string[]>([]);
   const [selectedVerificationKeys, setSelectedVerificationKeys] = useState<string[]>([]);
@@ -3311,13 +3326,21 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       return;
     }
 
+    const trimmedProceededBy = leadProceededBy.trim();
+    if (!trimmedProceededBy) {
+      toast.warning("Please enter 'Lead Proceeded By' before sending to Credit Manager.");
+      return;
+    }
+
     try {
       setIsTelecallerSaving(true);
       setTelecallerError("");
       const response = await apiPost<WorkflowLeadResponse>(`/leads/${encodeURIComponent(leadId)}/credit-handoffs`, {
         checklistSnapshot: telecallerWorkspace.documentChecks,
         notes: handoffNote,
-        user: user?.name || "Telecaller",
+        proceededBy: trimmedProceededBy,
+        leadProceededBy: trimmedProceededBy,
+        user: trimmedProceededBy,
       });
       applyUpdatedLead(response.lead);
       setHandoffNote("");
@@ -6184,6 +6207,21 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                 </div>
 
                 <div className="mt-5 border-t border-gray-100 pt-4">
+                  <div className="mb-3">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Lead Proceeded By <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={leadProceededBy}
+                      onChange={(event) => setLeadProceededBy(event.target.value)}
+                      placeholder="Enter name of person who proceeded this lead"
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">
+                      Name of the telecaller/agent proceeding this lead to Credit Manager.
+                    </p>
+                  </div>
                   <label className="text-sm font-medium text-gray-600">Credit Manager Handoff Note</label>
                   <textarea
                     value={handoffNote}
@@ -6194,7 +6232,12 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                   />
                   {telecallerWorkspace.latestHandoff && (
                     <div className="mt-2 rounded-md bg-green-50 px-3 py-2 text-xs text-green-800">
-                      Sent to credit manager on {formatActivityDate(telecallerWorkspace.latestHandoff.submittedAt)}
+                      <div>Sent to credit manager on {formatActivityDate(telecallerWorkspace.latestHandoff.submittedAt)}</div>
+                      {(telecallerWorkspace.latestHandoff.proceededBy || telecallerWorkspace.latestHandoff.submittedBy) && (
+                        <div className="mt-1 font-semibold text-green-900">
+                          Lead Proceeded By: {telecallerWorkspace.latestHandoff.proceededBy || telecallerWorkspace.latestHandoff.submittedBy}
+                        </div>
+                      )}
                     </div>
                   )}
                   <button
@@ -6239,9 +6282,9 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
                 <div className="grid grid-cols-1 gap-3 text-xs text-gray-600 sm:grid-cols-2">
                   <div className="rounded-lg border border-gray-200 p-3">
-                    <p className="font-semibold text-gray-900">Submitted by</p>
-                    <p className="mt-1">
-                      {telecallerWorkspace.latestHandoff?.submittedBy || lead.assignedTo || "Not available"}
+                    <p className="font-semibold text-gray-900">Lead Proceeded By</p>
+                    <p className="mt-1 font-semibold text-slate-800">
+                      {telecallerWorkspace.latestHandoff?.proceededBy || telecallerWorkspace.latestHandoff?.submittedBy || lead.assignedTo || "Not available"}
                     </p>
                     <p className="mt-1 text-gray-500">
                       {telecallerWorkspace.latestHandoff?.submittedAt
@@ -6346,6 +6389,12 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                   </span>
                 </div>
                 <div className="space-y-2 text-sm text-slate-600">
+                  {(telecallerWorkspace.latestHandoff?.proceededBy || telecallerWorkspace.latestHandoff?.submittedBy) && (
+                    <div className="rounded-md border border-indigo-100 bg-indigo-50/80 px-3 py-2 text-xs text-indigo-950 flex items-center justify-between">
+                      <span className="font-semibold text-indigo-800">Lead Proceeded By:</span>
+                      <span className="font-bold text-indigo-950">{telecallerWorkspace.latestHandoff.proceededBy || telecallerWorkspace.latestHandoff.submittedBy}</span>
+                    </div>
+                  )}
                   <p>Missing readiness item: {firstMissingReadiness}</p>
                   <p>Documents: {uploadedDocumentCount}/{documents.length} uploaded</p>
                   {creditDecisionBlockReason && (

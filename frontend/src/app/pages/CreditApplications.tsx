@@ -40,6 +40,7 @@ type CreditApplication = {
   monthlyIncome: number;
   panNumber: string;
   createdAt: string;
+  proceededBy?: string;
   submittedBy: string;
   submittedAt: string | null;
   reviewedBy: string;
@@ -577,7 +578,14 @@ export function CreditApplications() {
                     )}
                   </div>
 
-                  <p className="mt-1 truncate text-xs text-slate-500">{application.id} | {application.phone || "No phone"}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500">
+                    {application.id} | {application.phone || "No phone"}
+                    {(application.proceededBy || application.submittedBy) && (
+                      <span className="ml-2 inline-flex items-center rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700 border border-indigo-200">
+                        Proceeded by: {application.proceededBy || application.submittedBy}
+                      </span>
+                    )}
+                  </p>
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span className="font-bold text-slate-950">{formatCurrency(application.sanctionAmount || application.loanAmount)}</span>
                     {application.sanctionAmount > 0 && application.sanctionAmount !== application.loanAmount && (

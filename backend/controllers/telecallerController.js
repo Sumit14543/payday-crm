@@ -366,35 +366,42 @@ async function createCreditHandoff(req, res) {
     throw error;
   }
 
+  const proceededBy = (req.body?.proceededBy || req.body?.leadProceededBy || req.body?.user || req.user?.name || 'Telecaller').trim();
+
   const handoff = await telecallerModel.createCreditHandoff(lead, {
     ...(req.body || {}),
-    actor: req.user?.name || req.body?.actor || 'CRM User',
-    user: req.user?.name || req.body?.user || 'CRM User',
+    proceededBy,
+    leadProceededBy: proceededBy,
+    actor: proceededBy,
+    user: proceededBy,
   });
 
   const updatedLead = await leadModel.updateOperations(req.params.id, {
     status: 'Document Collection',
     assignedTo: 'Credit Manager',
+    leadProceededBy: proceededBy,
   });
   await leadStatusModel.recordStatusChange(updatedLead || lead, lead, {
     source: 'credit_handoff',
-    actor: req.body.user || req.body.actor || 'CRM User',
+    actor: proceededBy,
     actorRole: req.user?.role || 'telecaller',
     sourceKey: `credit-handoff:${handoff.id}`,
     metadata: {
       handoffId: handoff.id,
       status: handoff.status,
       notes: handoff.notes,
+      proceededBy,
     },
   });
   await activityModel.createForLead(lead, {
     type: 'status',
-    description: 'Lead marked ready for credit manager review',
-    user: req.body.user || req.body.actor || 'CRM User',
+    description: `Lead proceeded by ${proceededBy} and marked ready for credit manager review`,
+    user: proceededBy,
     metadata: {
       handoffId: handoff.id,
       status: handoff.status,
       notes: handoff.notes,
+      proceededBy,
       checklistSnapshot: handoff.checklistSnapshot,
     },
   });

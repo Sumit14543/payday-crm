@@ -150,6 +150,7 @@ function mapHandoff(row) {
     status: row.status || 'ready',
     checklistSnapshot,
     notes: row.notes || '',
+    proceededBy: row.proceeded_by || row.submitted_by || 'CRM User',
     submittedBy: row.submitted_by || 'CRM User',
     submittedAt: row.submitted_at,
     reviewedBy: row.reviewed_by || '',
@@ -186,6 +187,7 @@ function mapCreditQueueLead(row) {
     ifscCode: row.ifscCode || '',
     salarySlipCurrent: row.salarySlipCurrent || '',
     aadhaarVerified: Number(row.aadhaarVerified || 0),
+    proceededBy: row.proceededBy || row.submittedBy || 'Telecaller',
     submittedBy: row.submittedBy || '',
     submittedAt: row.submittedAt,
     handoffNotes: row.handoffNotes || '',
@@ -238,6 +240,7 @@ function mapTelecallerWorkbenchLead(row) {
     pendingDocumentCount: Math.max(0, documentTotalCount - documentVerifiedCount),
     latestHandoffStatus: row.latestHandoffStatus || '',
     latestHandoffAt: row.latestHandoffAt,
+    latestHandoffProceededBy: row.latestHandoffProceededBy || row.latestHandoffSubmittedBy || '',
     latestHandoffSubmittedBy: row.latestHandoffSubmittedBy || '',
     latestHandoffReviewedBy: row.latestHandoffReviewedBy || '',
     latestHandoffReviewedAt: row.latestHandoffReviewedAt,
@@ -385,6 +388,7 @@ async function listTelecallerWorkbench(options = {}) {
         COALESCE(NULLIF(la.full_name, ''), CONCAT('Applicant ', la.id)) AS name,
         COALESCE(la.email, '') AS email,
         la.mobile AS phone,
+          COALESCE(NULLIF(la.lead_proceeded_by, ''), '') AS lead_proceeded_by,
         la.loan_amount AS loanAmount,
         ${sourceDisplaySql()} AS source,
         ${sourceSystemSql()} AS sourceSystem,
@@ -410,6 +414,7 @@ async function listTelecallerWorkbench(options = {}) {
           ELSE 'Low'
         END) AS priority,
         COALESCE(NULLIF(la.assigned_to, ''), 'Unassigned') AS assignedTo,
+        COALESCE(NULLIF(la.lead_proceeded_by, ''), '') AS leadProceededBy,
         CASE
           WHEN la.assigned_to IS NULL OR la.assigned_to = '' THEN 'Intake Queue'
           ELSE 'Telecaller'
@@ -457,7 +462,7 @@ async function listTelecallerWorkbench(options = {}) {
 
       query(`
         SELECT lch.application_id, lch.lead_id, lch.status, ${dateTimeSql('lch.submitted_at')} AS submitted_at,
-               lch.submitted_by, lch.reviewed_by, ${dateTimeSql('lch.reviewed_at')} AS reviewed_at,
+               lch.submitted_by, lch.proceeded_by, lch.reviewed_by, ${dateTimeSql('lch.reviewed_at')} AS reviewed_at,
                lch.decision, lch.decision_notes
         FROM lead_credit_handoffs lch
         INNER JOIN (
@@ -521,6 +526,7 @@ async function listTelecallerWorkbench(options = {}) {
         documentVerifiedCount: doc ? Number(doc.verified_count || 0) : 0,
         latestHandoffStatus: handoff ? handoff.status : '',
         latestHandoffAt: handoff ? handoff.submitted_at : null,
+        latestHandoffProceededBy: handoff ? (handoff.proceeded_by || handoff.submitted_by) : '',
         latestHandoffSubmittedBy: handoff ? handoff.submitted_by : '',
         latestHandoffReviewedBy: handoff ? handoff.reviewed_by : '',
         latestHandoffReviewedAt: handoff ? handoff.reviewed_at : null,
@@ -949,6 +955,7 @@ async function listCreditQueue() {
           COALESCE(la.salary_slip_current, '') AS salarySlipCurrent,
           COALESCE(la.aadhaar_verified, 0) AS aadhaarVerified,
           la.assigned_to,
+          COALESCE(NULLIF(la.lead_proceeded_by, ''), '') AS lead_proceeded_by,
           la.created_at
         FROM loan_applications la
         WHERE la.status NOT IN ('approved', 'rejected', 'disbursed', 'closed')
@@ -956,7 +963,7 @@ async function listCreditQueue() {
       `).catch(() => []),
 
       query(`
-        SELECT id, application_id, lead_id, status, submitted_by, submitted_at, notes,
+        SELECT id, application_id, lead_id, status, submitted_by, proceeded_by, submitted_at, notes,
                TIMESTAMPDIFF(HOUR, submitted_at, CURRENT_TIMESTAMP) AS handoffAgeHours
         FROM lead_credit_handoffs
         ORDER BY id ASC
@@ -1014,6 +1021,7 @@ async function listCreditQueue() {
 
       matchedRows.push({
         ...la,
+        proceededBy: (h && (h.proceeded_by || h.submitted_by)) || la.lead_proceeded_by || la.assigned_to || 'Telecaller',
         submittedBy: (h && h.submitted_by) || la.assigned_to || 'Telecaller',
         submittedAt,
         handoffNotes: (h && h.notes) || '',
@@ -1395,7 +1403,7 @@ async function listCreditApplications(filters = {}) {
 
     const [handoffs, cams, sanctions, agreements, accountingEvents, loansList, aaSessions, docCounts] = await Promise.all([
       query(`
-        SELECT application_id, lead_id, status, submitted_by, ${dateTimeSql('submitted_at')} AS submitted_at,
+        SELECT application_id, lead_id, status, submitted_by, proceeded_by, ${dateTimeSql('submitted_at')} AS submitted_at,
                reviewed_by, ${dateTimeSql('reviewed_at')} AS reviewed_at, decision, decision_notes,
                TIMESTAMPDIFF(HOUR, submitted_at, CURRENT_TIMESTAMP) AS handoffAgeHours
         FROM lead_credit_handoffs
@@ -1523,6 +1531,7 @@ async function listCreditApplications(filters = {}) {
       return {
         ...row,
         handoffStatus: h ? h.status : '',
+        proceededBy: (h && (h.proceeded_by || h.submitted_by)) || row.leadProceededBy || row.assignedTo || '',
         submittedBy: h ? h.submitted_by : '',
         submittedAt: h ? h.submitted_at : null,
         reviewedBy: h ? h.reviewed_by : '',
@@ -2144,24 +2153,27 @@ async function createCreditHandoff(lead, payload = {}) {
     ? null
     : JSON.stringify(payload.checklistSnapshot);
 
+  const proceededBy = (payload.proceededBy || payload.leadProceededBy || payload.user || payload.actor || '').trim() || 'Telecaller';
+
   const result = await query(`
     INSERT INTO lead_credit_handoffs (
-      lead_id, application_id, status, checklist_snapshot, notes, submitted_by
-    ) VALUES (?, ?, 'ready', ?, ?, ?)
+      lead_id, application_id, status, checklist_snapshot, notes, submitted_by, proceeded_by
+    ) VALUES (?, ?, 'ready', ?, ?, ?, ?)
   `, [
     leadId,
     applicationId,
     checklistSnapshot,
     payload.notes || '',
     payload.user || payload.actor || 'CRM User',
+    proceededBy,
   ]);
 
   // Automatic Status Transition to Send to Credit Manager (preserve telecaller assignment):
   await query(`
     UPDATE loan_applications
-    SET status = 'send_to_credit', updated_at = CURRENT_TIMESTAMP
+    SET status = 'send_to_credit', lead_proceeded_by = ?, updated_at = CURRENT_TIMESTAMP
     WHERE (id = ? OR application_id = ?) AND status NOT IN ('disbursed', 'closed')
-  `, [leadId, applicationId]);
+  `, [proceededBy, leadId, applicationId]);
 
   const rows = await query('SELECT * FROM lead_credit_handoffs WHERE id = ? LIMIT 1', [result.insertId]);
   invalidateWorkbenchCache();

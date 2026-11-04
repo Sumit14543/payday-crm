@@ -90,6 +90,7 @@ type Lead = {
   pendingDocumentCount?: number;
   latestHandoffStatus?: string;
   latestHandoffAt?: string | null;
+  latestHandoffProceededBy?: string;
   latestHandoffReviewedBy?: string;
   latestHandoffReviewedAt?: string | null;
   latestHandoffDecision?: string;
@@ -1481,7 +1482,7 @@ export function Leads() {
                                   {lead.latestHandoffReviewedAt
                                     ? `Reviewed ${formatLeadDate(lead.latestHandoffReviewedAt)}${lead.latestHandoffReviewedBy ? ` by ${lead.latestHandoffReviewedBy}` : ""}`
                                     : lead.latestHandoffAt
-                                      ? `Sent ${formatLeadDate(lead.latestHandoffAt)}`
+                                      ? `Sent ${formatLeadDate(lead.latestHandoffAt)}${lead.latestHandoffProceededBy ? ` (${lead.latestHandoffProceededBy})` : ""}`
                                       : "Sent to credit manager"}
                                 </div>
                                 {creditStage.label === "Rejected" && lead.latestHandoffDecisionNotes && (

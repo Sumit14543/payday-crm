@@ -48,6 +48,7 @@ type LeadQueueItem = {
   salarySlipCurrent?: string;
   aadhaarVerified?: number;
   submittedAt?: string;
+  proceededBy?: string;
   submittedBy?: string;
   handoffNotes?: string;
   latestCallDisposition?: string;
@@ -441,7 +442,8 @@ export function CreditManagerPanel() {
                       <PriorityBadge priority={lead.priority} />
                     </td>
                     <td className="px-5 py-3.5 text-sm text-slate-700">
-                      <p className="font-medium text-slate-900">{lead.submittedBy || "Telecaller"}</p>
+                      <p className="font-medium text-slate-900">{lead.proceededBy || lead.submittedBy || "Telecaller"}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-indigo-600">Proceeded by</p>
                       <p className="text-xs text-slate-500">{formatDate(lead.submittedAt)}</p>
                       <p className={`mt-1 text-xs font-semibold ${isSlaRisk(lead) ? "text-red-700" : "text-slate-500"}`}>
                         {Number(lead.handoffAgeHours || 0)}h pending
