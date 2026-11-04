@@ -14,11 +14,16 @@ const STATUS_TO_DB = {
   Converted: 'disbursed',
   Closed: 'closed',
   'Document Collection': 'review',
+  'Document Pending': 'documents_pending',
   'Documents Pending': 'documents_pending',
+  'documents_pending': 'documents_pending',
+  'documents pending': 'documents_pending',
   'In Process': 'review',
   Lost: 'rejected',
   New: 'draft',
   'Not Connected': 'not_connected',
+  'not_connected': 'not_connected',
+  'not connected': 'not_connected',
   Pending: 'draft',
   Qualified: 'approved',
   Approved: 'approved',
@@ -1249,6 +1254,14 @@ async function updateStatus(id, status) {
     isActiveApplicationStatus(dbStatus) ? 1 : 0,
     lead.rawId,
   ]);
+  try {
+    const telecallerModel = require('./telecallerModel');
+    if (telecallerModel && typeof telecallerModel.invalidateWorkbenchCache === 'function') {
+      telecallerModel.invalidateWorkbenchCache();
+    }
+  } catch (e) {
+    // ignore
+  }
   return findById(id);
 }
 
@@ -1319,6 +1332,14 @@ async function updateOperations(id, payload = {}) {
 
   params.push(lead.rawId);
   await query(`UPDATE loan_applications SET ${updates.join(', ')} WHERE id = ?`, params);
+  try {
+    const telecallerModel = require('./telecallerModel');
+    if (telecallerModel && typeof telecallerModel.invalidateWorkbenchCache === 'function') {
+      telecallerModel.invalidateWorkbenchCache();
+    }
+  } catch (e) {
+    // ignore
+  }
 
   const updatedLead = await findById(id);
   return updatedLead;

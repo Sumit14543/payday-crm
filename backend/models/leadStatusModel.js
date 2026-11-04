@@ -71,7 +71,7 @@ const DB_STATUS_TO_PUBLIC = {
   not_connected: 'Not Connected',
   rejected: 'Lost',
   review: 'Document Collection',
-  submitted: 'New',
+  submitted: 'Contacted',
 };
 
 function normalizeStatus(status) {

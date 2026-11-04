@@ -2069,6 +2069,7 @@ async function createCallLog(lead, payload = {}) {
     `, [leadId, applicationId]);
   }
 
+  invalidateWorkbenchCache();
   const rows = await query('SELECT * FROM lead_call_logs WHERE id = ? LIMIT 1', [result.insertId]);
   return mapCallLog(rows[0]);
 }
@@ -2122,6 +2123,7 @@ async function updateDocumentCheck(lead, payload = {}) {
     LIMIT 1
   `, [applicationId, payload.key]);
 
+  invalidateWorkbenchCache();
   invalidateCreditCache();
   return mapDocumentCheck(rows[0]);
 }
@@ -2162,6 +2164,7 @@ async function createCreditHandoff(lead, payload = {}) {
   `, [leadId, applicationId]);
 
   const rows = await query('SELECT * FROM lead_credit_handoffs WHERE id = ? LIMIT 1', [result.insertId]);
+  invalidateWorkbenchCache();
   invalidateCreditCache();
   return mapHandoff(rows[0]);
 }
@@ -2543,4 +2546,5 @@ module.exports = {
   reviewLatestCreditHandoff,
   updateDocumentCheck,
   invalidateCreditCache,
+  invalidateWorkbenchCache,
 };

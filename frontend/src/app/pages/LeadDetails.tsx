@@ -3000,6 +3000,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
     try {
       const updatedLead = await apiPatch<Lead>(`/leads/${encodeURIComponent(leadId)}/operations`, changes);
+      if (leadId) leadDetailsResourceCache.delete(leadId);
       applyUpdatedLead(updatedLead);
       toast.success("Lead operation updated");
       refreshActivities();
@@ -3198,6 +3199,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     try {
       setIsTelecallerSaving(true);
       setTelecallerError("");
+      if (leadId) leadDetailsResourceCache.delete(leadId);
       await apiPost<TelecallerCallLog>(`/leads/${encodeURIComponent(leadId)}/call-logs`, {
         ...callForm,
         callDurationSeconds: shouldShowDuration ? Number(callForm.callDurationSeconds || 0) : 0,
@@ -3236,6 +3238,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     try {
       setIsTelecallerSaving(true);
       setTelecallerError("");
+      if (leadId) leadDetailsResourceCache.delete(leadId);
       await apiPatch<TelecallerDocumentCheck>(`/leads/${encodeURIComponent(leadId)}/document-checks`, {
         key: check.key,
         label: check.label,
