@@ -451,7 +451,9 @@ export function Dashboard() {
 
   // Unique active agents
   const activeAgentsCount = useMemo(() => {
-    const set = new Set(normalizedLeadsList.map(l => l.assignedTo).filter(Boolean));
+    const set = new Set(normalizedLeadsList.map(l => (l.leadProceededBy || l.latestHandoffProceededBy || l.assignedTo)).filter(Boolean));
+    set.delete("Credit Manager");
+    set.delete("Intake Queue");
     set.delete("Unassigned");
     return set.size || 6;
   }, [normalizedLeadsList]);
@@ -460,8 +462,8 @@ export function Dashboard() {
   const teamPerformanceRoster = useMemo(() => {
     const map: Record<string, { leads: number; disbursed: number; approved: number }> = {};
     normalizedLeadsList.forEach(l => {
-      let agent = l.assignedTo || "Unassigned";
-      if (agent === "Unassigned") return;
+      let agent = (l.leadProceededBy || l.latestHandoffProceededBy || (l.assignedTo !== "Credit Manager" && l.assignedTo !== "Intake Queue" ? l.assignedTo : "") || l.assignedTo || "Unassigned").trim();
+      if (agent === "Unassigned" || agent === "Credit Manager" || agent === "Intake Queue") return;
       if (/^stella/i.test(agent.trim())) {
         agent = "Nandini";
       }
@@ -506,7 +508,7 @@ export function Dashboard() {
     if (collections.length > 0) {
       collections.forEach(c => {
         let agent = c.assignedTo || "Unassigned";
-        if (agent === "Unassigned") return;
+        if (agent === "Unassigned" || agent === "Credit Manager" || agent === "Intake Queue") return;
         if (/^stella/i.test(agent.trim())) {
           agent = "Nandini";
         }
@@ -522,8 +524,8 @@ export function Dashboard() {
       // Fallback: group by leads list
       normalizedLeadsList.forEach(l => {
         if (!["Disbursed", "Converted"].includes(l.status)) return;
-        let agent = l.assignedTo || "Unassigned";
-        if (agent === "Unassigned") return;
+        let agent = (l.leadProceededBy || l.latestHandoffProceededBy || (l.assignedTo !== "Credit Manager" && l.assignedTo !== "Intake Queue" ? l.assignedTo : "") || l.assignedTo || "Unassigned").trim();
+        if (agent === "Unassigned" || agent === "Credit Manager" || agent === "Intake Queue") return;
         if (/^stella/i.test(agent.trim())) {
           agent = "Nandini";
         }

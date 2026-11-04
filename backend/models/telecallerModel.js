@@ -847,7 +847,14 @@ async function getTelecallerSlaReport(filters = {}) {
 
   const byOwnerMap = new Map();
   leads.forEach((lead) => {
-    const owner = lead.assignedTo || 'Unassigned';
+    const proceededName = (lead.latestHandoffProceededBy || lead.leadProceededBy || '').trim();
+    let owner = proceededName;
+    if (!owner) {
+      owner = (lead.assignedTo && lead.assignedTo !== 'Credit Manager' && lead.assignedTo !== 'Intake Queue' ? lead.assignedTo : lead.latestHandoffSubmittedBy || lead.assignedTo || 'Unassigned').trim();
+    }
+    if (/^stella/i.test(owner)) {
+      owner = 'Nandini';
+    }
     const current = byOwnerMap.get(owner) || {
       breached: 0,
       callbackDue: 0,
@@ -856,6 +863,7 @@ async function getTelecallerSlaReport(filters = {}) {
       name: owner,
       total: 0,
       warning: 0,
+      proceeded: 0,
     };
     current.total += 1;
     if (lead.slaBreached) current.breached += 1;
@@ -863,6 +871,9 @@ async function getTelecallerSlaReport(filters = {}) {
     if (lead.isCallbackDue) current.callbackDue += 1;
     if (lead.isDocsBreach) current.docsBreached += 1;
     if (lead.isFirstCallBreach) current.firstCallBreached += 1;
+    if (proceededName || lead.isSentToCredit || ['send_to_credit', 'review', 'approved', 'disbursed', 'converted'].includes(String(lead.status || '').toLowerCase())) {
+      current.proceeded += 1;
+    }
     byOwnerMap.set(owner, current);
   });
 
@@ -890,18 +901,22 @@ async function getTelecallerSlaReport(filters = {}) {
     },
     byOwner,
     byReason,
-    breachedLeads: breached.slice(0, 50).map((lead) => ({
-      assignedTo: lead.assignedTo,
-      createdAt: lead.createdAt || lead.createdDate,
-      id: lead.id,
-      name: lead.name,
-      nextAction: lead.nextAction,
-      nextActionDueAt: lead.nextActionDueAt,
-      phone: lead.phone,
-      priority: lead.priority,
-      reason: slaReasonForLead(lead),
-      slaStatus: lead.slaStatus,
-    })),
+    breachedLeads: breached.slice(0, 50).map((lead) => {
+      const proceededName = (lead.latestHandoffProceededBy || lead.leadProceededBy || '').trim();
+      const owner = proceededName || (lead.assignedTo && lead.assignedTo !== 'Credit Manager' ? lead.assignedTo : lead.latestHandoffSubmittedBy || lead.assignedTo || 'Unassigned');
+      return {
+        assignedTo: owner,
+        createdAt: lead.createdAt || lead.createdDate,
+        id: lead.id,
+        name: lead.name,
+        nextAction: lead.nextAction,
+        nextActionDueAt: lead.nextActionDueAt,
+        phone: lead.phone,
+        priority: lead.priority,
+        reason: slaReasonForLead(lead),
+        slaStatus: lead.slaStatus,
+      };
+    }),
   };
 }
 

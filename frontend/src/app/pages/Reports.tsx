@@ -2220,7 +2220,7 @@ function SingleReportView({
         break;
       case "employee-performance":
         title = "Employee Performance SLA";
-        headers = ["Employee Name", "Total Assigned Leads", "Breached Leads", "Warnings", "Breach Rate"];
+        headers = ["Employee Name", "Total Assigned Leads", "Proceeded Leads", "Breached Leads", "Warnings", "Breach Rate"];
         break;
       case "customer-report":
         title = "Customer Report";
@@ -2463,6 +2463,7 @@ function SingleReportView({
         rawData = (slaReport?.byOwner || []).map(row => ({
           name: row.name,
           total: String(row.total),
+          proceeded: String(row.proceeded ?? (row.sentToCredit || 0)),
           breached: String(row.breached),
           warning: String(row.warning),
           rate: `${row.breachRate}%`,

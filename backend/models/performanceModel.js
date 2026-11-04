@@ -14,20 +14,67 @@ function parseJson(val) {
   }
 }
 
+function getAgentKey(name) {
+  if (!name) return '';
+  let str = String(name).trim().toLowerCase();
+  if (str.includes('@')) {
+    str = str.split('@')[0];
+  }
+  str = str.replace(/[^a-z0-9]/g, '');
+  if (str.startsWith('stella')) return 'nandini';
+  if (str.startsWith('kajal')) return 'kajal';
+  if (str.startsWith('bharti')) return 'bharti';
+  if (str.startsWith('nandini')) return 'nandini';
+  return str;
+}
+
+function cleanDisplayName(name) {
+  if (!name) return 'Unassigned';
+  let str = String(name).trim();
+  if (str.includes('@')) {
+    const userPart = str.split('@')[0];
+    if (/kajal/i.test(userPart)) return 'Kajal';
+    if (/bharti/i.test(userPart)) return 'Bharti Gautam';
+    if (/nandini|stella/i.test(userPart)) return 'Nandini';
+    return userPart.charAt(0).toUpperCase() + userPart.slice(1);
+  }
+  if (/^stella/i.test(str)) return 'Nandini';
+  if (/^kajal/i.test(str)) return 'Kajal';
+  if (/^bharti/i.test(str)) return 'Bharti Gautam';
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 async function getTelecallerPerformance({ period = 'last30days', startDate, endDate } = {}) {
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  let dateCondition = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
-  const dateParams = [];
+  let dateConditionCallLog = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+  let dateConditionHandoff = 'lch.submitted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+  let dateConditionApp = '(la.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) OR la.updated_at >= DATE_SUB(NOW(), INTERVAL 30 DAY))';
+  const dateParamsCallLog = [];
+  const dateParamsHandoff = [];
+  const dateParamsApp = [];
 
   if (period === 'today') {
-    dateCondition = 'DATE(lcl.created_at) = CURRENT_DATE()';
+    dateConditionCallLog = 'DATE(lcl.created_at) = CURRENT_DATE()';
+    dateConditionHandoff = 'DATE(lch.submitted_at) = CURRENT_DATE()';
+    dateConditionApp = '(DATE(la.created_at) = CURRENT_DATE() OR DATE(la.updated_at) = CURRENT_DATE())';
   } else if (period === 'last7days') {
-    dateCondition = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+    dateConditionCallLog = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+    dateConditionHandoff = 'lch.submitted_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+    dateConditionApp = '(la.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) OR la.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY))';
   } else if (period === 'last30days') {
-    dateCondition = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+    dateConditionCallLog = 'lcl.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+    dateConditionHandoff = 'lch.submitted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+    dateConditionApp = '(la.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) OR la.updated_at >= DATE_SUB(NOW(), INTERVAL 30 DAY))';
   } else if (startDate && endDate && dateRegex.test(String(startDate).trim()) && dateRegex.test(String(endDate).trim())) {
-    dateCondition = 'lcl.created_at BETWEEN ? AND ?';
-    dateParams.push(`${String(startDate).trim()} 00:00:00`, `${String(endDate).trim()} 23:59:59`);
+    dateConditionCallLog = 'lcl.created_at BETWEEN ? AND ?';
+    dateParamsCallLog.push(`${String(startDate).trim()} 00:00:00`, `${String(endDate).trim()} 23:59:59`);
+    dateConditionHandoff = 'lch.submitted_at BETWEEN ? AND ?';
+    dateParamsHandoff.push(`${String(startDate).trim()} 00:00:00`, `${String(endDate).trim()} 23:59:59`);
+    dateConditionApp = '((la.created_at BETWEEN ? AND ?) OR (la.updated_at BETWEEN ? AND ?))';
+    dateParamsApp.push(
+      `${String(startDate).trim()} 00:00:00`, `${String(endDate).trim()} 23:59:59`,
+      `${String(startDate).trim()} 00:00:00`, `${String(endDate).trim()} 23:59:59`
+    );
   }
 
   // Aggregate call logs by telecaller actor
@@ -45,58 +92,142 @@ async function getTelecallerPerformance({ period = 'last30days', startDate, endD
       AVG(call_duration_seconds) AS avgCallDurationSec,
       MAX(created_at) AS lastCallAt
     FROM lead_call_logs lcl
-    WHERE ${dateCondition}
+    WHERE ${dateConditionCallLog}
     GROUP BY actor
     ORDER BY totalCalls DESC
-  `, dateParams);
+  `, dateParamsCallLog);
 
-  // Aggregate lead handoffs / conversions by assigned user or actor
+  // Aggregate credit handoffs submitted in this period - attributed to proceeded_by / submitted_by
   const handoffRows = await query(`
     SELECT 
-      assigned_to AS agentName,
-      COUNT(*) AS totalAssignedLeads,
-      SUM(CASE WHEN status IN ('send_to_credit', 'review', 'approved', 'disbursed') THEN 1 ELSE 0 END) AS convertedLeads,
-      SUM(CASE WHEN status = 'documents_pending' THEN 1 ELSE 0 END) AS docsPendingLeads
-    FROM loan_applications
-    GROUP BY assigned_to
-  `);
+      COALESCE(NULLIF(TRIM(lch.proceeded_by), ''), NULLIF(TRIM(lch.submitted_by), ''), 'Unassigned') AS agentName,
+      COUNT(DISTINCT COALESCE(NULLIF(lch.application_id, ''), lch.lead_id)) AS periodHandoffsCount,
+      MAX(lch.submitted_at) AS lastHandoffAt
+    FROM lead_credit_handoffs lch
+    WHERE ${dateConditionHandoff}
+    GROUP BY agentName
+  `, dateParamsHandoff);
 
-  const handoffMap = new Map();
-  handoffRows.forEach(row => {
-    if (row.agentName) {
-      handoffMap.set(row.agentName.trim().toLowerCase(), row);
+  // Aggregate loan applications in this period - attributing leads proceeded by an employee to lead_proceeded_by
+  const appRows = await query(`
+    SELECT 
+      COALESCE(NULLIF(TRIM(la.lead_proceeded_by), ''), NULLIF(TRIM(la.assigned_to), ''), 'Unassigned') AS agentName,
+      COUNT(*) AS totalAssignedLeads,
+      SUM(CASE WHEN (la.lead_proceeded_by IS NOT NULL AND TRIM(la.lead_proceeded_by) != '') OR la.status IN ('send_to_credit', 'review', 'approved', 'disbursed') THEN 1 ELSE 0 END) AS convertedLeads,
+      SUM(CASE WHEN la.status = 'documents_pending' THEN 1 ELSE 0 END) AS docsPendingLeads
+    FROM loan_applications la
+    WHERE ${dateConditionApp}
+    GROUP BY agentName
+  `, dateParamsApp);
+
+  // Retrieve active telecaller users from crm_users so every staff member is present
+  let telecallerUsers = [];
+  try {
+    telecallerUsers = await query(`
+      SELECT name, email FROM crm_users WHERE role = 'telecaller' AND is_active = 1
+    `);
+  } catch (uErr) {
+    telecallerUsers = [];
+  }
+
+  const agentMap = new Map();
+
+  function getOrCreateAgent(rawName) {
+    const key = getAgentKey(rawName);
+    if (!key || key === 'unassigned' || key === 'intakequeue' || key === 'system' || key === 'creditmanager') {
+      return null;
+    }
+    if (!agentMap.has(key)) {
+      agentMap.set(key, {
+        actor: cleanDisplayName(rawName),
+        totalCalls: 0,
+        interestedCalls: 0,
+        notReachableCalls: 0,
+        switchedOffCalls: 0,
+        callbackCalls: 0,
+        notInterestedCalls: 0,
+        wrongNumberCalls: 0,
+        languageIssueCalls: 0,
+        avgCallDurationSec: 0,
+        handoffsCount: 0,
+        totalAssignedLeads: 0,
+        convertedLeads: 0,
+        docsPendingLeads: 0,
+        lastCallAt: null,
+      });
+    }
+    return agentMap.get(key);
+  }
+
+  // 1. Register active telecaller staff
+  (telecallerUsers || []).forEach(u => {
+    getOrCreateAgent(u.name || u.email);
+  });
+
+  // 2. Incorporate call logs
+  (callLogRows || []).forEach(row => {
+    const ag = getOrCreateAgent(row.actor);
+    if (!ag) return;
+    ag.totalCalls = Number(row.totalCalls || 0);
+    ag.interestedCalls = Number(row.interestedCalls || 0);
+    ag.notReachableCalls = Number(row.notReachableCalls || 0);
+    ag.switchedOffCalls = Number(row.switchedOffCalls || 0);
+    ag.callbackCalls = Number(row.callbackCalls || 0);
+    ag.notInterestedCalls = Number(row.notInterestedCalls || 0);
+    ag.wrongNumberCalls = Number(row.wrongNumberCalls || 0);
+    ag.languageIssueCalls = Number(row.languageIssueCalls || 0);
+    ag.avgCallDurationSec = Math.round(Number(row.avgCallDurationSec || 0));
+    ag.lastCallAt = row.lastCallAt;
+  });
+
+  // 3. Incorporate credit handoffs (proceeded_by)
+  (handoffRows || []).forEach(row => {
+    const ag = getOrCreateAgent(row.agentName);
+    if (!ag) return;
+    ag.handoffsCount = Number(row.periodHandoffsCount || 0);
+    if (row.lastHandoffAt && (!ag.lastCallAt || new Date(row.lastHandoffAt) > new Date(ag.lastCallAt))) {
+      ag.lastCallAt = row.lastHandoffAt;
     }
   });
 
-  const telecallers = callLogRows.map((row, index) => {
-    const actorName = (row.actor || 'Unassigned').trim();
-    const handoffData = handoffMap.get(actorName.toLowerCase()) || {
-      totalAssignedLeads: 0,
-      convertedLeads: 0,
-      docsPendingLeads: 0,
-    };
+  // 4. Incorporate loan application status & assignments
+  (appRows || []).forEach(row => {
+    const ag = getOrCreateAgent(row.agentName);
+    if (!ag) return;
+    ag.totalAssignedLeads = Number(row.totalAssignedLeads || 0);
+    ag.convertedLeads = Number(row.convertedLeads || 0);
+    ag.docsPendingLeads = Number(row.docsPendingLeads || 0);
+  });
 
-    const totalAssigned = handoffData.totalAssignedLeads || row.totalCalls || 0;
-    const converted = handoffData.convertedLeads || row.interestedCalls || 0;
+  // Build telecallers list with Lead Proceeded By attribution
+  const telecallers = Array.from(agentMap.values()).map((ag) => {
+    const converted = Math.max(ag.handoffsCount, ag.convertedLeads, ag.interestedCalls);
+    const totalAssigned = Math.max(ag.totalAssignedLeads, converted, ag.totalCalls);
     const conversionRate = formatPercent(converted, totalAssigned || 1);
 
     return {
-      rank: index + 1,
-      actor: actorName,
-      totalCalls: Number(row.totalCalls || 0),
-      interestedCalls: Number(row.interestedCalls || 0),
-      notReachableCalls: Number(row.notReachableCalls || 0),
-      switchedOffCalls: Number(row.switchedOffCalls || 0),
-      callbackCalls: Number(row.callbackCalls || 0),
-      notInterestedCalls: Number(row.notInterestedCalls || 0),
-      wrongNumberCalls: Number(row.wrongNumberCalls || 0),
-      languageIssueCalls: Number(row.languageIssueCalls || 0),
-      avgCallDurationSec: Math.round(Number(row.avgCallDurationSec || 0)),
+      actor: ag.actor,
+      totalCalls: ag.totalCalls,
+      interestedCalls: ag.interestedCalls,
+      notReachableCalls: ag.notReachableCalls,
+      switchedOffCalls: ag.switchedOffCalls,
+      callbackCalls: ag.callbackCalls,
+      notInterestedCalls: ag.notInterestedCalls,
+      wrongNumberCalls: ag.wrongNumberCalls,
+      languageIssueCalls: ag.languageIssueCalls,
+      avgCallDurationSec: ag.avgCallDurationSec,
       totalAssignedLeads: totalAssigned,
       convertedLeads: converted,
       conversionRate,
-      lastCallAt: row.lastCallAt,
+      lastCallAt: ag.lastCallAt,
     };
+  });
+
+  // Sort descending by converted/proceeded leads, then total calls
+  telecallers.sort((a, b) => b.convertedLeads - a.convertedLeads || b.totalCalls - a.totalCalls);
+
+  telecallers.forEach((t, idx) => {
+    t.rank = idx + 1;
   });
 
   const totalCallsAll = telecallers.reduce((acc, t) => acc + t.totalCalls, 0);

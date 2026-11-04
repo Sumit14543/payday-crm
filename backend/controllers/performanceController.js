@@ -27,14 +27,14 @@ async function exportPerformanceReport(req, res) {
   const creditData = await performanceModel.getCreditManagerPerformance({ period });
 
   // Generate CSV rows
-  let csv = 'SECTION,ROLE,NAME,TOTAL_CALLS/REVIEWED,INTERESTED/APPROVED,CONVERSION/APPROVAL_RATE,AVG_SLA_MINS\n';
+  let csv = 'SECTION,ROLE,NAME,TOTAL_CALLS/REVIEWED,INTERESTED/APPROVED,TOTAL_ASSIGNED_LEADS,CONVERTED_OR_PROCEEDED_LEADS,CONVERSION/APPROVAL_RATE,AVG_SLA_MINS\n';
 
   telecallersData.telecallers.forEach((t) => {
-    csv += `Telecallers,Telecaller,"${t.actor}",${t.totalCalls},${t.interestedCalls},${t.conversionRate}%,\n`;
+    csv += `Telecallers,Telecaller,"${t.actor}",${t.totalCalls},${t.interestedCalls},${t.totalAssignedLeads},${t.convertedLeads},${t.conversionRate}%,\n`;
   });
 
   creditData.creditManagers.forEach((c) => {
-    csv += `Credit Team,Credit Manager,"${c.managerName}",${c.totalReviewed},${c.approvedCount},${c.approvalRate}%,${c.avgProcessingMins}\n`;
+    csv += `Credit Team,Credit Manager,"${c.managerName}",${c.totalReviewed},${c.approvedCount},${c.totalReviewed},${c.approvedCount},${c.approvalRate}%,${c.avgProcessingMins}\n`;
   });
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
