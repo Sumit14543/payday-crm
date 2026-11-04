@@ -1758,11 +1758,13 @@ async function listAccountingQueue() {
     WHERE la.status = 'approved'
       AND la.status NOT IN ('disbursed', 'closed', 'rejected')
       AND payment.id IS NULL
-      AND (accounting_handoff.id IS NOT NULL OR la.assigned_to = 'Accountant')
+      AND accounting_handoff.id IS NOT NULL
+      AND sanction.id IS NOT NULL
+      AND COALESCE(agreement.id, esign.id) IS NOT NULL
       AND la.id NOT IN (1986, 127, '1986', '127')
       AND COALESCE(la.application_id, '') NOT IN ('LNWQTMN01986', 'LNWQTMN00127', 'WQTMN01986', 'WQTMN00127', 'WAQTFN-PD-1782455676578', 'WAQTMN-PD-890903924560')
       AND COALESCE(sanction.agreement_number, '') NOT IN ('LNWQTMN01986', 'LNWQTMN00127', 'WQTMN01986', 'WQTMN00127', '01986', '00127')
-    ORDER BY COALESCE(accounting_handoff.occurred_at, la.updated_at) DESC, accounting_handoff.id DESC, COALESCE(agreement.signed_at, esign.signed_at) DESC, sanction.created_at DESC
+    ORDER BY accounting_handoff.occurred_at DESC, accounting_handoff.id DESC, COALESCE(agreement.signed_at, esign.signed_at) DESC, sanction.created_at DESC
   `);
 
   const excludedSet = new Set([
