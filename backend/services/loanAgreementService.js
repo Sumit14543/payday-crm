@@ -5,18 +5,17 @@ const sharp = require('sharp');
 const { uploadPath } = require('../config/uploads');
 const { BRAND } = require('./sanctionLetterService');
 const { getActiveBrand } = require('../config/db');
+const { formatSanctionDate } = require('../utils/sanctionDates');
 
 const agreementsDir = uploadPath('agreements');
 const brandDir = uploadPath('brand');
 
 function formatDate(value) {
-  if (!value) return '';
-  return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatSanctionDate(value);
 }
 
 function plainDate(value) {
-  if (!value) return '';
-  return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+  return formatSanctionDate(value).replace(/ /g, '-');
 }
 
 function safeFileName(value) {

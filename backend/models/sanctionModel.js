@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { query } = require('../config/db');
+const { databaseDateOnly } = require('../utils/sanctionDates');
 
 function toNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -15,7 +16,7 @@ function mapSanction(row) {
     applicationId: row.application_id || '',
     camSheetId: row.cam_sheet_id || null,
     agreementNumber: row.agreement_number || '',
-    agreementDate: row.agreement_date,
+    agreementDate: databaseDateOnly(row.agreement_date),
     borrower: row.borrower || '',
     lender: row.lender || 'WAQT FINANCE PRIVATE LIMITED',
     borrowerEmail: row.borrower_email || '',
@@ -27,9 +28,9 @@ function mapSanction(row) {
     processingFee: Number(row.processing_fee || 0),
     gstAmount: Number(row.gst_amount || 0),
     disbursedAmount: Number(row.disbursed_amount || 0),
-    disbursementDate: row.disbursement_date || null,
+    disbursementDate: databaseDateOnly(row.disbursement_date) || null,
     disbursementMode: row.disbursement_mode || '',
-    dueDate: row.due_date,
+    dueDate: databaseDateOnly(row.due_date),
     repaymentAmount: Number(row.repayment_amount || 0),
     apr: Number(row.apr || 0),
     bankName: row.bank_name || '',
@@ -267,6 +268,7 @@ async function resetCustomerDecision(id) {
   await query(`
     UPDATE lead_sanctions
     SET customer_decision = 'pending',
+        status = CASE WHEN status IN ('accepted', 'rejected') THEN 'sent' ELSE status END,
         customer_decision_at = NULL,
         customer_decision_notes = NULL,
         customer_decision_ip = NULL,

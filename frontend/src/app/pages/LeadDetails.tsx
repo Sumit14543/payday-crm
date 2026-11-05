@@ -530,6 +530,18 @@ const formatCurrency = (value: number | null | undefined) => (
   value === null || value === undefined ? "Not provided" : currencyFormatter.format(Number(value || 0))
 );
 
+const formatSanctionDueDate = (value?: string) => {
+  if (!value) return "Not provided";
+  const dateValue = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T00:00:00+05:30`
+    : value;
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
+  });
+};
+
 const formatActivityDate = (value?: string) => {
   if (!value) return "Not provided";
 
@@ -4552,7 +4564,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
               ? "Lead is already rejected."
               : "";
   const isSanctionCustomerAccepted = latestSanction?.customerDecision === "accepted";
-  const canSendLoanAgreement = isCreditManagerRole && Boolean(latestSanction?.emailStatus === "sent") && isSanctionCustomerAccepted && latestSanction?.status !== "superseded" && lead.status !== "Lost";
+  const canSendLoanAgreement = isCreditManagerRole && isSanctionCustomerAccepted && latestSanction?.status !== "superseded" && lead.status !== "Lost";
 
   const canCompletePayment = isAccountantRole && lead.status === "Qualified" && hasSignedDisbursementAgreement;
   const uploadedDocumentCount = documents.filter((document) => document.status === "Verified" || document.status === "Uploaded").length;
@@ -4658,7 +4670,8 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     if (lead.status === "Qualified") {
       if (latestLoanAgreement?.status === "signed") return "Loan agreement is signed. Accountant can complete disbursement.";
       if (latestLoanAgreement?.status === "sent") return "Loan agreement has been sent. Track customer eSign status from the agreement card.";
-      if (latestSanction?.emailStatus === "sent") return "Sanction letter is sent. Next step is sending the loan agreement for eSign.";
+      if (isSanctionCustomerAccepted) return "Sanction accepted by customer. Next step is sending the loan agreement for eSign.";
+      if (latestSanction) return "Awaiting customer acceptance through the sanction link before sending the loan agreement for eSign.";
       return "Loan is approved. Review sanction and agreement status before accountant disbursement.";
     }
     if (canCompleteCreditDecision) return "Review documents, complete CAM, then approve, request more information, or reject.";
@@ -6447,7 +6460,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                       <p>Revision: R{latestSanction.revisionNumber} - {latestSanction.revisionReason || "Correction recorded"}</p>
                     )}
                     <p>Principal: {formatCurrency(latestSanction.principalAmount)} - Disbursed: {formatCurrency(latestSanction.disbursedAmount)}</p>
-                    <p>Due: {formatActivityDate(latestSanction.dueDate)} - Repayment: {formatCurrency(latestSanction.repaymentAmount)}</p>
+                    <p>Due: {formatSanctionDueDate(latestSanction.dueDate)} - Repayment: {formatCurrency(latestSanction.repaymentAmount)}</p>
                     <div className="flex items-center justify-between py-0.5">
                       <span className="text-slate-500 font-medium">Recipient Email:</span>
                       <div className="flex items-center gap-1.5">
@@ -6527,7 +6540,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                           <span>SANCTION ACCEPTED BY BORROWER</span>
                         </div>
                         <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                          Customer clicked [ACCEPT] in Sanction Email
+                          Customer acceptance recorded
                           {latestSanction.customerDecisionAt ? ` (${formatActivityDate(latestSanction.customerDecisionAt)})` : ""}
                         </p>
                         {latestSanction.customerDecisionIp && (
@@ -6546,7 +6559,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                           <span>SANCTION REJECTED BY BORROWER</span>
                         </div>
                         <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                          Customer clicked [REJECT] in Sanction Email
+                          Customer rejection recorded
                           {latestSanction.customerDecisionAt ? ` (${formatActivityDate(latestSanction.customerDecisionAt)})` : ""}
                         </p>
                         {latestSanction.customerDecisionIp && (
@@ -6573,12 +6586,17 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                         </div>
                     )}
 
-                    {latestSanction.emailError && (
+                    {isSanctionCustomerAccepted && (latestSanction.emailError || latestSanction.whatsappError) && (
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        Customer acceptance is recorded. An earlier delivery attempt failed; it does not block agreement eSign.
+                      </div>
+                    )}
+                    {latestSanction.emailError && !isSanctionCustomerAccepted && (
                       <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                         {latestSanction.emailError}
                       </div>
                     )}
-                    {latestSanction.whatsappError && (
+                    {latestSanction.whatsappError && !isSanctionCustomerAccepted && (
                       <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                         {latestSanction.whatsappError}
                       </div>
@@ -6851,7 +6869,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
                         ? "Sanction letter accepted by customer. Click below to send the loan agreement for eSign."
                         : latestSanction?.customerDecision === "rejected"
                           ? "Sanction letter was REJECTED by customer. eSign is disabled."
-                          : "Awaiting Customer Acceptance: Customer must click ACCEPT on the emailed sanction letter before eSign can be sent."}
+                          : "Awaiting Customer Acceptance: Customer must ACCEPT through the sanction link shared by email, WhatsApp, or directly before eSign can be sent."}
                     </p>
                   )}
 

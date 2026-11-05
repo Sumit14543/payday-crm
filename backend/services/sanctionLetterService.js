@@ -5,6 +5,7 @@ const sharp = require('sharp');
 const { ensureUploadDir, uploadPath } = require('../config/uploads');
 const emailService = require('./emailService');
 const { getActiveBrand } = require('../config/db');
+const { formatSanctionDate } = require('../utils/sanctionDates');
 
 const sanctionsDir = uploadPath('sanctions');
 const brandDir = uploadPath('brand');
@@ -40,8 +41,7 @@ function formatCurrency(value) {
 }
 
 function formatDate(value) {
-  if (!value) return '';
-  return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatSanctionDate(value);
 }
 
 function moneyOnly(value) {

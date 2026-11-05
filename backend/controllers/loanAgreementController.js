@@ -43,8 +43,8 @@ async function sendLoanAgreementForEsign(req, res) {
     throw error;
   }
 
-  if (sanction.emailStatus !== 'sent') {
-    const error = new Error('Send the sanction letter successfully before sending loan agreement for eSign.');
+  if (sanction.status === 'superseded' || lead.status === 'Lost') {
+    const error = new Error('Loan agreement cannot be sent for a superseded sanction or rejected lead.');
     error.statusCode = 400;
     error.publicMessage = error.message;
     throw error;

@@ -13,6 +13,7 @@ const authkeyWhatsAppService = require('../services/authkeyWhatsAppService');
 const emailService = require('../services/emailService');
 const sanctionLetterService = require('../services/sanctionLetterService');
 const { notFound, requireFields, success } = require('../utils/http');
+const { query } = require('../config/db');
 
 const acceptanceDir = ensureUploadDir('sanction-acceptance');
 const sanctionsDir = uploadPath('sanctions');
@@ -114,7 +115,7 @@ async function resendLeadSanction(req, res) {
     throw error;
   }
 
-  // Reset decision state to pending and issue a fresh decision token so customer can respond
+  // A resend requires the customer to record their decision again.
   sanction = await sanctionModel.resetCustomerDecision(sanction.id);
 
   let pdfAbsolutePath = '';
