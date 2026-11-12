@@ -1,4 +1,4 @@
-import { Download, Search, Filter, Printer, ChevronLeft, ChevronRight, X, Info } from "lucide-react";
+import { Download, Search, Filter, Printer, ChevronLeft, ChevronRight, X, Info, ChartNoAxesCombined, ArrowLeftRight, Wallet, TrendingUp, ReceiptText, IndianRupee } from "lucide-react";
 import { PartialDataNotice } from "../../components/PartialDataNotice";
 import type { createRevenueLedger, RevenueFilters, RevenueLedgerRow, RevenueLoan } from "../../lib/revenueLedger";
 import "./RevenueAnalytics.css";
@@ -45,19 +45,22 @@ export function RevenueAnalyticsView(props: Props) {
   const hasFilters = timeframe !== "all" || status !== "all" || Boolean(search.trim());
   const actionsDisabled = loading || Boolean(loadError) || ledger.invalidRange;
   const cards = [
-    { title: "Filtered transactions", metric: String(ledger.totals.count), note: `${ledger.totals.realized} realized · ${ledger.totals.partial} partial · ${ledger.totals.pending} pending` },
-    { title: "Principal disbursed", metric: formatCurrency(ledger.totals.principal), note: "Disbursed in selected period" },
-    { title: "ROI revenue", metric: formatCurrency(ledger.totals.roi), note: "Interest received" },
-    { title: "PF revenue", metric: formatCurrency(ledger.totals.fees), note: "Processing fees booked" },
-    { title: "Total income", metric: formatCurrency(ledger.totals.totalIncome), note: "Interest + processing fees", highlight: true },
+    { title: "Filtered transactions", metric: String(ledger.totals.count), note: `${ledger.totals.realized} realized · ${ledger.totals.partial} partial · ${ledger.totals.pending} pending`, tone: "blue", icon: ArrowLeftRight },
+    { title: "Principal disbursed", metric: formatCurrency(ledger.totals.principal), note: "Disbursed in selected period", tone: "teal", icon: Wallet },
+    { title: "ROI revenue", metric: formatCurrency(ledger.totals.roi), note: "Interest received", tone: "green", icon: TrendingUp },
+    { title: "PF revenue", metric: formatCurrency(ledger.totals.fees), note: "Processing fees booked", tone: "amber", icon: ReceiptText },
+    { title: "Total income", metric: formatCurrency(ledger.totals.totalIncome), note: "Interest + processing fees", tone: "violet", icon: IndianRupee },
   ];
 
   return (
     <div id="printable-ledger-area" className="revenue-page" aria-busy={loading}>
       <header className="revenue-heading">
-        <div>
-          <h1>Revenue analytics</h1>
-          <p>Track earnings, disbursements and loan transactions.</p>
+        <div className="revenue-heading__identity">
+          <span className="revenue-heading__icon" aria-hidden="true"><ChartNoAxesCombined size={23} /></span>
+          <div>
+            <h1>Revenue <span>analytics</span></h1>
+            <p>Track earnings, disbursements and loan transactions.</p>
+          </div>
         </div>
         <div className="revenue-actions revenue-no-print">
           <button type="button" onClick={props.onPrint} disabled={actionsDisabled} title="Print Ledger" className="revenue-button">
@@ -125,8 +128,11 @@ export function RevenueAnalyticsView(props: Props) {
 
       <section aria-label="Filtered revenue totals" className="revenue-metrics">
         {cards.map(card => (
-          <div key={card.title} role="group" aria-label={card.title} className={`revenue-metric${card.highlight ? " revenue-metric--income" : ""}`}>
-            <p className="revenue-metric__label">{card.title}</p>
+          <div key={card.title} role="group" aria-label={card.title} className={`revenue-metric revenue-metric--${card.tone}${card.tone === "violet" ? " revenue-metric--income" : ""}`}>
+            <div className="revenue-metric__header">
+              <p className="revenue-metric__label">{card.title}</p>
+              <span className="revenue-metric__icon" aria-hidden="true"><card.icon size={17} strokeWidth={1.8} /></span>
+            </div>
             <p className="revenue-metric__value">{loadError ? "Unavailable" : loading ? "…" : card.metric}</p>
             <p className="revenue-metric__note">{card.note}</p>
           </div>
@@ -136,6 +142,7 @@ export function RevenueAnalyticsView(props: Props) {
       <section className="revenue-transactions" aria-labelledby="revenue-transactions-title">
         <div className="revenue-table-heading">
           <div className="revenue-table-title">
+            <span className="revenue-table-title__icon" aria-hidden="true"><ArrowLeftRight size={16} /></span>
             <h2 id="revenue-transactions-title">Transactions</h2>
             <span className="revenue-count">{loading ? "…" : totalItems.toLocaleString("en-IN")}</span>
           </div>
@@ -147,9 +154,9 @@ export function RevenueAnalyticsView(props: Props) {
               <tr>
                 <th scope="col">Borrower / Loan ID</th>
                 <th scope="col" className="revenue-number">Principal disbursed</th>
-                <th scope="col" className="revenue-number">ROI <span>(interest)</span></th>
-                <th scope="col" className="revenue-number">PF <span>(fee)</span></th>
-                <th scope="col" className="revenue-number">Total income</th>
+                <th scope="col" className="revenue-number revenue-roi">ROI <span>(interest)</span></th>
+                <th scope="col" className="revenue-number revenue-fee">PF <span>(fee)</span></th>
+                <th scope="col" className="revenue-number revenue-income">Total income</th>
                 <th scope="col" className="revenue-status-column">Status</th>
               </tr>
             </thead>
@@ -165,8 +172,8 @@ export function RevenueAnalyticsView(props: Props) {
                 <tr key={item.id}>
                   <td className="revenue-borrower"><div>{item.customer}</div><span>{item.agreementId}</span></td>
                   <td className="revenue-number">{formatCurrency(item.principal)}</td>
-                  <td className={`revenue-number${item.roi === 0 ? " revenue-zero" : ""}`}>{formatCurrency(item.roi)}</td>
-                  <td className={`revenue-number${item.fees === 0 ? " revenue-zero" : ""}`}>{formatCurrency(item.fees)}</td>
+                  <td className={`revenue-number ${item.roi === 0 ? "revenue-zero" : "revenue-roi"}`}>{formatCurrency(item.roi)}</td>
+                  <td className={`revenue-number ${item.fees === 0 ? "revenue-zero" : "revenue-fee"}`}>{formatCurrency(item.fees)}</td>
                   <td className="revenue-number revenue-income">{formatCurrency(item.totalIncome)}</td>
                   <td className="revenue-status-column">
                     <span className={`revenue-status revenue-status--${item.status}`}>
