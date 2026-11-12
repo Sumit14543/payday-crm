@@ -399,6 +399,7 @@ async function getCollectionReports() {
         r.principal_component AS principalComponent,
         r.interest_component AS interestComponent,
         COALESCE(r.received_at, r.created_at) AS receivedAt,
+        DATE_FORMAT(MAX(l.due_date), '%Y-%m-%d') AS dueDate,
         r.status AS status,
         r.reference AS reference,
         r.received_by AS receivedBy

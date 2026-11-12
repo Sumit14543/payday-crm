@@ -191,6 +191,7 @@ type CollectionDeepReport = {
     principalComponent: number;
     interestComponent: number;
     receivedAt: string;
+    dueDate?: string | null;
     status: string;
     reference: string;
     transactionId: string;
@@ -266,6 +267,11 @@ const formatDate = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const formatCalendarDate = (value?: string | null) => {
+  const date = parseDate(value);
+  return date ? date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-";
 };
 
 const formatDateTime = (value?: string | null) => {
@@ -2276,7 +2282,7 @@ function SingleReportView({
         break;
       case "payment-report":
         title = "Payment Report";
-        headers = ["Customer", "Loan Account", "Amount Paid", "Principal Component", "Interest Component", "Payment Date", "Transaction ID", "Status"];
+        headers = ["Customer", "Loan Account", "Amount Paid", "Principal Component", "Interest Component", "Payment Date", "Due Date", "Transaction ID", "Status"];
         break;
       case "employee-performance":
         title = "Employee Performance SLA";
@@ -2515,6 +2521,7 @@ function SingleReportView({
           principal: formatCurrency(row.principalComponent),
           interest: formatCurrency(row.interestComponent),
           date: formatDate(row.receivedAt),
+          dueDate: formatCalendarDate(row.dueDate),
           transactionId: row.transactionId || row.reference || "-",
           status: row.status || "success",
         }));
