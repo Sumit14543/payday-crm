@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { apiGetAll } from "../../lib/api";
-import { createRevenueLedger, getRevenueDate, revenueLedgerCsv } from "../../lib/revenueLedger";
+import { createRevenueLedger, getRevenueDate, revenueReportCsv } from "../../lib/revenueLedger";
 import { RevenueAnalyticsView } from "./RevenueAnalyticsView";
 
 const getTodayStr = () => getRevenueDate(new Date());
@@ -45,9 +45,9 @@ export function RevenueAnalytics() {
   const displayedRows = ledger.rows.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage);
 
   const exportLedgerCsv = () => {
-    const csvContent = "data:text/csv;charset=utf-8," + String.fromCharCode(0xFEFF) + revenueLedgerCsv(ledger.rows);
+    const csvContent = String.fromCharCode(0xFEFF) + revenueReportCsv(ledger, activeFilterLabel, getTodayStr());
     const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
+    link.setAttribute("href", "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent));
     link.setAttribute("download", "Revenue_Transactions_" + tableTimeframe + "_" + getTodayStr() + ".csv");
     document.body.appendChild(link);
     link.click();

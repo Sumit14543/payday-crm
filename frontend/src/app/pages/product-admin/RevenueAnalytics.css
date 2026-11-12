@@ -112,7 +112,6 @@
 .revenue-clear:hover { text-decoration: underline; }
 .revenue-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
 .revenue-metric { --metric-accent: var(--revenue-blue); position: relative; overflow: hidden; border: 1px solid var(--revenue-line); border-radius: 9px; padding: 17px 18px 16px; background: var(--revenue-surface); min-width: 0; box-shadow: 0 2px 4px #17243b03; }
-.revenue-metric::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--metric-accent); }
 .revenue-metric--teal { --metric-accent: var(--revenue-teal); }
 .revenue-metric--green { --metric-accent: var(--revenue-green); }
 .revenue-metric--amber { --metric-accent: var(--revenue-amber); }

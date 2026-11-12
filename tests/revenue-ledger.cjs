@@ -16,7 +16,7 @@ function load(file, overrides = {}, globals = {}) {
 }
 const dateHelper = load('frontend/src/app/lib/accountingDateOnly.ts');
 const ledger = load('frontend/src/app/lib/revenueLedger.ts', { './accountingDateOnly': dateHelper });
-const { createRevenueLedger, revenueLoanStatus, revenueLedgerCsv, getRevenueDate } = ledger;
+const { createRevenueLedger, revenueLoanStatus, revenueLedgerCsv, revenueReportCsv, getRevenueDate } = ledger;
 const now = new Date('2026-11-12T12:00:00Z');
 const fixtures = [
   { id: 'LN-OLD', customer: 'Older borrower', principal: 1000, processingFee: 118, startDate: '2026-10-01', amountPaid: 1200, totalAmount: 1200, balance: 0, status: 'Paid Off',
@@ -133,6 +133,32 @@ test('CSV escapes borrower names and exports the same numbers as table rows', ()
   assert.ok(csv.includes('"1000","200","118","318","REALIZED"'));
 });
 
+test('report CSV puts the five filtered card values and status counts above transaction details', () => {
+  const result = select({ timeframe: 'custom', from: '2026-11-12', to: '2026-11-12' });
+  const csv = revenueReportCsv(result, 'Custom: 2026-11-12 to 2026-11-12', '2026-11-12');
+  assert.ok(csv.startsWith('"Revenue Analytics"'));
+  assert.ok(csv.includes('"Active filters","Custom: 2026-11-12 to 2026-11-12"'));
+  assert.ok(csv.includes('"Export date","2026-11-12"'));
+  assert.ok(csv.includes('"Currency","INR"'));
+  assert.ok(csv.includes('"3","2000","200","236","436","",""'));
+  assert.ok(csv.includes('"1","1","1","","","",""'));
+  assert.ok(csv.indexOf('"Filtered transactions"') < csv.indexOf('"Borrower Name"'));
+  assert.ok(csv.endsWith(revenueLedgerCsv(result.rows)));
+});
+
+test('export summary covers all matching pages and resets for an empty filter', () => {
+  const rows = Array.from({ length: 23 }, (_, i) => ({ id: `LOAN-${i}`, principal: 100, processingFee: 10, startDate: '2026-11-12' }));
+  const result = select({ timeframe: 'today' }, rows);
+  const csv = revenueReportCsv(result, 'Today');
+  assert.ok(csv.includes('"23","2300","0","230","230","",""'));
+  assert.ok(csv.includes('"0","0","23","","","",""'));
+  assert.ok(csv.includes('"LOAN-22"'));
+  const empty = select({ timeframe: 'today', search: 'no matching borrower' }, rows);
+  const emptyCsv = revenueReportCsv(empty, 'Today / Search: no matching borrower');
+  assert.ok(emptyCsv.includes('"0","0","0","0","0","",""'));
+  assert.ok(!emptyCsv.includes('"LOAN-'));
+});
+
 function panelFixture(rows = fixtures, fail = false) {
   const slots = [], effects = [], downloads = [], calls = [];
   let cursor = 0, dirty = true, tree;
@@ -200,7 +226,9 @@ test('revenue screen updates cards, rows and CSV together when custom dates, sta
   assert.equal(h.card('Filtered transactions'), '1');
   assert.match(h.card('Total income'), /200/);
   h.find(n => n.props?.title === 'Export Ledger CSV').props.onClick();
-  const csv = decodeURI(h.downloads.at(-1).href);
+  const csv = decodeURIComponent(h.downloads.at(-1).href.split(',').slice(1).join(','));
+  assert.ok(csv.includes('"1","0","200","0","200","",""'));
+  assert.ok(csv.includes('"Active filters","Custom: 2026-11-12 to 2026-11-12 / realized"'));
   assert.ok(csv.includes('"Older borrower","LN-OLD","0","200","0","200","REALIZED"'));
   assert.ok(!csv.includes('New borrower'));
   await h.input('Filter revenue status', 'all');
@@ -219,12 +247,30 @@ test('screen pagination preserves complete filtered card totals and resets after
   await h.tab('Next');
   assert.equal(h.card('Filtered transactions'), '23');
   assert.match(h.card('Total income'), /230/);
+  h.find(n => n.props?.title === 'Export Ledger CSV').props.onClick();
+  const csv = decodeURIComponent(h.downloads.at(-1).href.split(',').slice(1).join(','));
+  assert.ok(csv.includes('"23","2300","0","230","230","",""'));
+  assert.ok(csv.includes('"Borrower 22","LN-22"'));
   await h.tab('Custom');
   await h.input('Revenue from date', '2030-01-02');
   await h.input('Revenue to date', '2030-01-01');
   assert.equal(h.card('Filtered transactions'), '0');
   assert.ok(h.find(n => n.props?.role === 'alert'));
   assert.equal(h.find(n => n.props?.title === 'Export Ledger CSV').props.disabled, true);
+});
+
+test('download preserves commas, quotes, Unicode and URI characters in borrower names and filters', async () => {
+  const h = panelFixture([{ id: 'LN-SPECIAL', customer: 'रवि, "#A&B 50%"', principal: 100, processingFee: 10, startDate: '2026-11-12' }]);
+  await h.flush();
+  await h.search('#A&B 50%');
+  h.find(n => n.props?.title === 'Export Ledger CSV').props.onClick();
+  const download = h.downloads.at(-1);
+  const csv = decodeURIComponent(download.href.slice(download.href.indexOf(',') + 1));
+  assert.ok(!download.href.includes('#'), 'A borrower # cannot become a download URI fragment');
+  assert.ok(csv.startsWith('\uFEFF"Revenue Analytics"'));
+  assert.ok(csv.includes('"रवि, ""#A&B 50%""","LN-SPECIAL"'));
+  assert.ok(csv.includes('"Active filters","All time / Search: #A&B 50%"'));
+  assert.ok(csv.includes('"1","100","0","10","10","",""'));
 });
 
 test('failed report loads show unavailable cards and disable export', async () => {

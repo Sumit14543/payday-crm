@@ -149,8 +149,33 @@ export function createRevenueLedger(loans: RevenueLoan[], filters: RevenueFilter
   return { rows, totals, invalidRange, undatedRoi: money(undatedRoi) };
 }
 
+const csvEscape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+
 export function revenueLedgerCsv(rows: RevenueLedgerRow[]): string {
   const headers = ["Borrower Name", "Agreement ID", "Principal Disbursed", "ROI Revenue (Interest)", "PF Revenue (Fee)", "Total Income", "Status"];
-  const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-  return [headers.map(escape).join(","), ...rows.map(row => [row.customer, row.agreementId, row.principal, row.roi, row.fees, row.totalIncome, row.status.toUpperCase()].map(escape).join(","))].join("\n");
+  return [headers.map(csvEscape).join(","), ...rows.map(row => [row.customer, row.agreementId, row.principal, row.roi, row.fees, row.totalIncome, row.status.toUpperCase()].map(csvEscape).join(","))].join("\n");
+}
+
+export function revenueReportCsv(
+  ledger: ReturnType<typeof createRevenueLedger>,
+  filterLabel: string,
+  reportDate = getRevenueDate(new Date()),
+): string {
+  // Use the dashboard's full filtered ledger for both the summary and detail.
+  const { totals } = ledger;
+  const summary: (string | number)[][] = [
+    ["Revenue Analytics"],
+    ["Active filters", filterLabel],
+    ["Export date", reportDate],
+    ["Currency", "INR"],
+    [],
+    ["Filtered transactions", "Principal disbursed", "ROI revenue (interest)", "PF revenue (fee)", "Total income"],
+    [totals.count, totals.principal, totals.roi, totals.fees, totals.totalIncome],
+    ["Realized transactions", "Partial transactions", "Pending transactions"],
+    [totals.realized, totals.partial, totals.pending],
+    [],
+    ["Transactions - all matching rows across every page"],
+  ];
+  const summaryCsv = summary.map(row => Array.from({ length: 7 }, (_, index) => csvEscape(row[index] ?? "")).join(",")).join("\n");
+  return summaryCsv + "\n" + revenueLedgerCsv(ledger.rows);
 }
