@@ -67,6 +67,7 @@ type RecentTransferResponse = {
   stats?: {
     dueSoonCount: number;
     overdueCount: number;
+    totalDisbursed: number;
   };
 };
 
@@ -136,6 +137,7 @@ type InterestReportsResponse = {
     interestReceivable: InterestReportRow[];
     monthWise: InterestReportRow[];
   };
+  reportSummaries?: Partial<Record<InterestReportKey, InterestReportsResponse["summary"]>>;
   summary: {
     accruedInterest: number;
     bookedInterest: number;
@@ -392,6 +394,7 @@ export function AccountantPanel() {
       const reportParams = new URLSearchParams({
         from: interestFrom,
         to: interestTo,
+        scope: "range",
       });
       if (debouncedSearchTerm.trim()) params.set("search", debouncedSearchTerm.trim());
       const [queue, recent, reports] = await Promise.all([
@@ -399,6 +402,7 @@ export function AccountantPanel() {
         apiGet<RecentTransferResponse>(`/leads/accounting-payments/recent?${recentParams.toString()}`, signal),
         apiGet<InterestReportsResponse>(`/accounts/reports/interest?${reportParams.toString()}`, signal),
       ]);
+      if (signal.aborted) return;
       setLeads(queue.items);
       setPagination(queue.pagination);
       setServerStats(queue.stats);
@@ -452,12 +456,12 @@ export function AccountantPanel() {
   const totalRecentPages = recentPagination?.totalPages || 1;
   const totalRecentItems = recentPagination?.totalItems || recentTransfers.length;
   const bankMissingCount = Math.max(0, stats.totalQueue - stats.bankReadyCount);
-  const recentDisbursedAmount = recentTransfers.reduce((sum, transfer) => sum + Number(transfer.disbursementAmount || 0), 0);
   const repaymentDueSoonCount = recentStats?.dueSoonCount ?? 0;
   const repaymentOverdueCount = recentStats?.overdueCount ?? 0;
   const bankReadyPercent = stats.totalQueue ? Math.round((stats.bankReadyCount / stats.totalQueue) * 100) : 0;
   const deductionRate = stats.totalLoanAmount ? Math.round((stats.feeTotal / stats.totalLoanAmount) * 100) : 0;
   const selectedInterestRows = interestReports?.reports[interestReportType] || [];
+  const selectedInterestSummary = interestReports?.reportSummaries?.[interestReportType] ?? interestReports?.summary;
   const selectedInterestColumns = reportColumns[interestReportType];
   const totalInterestPages = Math.max(1, Math.ceil(selectedInterestRows.length / INTEREST_PAGE_SIZE));
   const safeInterestPage = Math.min(interestPage, totalInterestPages);
@@ -756,10 +760,10 @@ export function AccountantPanel() {
 
         <div className="grid grid-cols-1 gap-4 border-b border-slate-200 p-5 md:grid-cols-2 xl:grid-cols-4">
           {[
-            ["Accrued Interest", formatCurrency(interestReports?.summary.accruedInterest), `${interestReports?.summary.collectionRate ?? 0}% collected`, "info"],
-            ["Interest Receivable", formatCurrency(interestReports?.summary.interestReceivable), "Accrued minus received", "warning"],
-            ["Interest Realized", formatCurrency(interestReports?.summary.collectedInterest), "Actual interest collection", "success"],
-            ["Booked Pending", formatCurrency(interestReports?.summary.pendingBookedInterest), `${interestReports?.summary.bookedReceiptRate ?? 0}% received`, "teal"],
+            ["Accrued Interest", formatCurrency(selectedInterestSummary?.accruedInterest), `${selectedInterestSummary?.collectionRate ?? 0}% collected`, "info"],
+            ["Interest Receivable", formatCurrency(selectedInterestSummary?.interestReceivable), "Accrued minus received", "warning"],
+            ["Interest Realized", formatCurrency(selectedInterestSummary?.collectedInterest), "Actual interest collection", "success"],
+            ["Booked Pending", formatCurrency(selectedInterestSummary?.pendingBookedInterest), `${selectedInterestSummary?.bookedReceiptRate ?? 0}% received`, "teal"],
           ].map(([label, value, note, tone]) => (
             <MetricCard
               key={label as string}

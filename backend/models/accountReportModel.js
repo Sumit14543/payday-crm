@@ -87,7 +87,7 @@ function emptyBucket(period) {
   };
 }
 
-function allocateLoanInterestByPeriod(row, range, repaymentsByLoan) {
+function allocateLoanInterestByPeriod(row, range, repaymentsByLoan, rangeOnly = false) {
   const start = toDate(row.startDate);
   const due = toDate(row.dueDate);
   if (!start || !due) return { dayBuckets: [], monthBuckets: [] };
@@ -104,6 +104,7 @@ function allocateLoanInterestByPeriod(row, range, repaymentsByLoan) {
   const collectedByMonth = (repaymentsByLoan[normalizeLoanId(row.loanId)] || []).reduce((acc, repayment) => {
     const receivedAt = toDate(repayment.receivedAt);
     if (!receivedAt) return acc;
+    if (rangeOnly && (receivedAt < range.from || receivedAt >= range.toExclusive)) return acc;
     const key = monthKey(receivedAt);
     acc[key] = (acc[key] || 0) + Number(repayment.interestComponent || 0);
     return acc;
@@ -133,6 +134,12 @@ function allocateLoanInterestByPeriod(row, range, repaymentsByLoan) {
     return acc;
   }, {});
 
+  if (rangeOnly) {
+    Object.keys(collectedByMonth).forEach((month) => {
+      if (!monthMap[month]) monthMap[month] = { accruedInterest: 0, days: 0, month };
+    });
+  }
+
   return {
     dayBuckets: days.map((day) => ({
       accruedInterest: day.accruedInterest,
@@ -157,8 +164,35 @@ function allocateLoanInterestByPeriod(row, range, repaymentsByLoan) {
   };
 }
 
+function summarizeReportRows(rows) {
+  const totals = rows.reduce((acc, row) => {
+    const accrued = Number(row.accruedInterest || 0);
+    const booked = Number(row.bookedInterest || 0);
+    const collected = Number(row.collectedInterest ?? row.receivedInterest ?? 0);
+    acc.accruedInterest += accrued;
+    acc.bookedInterest += booked;
+    acc.collectedInterest += collected;
+    acc.interestReceivable += Number(row.interestReceivable ?? row.pendingInterest ?? Math.max(0, accrued - collected));
+    acc.pendingBookedInterest += Number(row.pendingBookedInterest ?? Math.max(0, booked - collected));
+    acc.rangeAccruedInterest += Number(row.rangeAccruedInterest || 0);
+    acc.rangeBookedInterest += Number(row.rangeBookedInterest || 0);
+    acc.rangeInterestReceived += Number(row.rangeInterestReceived || 0);
+    return acc;
+  }, {
+    accruedInterest: 0, bookedInterest: 0, collectedInterest: 0,
+    interestReceivable: 0, pendingBookedInterest: 0,
+    rangeAccruedInterest: 0, rangeBookedInterest: 0, rangeInterestReceived: 0,
+  });
+  Object.keys(totals).forEach((key) => { totals[key] = money(totals[key]); });
+  totals.collectionRate = totals.accruedInterest > 0 ? Math.round((totals.collectedInterest / totals.accruedInterest) * 100) : 0;
+  totals.bookedReceiptRate = totals.bookedInterest > 0 ? Math.round((totals.collectedInterest / totals.bookedInterest) * 100) : 0;
+  return totals;
+}
+
 async function getInterestReports(filters = {}) {
   const range = normalizeRange(filters);
+  // Opt in from the accountant panel; other report consumers keep their existing contract.
+  const rangeOnly = filters.scope === 'range';
   const loans = await query(`
     SELECT
       loan.id AS loanId,
@@ -244,22 +278,24 @@ async function getInterestReports(filters = {}) {
       if (!receivedAt || receivedAt < range.from || receivedAt >= range.toExclusive) return sum;
       return sum + Number(item.interestComponent || 0);
     }, 0);
-    const accruedInterest = money((interestDue * accruedDays) / totalDays);
     const rangeAccruedInterest = money((interestDue * rangeDays) / totalDays);
-    const bookedInterest = interestDue;
     const isBookedInRange = due && due >= range.from && due < range.toExclusive;
+    if (rangeOnly && !rangeDays && !isBookedInRange && !rangeInterestReceived) return null;
+    const accruedInterest = rangeOnly ? rangeAccruedInterest : money((interestDue * accruedDays) / totalDays);
+    const bookedInterest = rangeOnly ? (isBookedInRange ? interestDue : 0) : interestDue;
+    const collectedInterest = rangeOnly ? rangeInterestReceived : interestReceived;
 
     return {
       accruedInterest,
       balance: Number(loan.balance || 0),
       bookedInterest: money(bookedInterest),
-      collectedInterest: money(interestReceived),
+      collectedInterest: money(collectedInterest),
       customerName: loan.customerName || loan.customerId || 'Customer',
       dueDate: loan.dueDate,
       interestRate: Number(loan.interestRate || 0),
-      interestReceivable: money(Math.max(0, accruedInterest - interestReceived)),
+      interestReceivable: money(Math.max(0, accruedInterest - collectedInterest)),
       loanId: loan.loanId,
-      pendingBookedInterest: money(Math.max(0, bookedInterest - interestReceived)),
+      pendingBookedInterest: money(Math.max(0, bookedInterest - collectedInterest)),
       phone: loan.phone || '',
       principal: Number(loan.principal || 0),
       rangeAccruedInterest,
@@ -269,7 +305,7 @@ async function getInterestReports(filters = {}) {
       status: loan.status || '',
       totalInterestDays: totalDays,
     };
-  });
+  }).filter(Boolean);
 
   const summary = rows.reduce((acc, row) => {
     acc.accruedInterest += row.accruedInterest;
@@ -310,7 +346,7 @@ async function getInterestReports(filters = {}) {
   const customerMonthWiseRows = [];
 
   loans.forEach((loan) => {
-    const allocation = allocateLoanInterestByPeriod(loan, range, repaymentsByLoan);
+    const allocation = allocateLoanInterestByPeriod(loan, range, repaymentsByLoan, rangeOnly);
     allocation.dayBuckets.forEach((bucket) => {
       if (!dayBuckets[bucket.period]) return;
       dayBuckets[bucket.period].accruedInterest += bucket.accruedInterest;
@@ -356,56 +392,70 @@ async function getInterestReports(filters = {}) {
     receivedInterest: money(bucket.receivedInterest),
   });
 
+  const reports = {
+    accruedInterest: rows.map((row) => ({
+      accruedInterest: row.accruedInterest,
+      customerName: row.customerName,
+      dueDate: row.dueDate,
+      interestRate: row.interestRate,
+      loanId: row.loanId,
+      principal: row.principal,
+      startDate: row.startDate,
+      status: row.status,
+    })),
+    accruedVsCollected: rows.map((row) => ({
+      accruedInterest: row.accruedInterest,
+      collectedInterest: row.collectedInterest,
+      collectionRate: row.accruedInterest > 0 ? Math.round((row.collectedInterest / row.accruedInterest) * 100) : 0,
+      customerName: row.customerName,
+      loanId: row.loanId,
+      pendingInterest: row.interestReceivable,
+    })),
+    bookedVsReceived: rows.map((row) => ({
+      bookedInterest: row.bookedInterest,
+      customerName: row.customerName,
+      loanId: row.loanId,
+      pendingBookedInterest: row.pendingBookedInterest,
+      receivedInterest: row.collectedInterest,
+    })),
+    dayWise: Object.values(dayBuckets).map(finalizeBucket).sort((a, b) => b.period.localeCompare(a.period)),
+    customerMonthWise: customerMonthWiseRows.sort((a, b) => (
+      b.month.localeCompare(a.month) || String(a.customerName).localeCompare(String(b.customerName))
+    )),
+    interestRealization: rows.filter((row) => row.collectedInterest > 0).map((row) => ({
+      collectedInterest: row.collectedInterest,
+      customerName: row.customerName,
+      loanId: row.loanId,
+      pendingInterest: row.interestReceivable,
+    })),
+    interestReceivable: rows.filter((row) => row.interestReceivable > 0).map((row) => ({
+      accruedInterest: row.accruedInterest,
+      collectedInterest: row.collectedInterest,
+      customerName: row.customerName,
+      dueDate: row.dueDate,
+      interestReceivable: row.interestReceivable,
+      loanId: row.loanId,
+      phone: row.phone,
+    })),
+    monthWise: Object.values(monthBuckets).map(finalizeBucket).sort((a, b) => b.period.localeCompare(a.period)),
+  };
+
+  const reportSummaries = rangeOnly ? {
+    accruedInterest: summary,
+    accruedVsCollected: summary,
+    bookedVsReceived: summary,
+    interestRealization: summarizeReportRows(rows.filter((row) => row.collectedInterest > 0)),
+    interestReceivable: summarizeReportRows(rows.filter((row) => row.interestReceivable > 0)),
+    dayWise: summarizeReportRows(reports.dayWise),
+    monthWise: summarizeReportRows(reports.monthWise),
+    customerMonthWise: summarizeReportRows(reports.customerMonthWise),
+  } : undefined;
+
   return {
     filters: { from: range.fromSql, to: range.toSql },
-    reports: {
-      accruedInterest: rows.map((row) => ({
-        accruedInterest: row.accruedInterest,
-        customerName: row.customerName,
-        dueDate: row.dueDate,
-        interestRate: row.interestRate,
-        loanId: row.loanId,
-        principal: row.principal,
-        startDate: row.startDate,
-        status: row.status,
-      })),
-      accruedVsCollected: rows.map((row) => ({
-        accruedInterest: row.accruedInterest,
-        collectedInterest: row.collectedInterest,
-        collectionRate: row.accruedInterest > 0 ? Math.round((row.collectedInterest / row.accruedInterest) * 100) : 0,
-        customerName: row.customerName,
-        loanId: row.loanId,
-        pendingInterest: row.interestReceivable,
-      })),
-      bookedVsReceived: rows.map((row) => ({
-        bookedInterest: row.bookedInterest,
-        customerName: row.customerName,
-        loanId: row.loanId,
-        pendingBookedInterest: row.pendingBookedInterest,
-        receivedInterest: row.collectedInterest,
-      })),
-      dayWise: Object.values(dayBuckets).map(finalizeBucket).sort((a, b) => b.period.localeCompare(a.period)),
-      customerMonthWise: customerMonthWiseRows.sort((a, b) => (
-        b.month.localeCompare(a.month) || String(a.customerName).localeCompare(String(b.customerName))
-      )),
-      interestRealization: rows.filter((row) => row.collectedInterest > 0).map((row) => ({
-        collectedInterest: row.collectedInterest,
-        customerName: row.customerName,
-        loanId: row.loanId,
-        pendingInterest: row.interestReceivable,
-      })),
-      interestReceivable: rows.filter((row) => row.interestReceivable > 0).map((row) => ({
-        accruedInterest: row.accruedInterest,
-        collectedInterest: row.collectedInterest,
-        customerName: row.customerName,
-        dueDate: row.dueDate,
-        interestReceivable: row.interestReceivable,
-        loanId: row.loanId,
-        phone: row.phone,
-      })),
-      monthWise: Object.values(monthBuckets).map(finalizeBucket).sort((a, b) => b.period.localeCompare(a.period)),
-    },
+    reports,
     summary,
+    ...(rangeOnly ? { reportSummaries } : {}),
   };
 }
 
