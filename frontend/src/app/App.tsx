@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import { PageLoading } from './components/PageLoading';
-import { DiwaliCelebration } from './components/DiwaliCelebration';
 import { AuthProvider } from './lib/auth';
 import { ThemeProvider, useTheme } from './lib/theme';
 import { router } from './routes';
@@ -16,7 +15,6 @@ function AppShell() {
       <Suspense fallback={<PageLoading />}>
         <RouterProvider router={router} />
       </Suspense>
-      <DiwaliCelebration />
       <ToastContainer
         autoClose={3500}
         closeOnClick
