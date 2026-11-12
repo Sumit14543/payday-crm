@@ -40,11 +40,13 @@ import { apiGet } from "../lib/api";
 import { getTenantBranding } from "../lib/tenant";
 import { useTheme } from "../lib/theme";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
+import "./AnalyticsLayout.css";
 
 export function ProductAdminLayout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const isRevenuePage = location.pathname.replace(/\/+$/, "") === "/revenue";
+  const isAnalyticsPage = isRevenuePage || location.pathname.replace(/\/+$/, "") === "/reports";
   const navigate = useNavigate();
 
   const branding = getTenantBranding();
@@ -241,7 +243,7 @@ export function ProductAdminLayout() {
   });
 
   return (
-    <div data-revenue-layout={isRevenuePage || undefined} className="h-dvh w-full flex bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
+    <div data-analytics-layout={isAnalyticsPage || undefined} className="h-dvh w-full flex bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
       
       {/* SIDEBAR FOR DESKTOP */}
       <aside
@@ -488,7 +490,7 @@ export function ProductAdminLayout() {
           {/* Right Side: Proportional Tools & Profile */}
           <div data-crm-tools className="flex items-center gap-3">
 
-            {isRevenuePage && <button type="button" onClick={() => setShowCommandPalette(true)} title="Open Command Palette" className="revenue-command-button"><Command className="w-4 h-4" /></button>}
+            {isAnalyticsPage && <button type="button" onClick={() => setShowCommandPalette(true)} title="Open Command Palette" className="revenue-command-button"><Command className="w-4 h-4" /></button>}
 
             {/* Quick Create (+) Button */}
             <button
@@ -697,7 +699,7 @@ export function ProductAdminLayout() {
         </header>
 
         {/* BREADCRUMB & PAGE HEADER */}
-        {!isRevenuePage && <div className="px-6 pt-5 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {!isAnalyticsPage && <div className="px-6 pt-5 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="space-y-1">
             <nav className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
               <Link to="/" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">DASHBOARD</Link>
@@ -731,7 +733,7 @@ export function ProductAdminLayout() {
         </div>}
 
         {/* DYNAMIC VIEW ROUTER OUTLET */}
-        <main className={`flex-1 overflow-y-auto ${isRevenuePage ? "min-h-0 p-4 sm:p-6 lg:p-7 bg-slate-50 dark:bg-slate-950" : "p-6 bg-white dark:bg-slate-950"}`}>
+        <main className={`flex-1 overflow-y-auto ${isAnalyticsPage ? "min-h-0 p-4 sm:p-6 lg:p-7 bg-slate-50 dark:bg-slate-950" : "p-6 bg-white dark:bg-slate-950"}`}>
           <React.Suspense fallback={
             <div className="space-y-6 animate-pulse p-4">
               <div className="h-8 w-1/4 bg-slate-200 dark:bg-slate-800 rounded-lg" />
@@ -752,7 +754,7 @@ export function ProductAdminLayout() {
       </div>
 
       {/* FLOATING ACTION ACTION SHORTCUTS (FAB) */}
-      {!isRevenuePage && <div className="fixed bottom-6 right-6 z-40">
+      {!isAnalyticsPage && <div className="fixed bottom-6 right-6 z-40">
         <button
           onClick={() => setShowCommandPalette(true)}
           className="w-12 h-12 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-lg hover:scale-105 transition-all shadow-indigo-500/30 cursor-pointer"

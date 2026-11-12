@@ -6,7 +6,8 @@ import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { AppTooltip } from "../../components/ui/app-tooltip";
 import { NiceSelect } from "../../components/ui/nice-select";
-import { EmptyState, MetricCard } from "../../components/crm/DashboardPrimitives";
+import { EmptyState } from "../../components/crm/DashboardPrimitives";
+import { ReportWorkspaceView, ReportMetricCard, reportPeriodOptions } from "./ReportWorkspaceView";
 
 type Lead = {
   id: string;
@@ -1104,7 +1105,7 @@ export function Reports() {
     };
 
     return (
-      <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="reports-workspace reports-overview">
         <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Collections MIS</p>
@@ -1303,7 +1304,7 @@ export function Reports() {
 
   if (isAccountant) {
     return (
-      <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="reports-workspace reports-overview">
         <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-3xl font-bold text-gray-900">Account & Collection Reports</h2>
@@ -1567,11 +1568,11 @@ export function Reports() {
   }
 
   return (
-    <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="reports-workspace reports-overview">
       <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900">Telecaller Reports</h2>
-          <p className="mt-1 text-sm text-gray-600">Live lead, follow-up, document, and handoff reports.</p>
+          <h1 className="reports-overview-title">Reports overview</h1>
+          <p className="mt-1 text-sm text-gray-600">Explore lead activity, loan accounts, collections and performance reports.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -1595,12 +1596,7 @@ export function Reports() {
               value={selectedPeriod}
               onValueChange={setSelectedPeriod}
               className="min-w-44"
-              options={[
-                { label: "Last 30 Days", value: "last30days" },
-                { label: "Last 3 Months", value: "last3months" },
-                { label: "Last 6 Months", value: "last6months" },
-                { label: "Last Year", value: "lastyear" },
-              ]}
+              options={reportPeriodOptions}
             />
           </div>
           <AppTooltip label="Download current report rows as CSV">
@@ -1632,7 +1628,8 @@ export function Reports() {
             onClick={() => scrollToSection(targetId as string)}
             className="text-left w-full focus:outline-none hover:opacity-90 transition cursor-pointer"
           >
-            <MetricCard
+            <ReportMetricCard
+              icon={Icon as typeof Users}
               accent={index === 2 ? "warning" : index === 3 ? "teal" : "info"}
               metric={isLoading ? "-" : value as number}
               note={note as string}
@@ -1658,7 +1655,8 @@ export function Reports() {
               onClick={() => scrollToSection(targetId as string)}
               className="text-left w-full focus:outline-none hover:opacity-90 transition cursor-pointer"
             >
-              <MetricCard
+              <ReportMetricCard
+                icon={Icon as typeof Users}
                 accent={index === 0 ? "danger" : index === 1 ? "warning" : index === 4 ? "success" : "info"}
                 metric={isLoading ? "-" : value as string | number}
                 note={note as string}
@@ -2705,261 +2703,20 @@ function SingleReportView({
     window.print();
   };
 
-  return (
-    <div className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8 print:p-0">
-      {apiError && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 print:hidden">
-          <p className="font-semibold mb-1">Failed to load report data:</p>
-          <p>{apiError}</p>
-        </div>
-      )}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-        <div>
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition mb-2 cursor-pointer"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back to Dashboard
-          </button>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{reportDetails.title}</h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">Dedicated single report worksheet with advanced filters and exports.</p>
-        </div>
-        <div className="relative print:hidden">
-          <button
-            type="button"
-            onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 transition cursor-pointer shadow-sm focus:ring-2 focus:ring-blue-100"
-          >
-            <Download className="h-4 w-4" />
-            Actions & Export
-            <ChevronDown className={`h-4 w-4 transition-transform ${isExportDropdownOpen ? "rotate-180" : ""}`} />
-          </button>
-          {isExportDropdownOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-10" 
-                onClick={() => setIsExportDropdownOpen(false)} 
-              />
-              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 shadow-lg z-20 focus:outline-none">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleExportCsv();
-                    setIsExportDropdownOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
-                >
-                  <Download className="h-4 w-4 text-emerald-500" />
-                  Export as CSV
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleExportJson();
-                    setIsExportDropdownOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
-                >
-                  <Download className="h-4 w-4 text-amber-500" />
-                  Export as JSON
-                </button>
-                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    handlePrint();
-                    setIsExportDropdownOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
-                >
-                  <FileText className="h-4 w-4 text-blue-500" />
-                  Print / Save PDF
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      {summaryCards.length > 0 && (
-        <div className="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
-          {summaryCards.map((card) => {
-            const IconComponent = {
-              Users,
-              UserPlus,
-              Phone,
-              AlertTriangle,
-              FileText,
-              CheckCircle2,
-              Activity,
-              Banknote,
-              Briefcase,
-              DollarSign,
-              ShieldAlert,
-              RefreshCw,
-              Repeat,
-            }[card.icon] || FileText;
-
-            const colorClasses = {
-              blue: {
-                bg: "bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900",
-                border: "border-blue-200/80 dark:border-blue-900/60 hover:border-blue-400 dark:hover:border-blue-600",
-                text: "text-blue-700 dark:text-blue-400",
-                iconBg: "bg-blue-100/80 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-700/60 shadow-xs",
-                accent: "from-blue-500 to-indigo-600",
-                aura: "from-blue-200/70 via-indigo-200/40 to-transparent dark:from-blue-500/25 dark:via-indigo-500/15",
-              },
-              emerald: {
-                bg: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-white dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900",
-                border: "border-emerald-200/80 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-600",
-                text: "text-emerald-700 dark:text-emerald-400",
-                iconBg: "bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/60 shadow-xs",
-                accent: "from-emerald-500 to-teal-600",
-                aura: "from-emerald-200/70 via-teal-200/40 to-transparent dark:from-emerald-500/25 dark:via-teal-500/15",
-              },
-              amber: {
-                bg: "bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white dark:from-amber-950/40 dark:via-slate-900 dark:to-slate-900",
-                border: "border-amber-200/80 dark:border-amber-900/60 hover:border-amber-400 dark:hover:border-amber-600",
-                text: "text-amber-700 dark:text-amber-400",
-                iconBg: "bg-amber-100/80 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-700/60 shadow-xs",
-                accent: "from-amber-500 to-orange-600",
-                aura: "from-amber-200/70 via-orange-200/40 to-transparent dark:from-amber-500/25 dark:via-orange-500/15",
-              },
-              red: {
-                bg: "bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-white dark:from-rose-950/40 dark:via-slate-900 dark:to-slate-900",
-                border: "border-rose-200/80 dark:border-rose-900/60 hover:border-rose-400 dark:hover:border-rose-600",
-                text: "text-rose-700 dark:text-rose-400",
-                iconBg: "bg-rose-100/80 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-700/60 shadow-xs",
-                accent: "from-rose-500 to-red-600",
-                aura: "from-rose-200/70 via-pink-200/40 to-transparent dark:from-rose-500/25 dark:via-pink-500/15",
-              },
-              indigo: {
-                bg: "bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-white dark:from-indigo-950/40 dark:via-slate-900 dark:to-slate-900",
-                border: "border-indigo-200/80 dark:border-indigo-900/60 hover:border-indigo-400 dark:hover:border-indigo-600",
-                text: "text-indigo-700 dark:text-indigo-400",
-                iconBg: "bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/60 shadow-xs",
-                accent: "from-indigo-500 to-purple-600",
-                aura: "from-indigo-200/70 via-purple-200/40 to-transparent dark:from-indigo-500/25 dark:via-purple-500/15",
-              },
-            }[card.color as "blue" | "emerald" | "amber" | "red" | "indigo"] || {
-              bg: "bg-gradient-to-br from-slate-500/10 via-slate-500/5 to-white dark:from-slate-800/40 dark:via-slate-900 dark:to-slate-900",
-              border: "border-slate-200/80 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700",
-              text: "text-slate-700 dark:text-slate-400",
-              iconBg: "bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs",
-              accent: "from-slate-500 to-slate-600",
-              aura: "from-slate-200/70 via-slate-200/40 to-transparent dark:from-slate-600/25 dark:via-slate-700/15",
-            };
-
-            return (
-              <div
-                key={card.label}
-                className={`relative overflow-hidden rounded-2xl border ${colorClasses.border} ${colorClasses.bg} p-5 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 group`}
-              >
-                {/* Dynamic Top-Right Accent Aura Glow */}
-                <div className={`absolute -top-8 -right-8 w-28 h-28 rounded-full bg-gradient-to-br ${colorClasses.aura} blur-xl pointer-events-none group-hover:scale-125 transition-transform duration-500`} />
-
-                {/* Visual Top Highlight Accent */}
-                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${colorClasses.accent}`} />
-                
-                <div className="relative z-10 flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{card.label}</span>
-                  <div className={`rounded-xl p-2 ${colorClasses.iconBg} transition-transform duration-300 group-hover:scale-110`}>
-                    <IconComponent className="h-4 w-4" />
-                  </div>
-                </div>
-                
-                <div className="relative z-10 mt-3">
-                  <span className="text-2xl font-black tracking-tight text-slate-900 dark:text-white leading-none">{card.value}</span>
-                  <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">{card.note}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4 print:hidden">
-        <label className="relative block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search details..."
-            className="h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
-          />
-        </label>
-
-        <NiceSelect
-          ariaLabel="Select period"
-          value={selectedPeriod}
-          onValueChange={onPeriodChange}
-          options={[
-            { label: "Today", value: "today" },
-            { label: "Yesterday", value: "yesterday" },
-            { label: "This Month", value: "thismonth" },
-            { label: "Last Month", value: "lastmonth" },
-            { label: "Last 30 Days", value: "last30days" },
-            { label: "Last 90 Days", value: "last90days" },
-            { label: "Last 6 Months", value: "last6months" },
-            { label: "Year to Date", value: "yeartodate" },
-            { label: "All Time", value: "alltime" },
-          ]}
-        />
-
-        {(reportType === "lead-report" || reportType === "loan-report" || reportType === "reloan-report" || reportType === "collection-report" || reportType === "outstanding-report" || reportType === "recovery-report") && (
-          <NiceSelect
-            ariaLabel="Filter status"
-            value={statusFilter}
-            onValueChange={setStatusFilter}
-            options={[
-              { label: "All Statuses", value: "all" },
-              { label: "New", value: "New" },
-              { label: "Contacted", value: "Contacted" },
-              { label: "Paid", value: "Paid" },
-              { label: "Overdue", value: "Overdue" },
-              { label: "PTP", value: "PTP" },
-              { label: "Broken PTP", value: "Broken PTP" },
-            ]}
-          />
-        )}
-
-        {(reportType === "lead-report" || reportType === "application-report" || reportType === "dpd-bucket-report") && (
-          <NiceSelect
-            ariaLabel="Filter priority"
-            value={priorityFilter}
-            onValueChange={setPriorityFilter}
-            options={[
-              { label: "All Priorities", value: "all" },
-              { label: "High", value: "High" },
-              { label: "Medium", value: "Medium" },
-              { label: "Low", value: "Low" },
-            ]}
-          />
-        )}
-      </div>
-
-      <div className="print:block">
-        {isLoading ? (
-          <div className="flex h-64 items-center justify-center rounded-lg border border-gray-200 bg-white shadow-sm">
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-              <p className="text-sm font-medium text-slate-500">Fetching report records...</p>
-            </div>
-          </div>
-        ) : (
-          <ReportTable
-            title={reportDetails.title}
-            headers={reportDetails.headers}
-            rows={reportDetails.rows}
-          />
-        )}
-      </div>
-    </div>
-  );
+  return <ReportWorkspaceView
+    title={reportDetails.title} reportType={reportType} isLoading={isLoading} apiError={apiError}
+    summaryCards={summaryCards} selectedPeriod={selectedPeriod} searchQuery={searchQuery}
+    statusFilter={statusFilter} priorityFilter={priorityFilter} isExportDropdownOpen={isExportDropdownOpen}
+    onPeriodChange={onPeriodChange} onSearchChange={setSearchQuery} onStatusChange={setStatusFilter}
+    onPriorityChange={setPriorityFilter} onExportToggle={setIsExportDropdownOpen} onBack={onBack}
+    onExportCsv={handleExportCsv} onExportJson={handleExportJson} onPrint={handlePrint}
+  >
+    {isLoading ? (
+      <div className="reports-loading" role="status"><span aria-hidden="true" /><p>Loading report records...</p></div>
+    ) : (
+      <ReportTable title={reportDetails.title} headers={reportDetails.headers} rows={reportDetails.rows} compact />
+    )}
+  </ReportWorkspaceView>;
 }
 
 function getHeaderAlignment(header: string) {
@@ -3002,7 +2759,7 @@ function renderCell(cell: string, header: string) {
   if (lowerHeader === "lead id" || lowerHeader === "id" || lowerHeader === "lead / app id" || lowerHeader === "application id") {
     if (trimmed && trimmed !== "-" && trimmed !== "System") {
       return (
-        <Link to={`/leads/${trimmed}`} className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline">
+        <Link to={`/leads/${trimmed}`} className="report-record-link">
           {trimmed}
         </Link>
       );
@@ -3013,7 +2770,7 @@ function renderCell(cell: string, header: string) {
   if (lowerHeader === "loan account" || lowerHeader === "loan account id" || lowerHeader === "loan id" || lowerHeader === "previous loan id" || lowerHeader === "previous loan") {
     if (trimmed && trimmed !== "-") {
       return (
-        <Link to={`/loan-management/${trimmed}`} className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline">
+        <Link to={`/loan-management/${trimmed}`} className="report-record-link">
           {trimmed}
         </Link>
       );
@@ -3053,7 +2810,7 @@ function renderCell(cell: string, header: string) {
         <span className="h-6 w-6 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center justify-center border border-indigo-200 dark:border-indigo-800 shrink-0">
           {trimmed.charAt(0).toUpperCase()}
         </span>
-        <span className="truncate max-w-[200px]">{trimmed}</span>
+        <span className="report-customer-name">{trimmed}</span>
       </span>
     );
   }
@@ -3071,7 +2828,7 @@ function renderCell(cell: string, header: string) {
   if (trimmed.startsWith("₹") || trimmed.startsWith("-₹")) {
     const isNegative = trimmed.startsWith("-");
     return (
-      <span className={`font-mono font-semibold tracking-tight ${isNegative ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-100"}`}>
+      <span className={`report-currency${isNegative ? " report-currency--negative" : ""}`}>
         {trimmed}
       </span>
     );
@@ -3161,7 +2918,7 @@ function renderCell(cell: string, header: string) {
   return <span className="text-slate-700 dark:text-slate-300 font-medium">{trimmed}</span>;
 }
 
-function ReportTable({ id, headers, rows, title }: { id?: string; headers: string[]; rows: string[][]; title: string }) {
+function ReportTable({ id, headers, rows, title, compact = false }: { id?: string; headers: string[]; rows: string[][]; title: string; compact?: boolean }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState("8");
   const rowsPerPage = Number(pageSize);
@@ -3212,37 +2969,38 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
   };
 
   return (
-    <div id={id || exportFilename} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden transition-all hover:shadow-md">
-      <div className="flex flex-col gap-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h3>
-          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+    <div id={id || exportFilename} className="report-table-panel">
+      <div className="report-table-heading">
+        <div className="report-table-heading__text">
+          <div className="report-table-title"><h3>{compact ? "Records" : title}</h3><span>{rows.length.toLocaleString("en-IN")}</span></div>
+          <p>
             {rows.length ? `Showing ${startIndex + 1}-${endIndex} of ${rows.length} records` : "No records matching query"}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <AppTooltip label={`Download ${title} as Excel CSV`}>
+        <div className="report-table-controls print-hidden">
+          {!compact && <AppTooltip label={`Download ${title} as Excel CSV`}>
             <button
               type="button"
               onClick={() => exportCsv(exportRows, exportFilename)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+              className="reports-button"
             >
               <Download className="h-4 w-4 text-slate-500 dark:text-slate-400" />
               Download CSV
             </button>
-          </AppTooltip>
+          </AppTooltip>}
 
-          <AppTooltip label={`Print ${title} Table`}>
+          {!compact && <AppTooltip label={`Print ${title} Table`}>
             <button
               type="button"
               onClick={handlePrintTable}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+              className="reports-button"
             >
               <Printer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
               Print Table
             </button>
-          </AppTooltip>
+          </AppTooltip>}
 
+          <span className="report-page-size-label">Rows per page</span>
           <NiceSelect
             ariaLabel={`${title} rows per page`}
             value={pageSize}
@@ -3250,29 +3008,26 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
             className="w-32 bg-white dark:bg-slate-800"
             options={reportPageSizeOptions}
           />
-          <span className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60">
-            {rows.length} items
-          </span>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
-          <thead className="bg-slate-50/30 dark:bg-slate-800/60">
+      <div className="report-table-scroll" role="region" aria-label={`${title} records`} tabIndex={0}>
+        <table className={`report-data-table${rows.length === 0 ? " report-data-table--empty" : ""}`}>
+          <thead>
             <tr>
               {headers.map((head) => (
-                <th key={head} className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 ${getHeaderAlignment(head)}`}>
+                <th scope="col" key={head} className={getHeaderAlignment(head)}>
                   {head}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+          <tbody>
             {visibleRows.map((row, rowIndex) => (
-              <tr key={row.join("-") + rowIndex} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition border-b border-slate-100 dark:border-slate-800">
+              <tr key={row.join("-") + rowIndex}>
                 {row.map((cell, index) => {
                   const head = headers[index] || "";
                   return (
-                    <td key={`${rowIndex}-${cell}-${index}`} className={`px-6 py-4 text-sm whitespace-nowrap ${getHeaderAlignment(head)}`}>
+                    <td key={`${rowIndex}-${cell}-${index}`} className={getHeaderAlignment(head)}>
                       {renderCell(cell, head)}
                     </td>
                   );
@@ -3281,7 +3036,7 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={headers.length} className="px-6 py-16 text-center">
+                <td colSpan={headers.length} className="report-table-empty">
                   <EmptyState title="No report data" description="Data will appear here when the selected period has matching records." />
                 </td>
               </tr>
@@ -3289,15 +3044,15 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
           </tbody>
         </table>
       </div>
-      {rows.length > rowsPerPage && (
-        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/30 px-6 py-4 text-sm font-semibold text-slate-500 dark:text-slate-400">
+      {rows.length > 0 && (
+        <div className="report-table-footer print-hidden">
           <span>Page {safePage} of {totalPages}</span>
-          <div className="flex items-center gap-2">
+          <div className="report-pagination">
             <button
               type="button"
               onClick={() => setPage(1)}
               disabled={safePage === 1}
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="report-page-button"
             >
               First
             </button>
@@ -3305,25 +3060,25 @@ function ReportTable({ id, headers, rows, title }: { id?: string; headers: strin
               type="button"
               onClick={() => setPage((value) => Math.max(1, value - 1))}
               disabled={safePage === 1}
-              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/40 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="report-page-button"
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <ChevronLeft className="report-page-button" />
               Prev
             </button>
             <button
               type="button"
               onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
               disabled={safePage === totalPages}
-              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="report-page-button"
             >
               Next
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="report-page-button" />
             </button>
             <button
               type="button"
               onClick={() => setPage(totalPages)}
               disabled={safePage === totalPages}
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer shadow-sm"
+              className="report-page-button"
             >
               Last
             </button>
