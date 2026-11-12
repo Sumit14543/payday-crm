@@ -44,6 +44,7 @@ import { ConfirmationModal } from "./ui/ConfirmationModal";
 export function ProductAdminLayout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const isRevenuePage = location.pathname.replace(/\/+$/, "") === "/revenue";
   const navigate = useNavigate();
 
   const branding = getTenantBranding();
@@ -240,7 +241,7 @@ export function ProductAdminLayout() {
   });
 
   return (
-    <div className="h-dvh w-full flex bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
+    <div data-revenue-layout={isRevenuePage || undefined} className="h-dvh w-full flex bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden">
       
       {/* SIDEBAR FOR DESKTOP */}
       <aside
@@ -380,6 +381,7 @@ export function ProductAdminLayout() {
           </div>
         </div>
         <button
+          aria-label="Toggle navigation menu"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-slate-200 hover:text-white"
         >
@@ -454,10 +456,10 @@ export function ProductAdminLayout() {
       <div className="flex-1 flex flex-col min-w-0 md:pl-0 pt-16 md:pt-0 h-full overflow-hidden">
         
         {/* TOP NAVIGATION BAR */}
-        <header className="h-18 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between px-6 sticky top-0 z-20 shrink-0">
+        <header data-crm-topbar className="h-18 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between px-6 sticky top-0 z-20 shrink-0">
           
           {/* Left Side: Search & Switches */}
-          <div className="flex items-center gap-3">
+          <div data-crm-context className="flex items-center gap-3">
             
             {/* Search triggers Ctrl+K */}
             <button
@@ -484,7 +486,9 @@ export function ProductAdminLayout() {
           </div>
 
           {/* Right Side: Proportional Tools & Profile */}
-          <div className="flex items-center gap-3">
+          <div data-crm-tools className="flex items-center gap-3">
+
+            {isRevenuePage && <button type="button" onClick={() => setShowCommandPalette(true)} title="Open Command Palette" className="revenue-command-button"><Command className="w-4 h-4" /></button>}
 
             {/* Quick Create (+) Button */}
             <button
@@ -599,6 +603,8 @@ export function ProductAdminLayout() {
             {/* Profile Dropdown */}
             <div className="relative">
               <button
+                data-crm-profile
+                aria-label="Open profile menu"
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="flex items-center gap-3.5 h-13.5 px-3 pr-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/40 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-all duration-200 shadow-sm cursor-pointer group shrink-0"
               >
@@ -691,7 +697,7 @@ export function ProductAdminLayout() {
         </header>
 
         {/* BREADCRUMB & PAGE HEADER */}
-        <div className="px-6 pt-5 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {!isRevenuePage && <div className="px-6 pt-5 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="space-y-1">
             <nav className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
               <Link to="/" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">DASHBOARD</Link>
@@ -722,10 +728,10 @@ export function ProductAdminLayout() {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
             <span>Operational Integrity: 100% Secure</span>
           </div>
-        </div>
+        </div>}
 
         {/* DYNAMIC VIEW ROUTER OUTLET */}
-        <main className="flex-1 p-6 overflow-y-auto bg-white dark:bg-slate-950">
+        <main className={`flex-1 overflow-y-auto ${isRevenuePage ? "min-h-0 p-4 sm:p-6 lg:p-7 bg-slate-50 dark:bg-slate-950" : "p-6 bg-white dark:bg-slate-950"}`}>
           <React.Suspense fallback={
             <div className="space-y-6 animate-pulse p-4">
               <div className="h-8 w-1/4 bg-slate-200 dark:bg-slate-800 rounded-lg" />
@@ -746,7 +752,7 @@ export function ProductAdminLayout() {
       </div>
 
       {/* FLOATING ACTION ACTION SHORTCUTS (FAB) */}
-      <div className="fixed bottom-6 right-6 z-40">
+      {!isRevenuePage && <div className="fixed bottom-6 right-6 z-40">
         <button
           onClick={() => setShowCommandPalette(true)}
           className="w-12 h-12 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-lg hover:scale-105 transition-all shadow-indigo-500/30 cursor-pointer"
@@ -754,7 +760,7 @@ export function ProductAdminLayout() {
         >
           <Command className="w-5 h-5 animate-pulse" />
         </button>
-      </div>
+      </div>}
 
       {/* GLOBAL COMMAND PALETTE (CTRL+K MODAL) */}
       <AnimatePresence>

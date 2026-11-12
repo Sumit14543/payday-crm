@@ -145,19 +145,23 @@ function panelFixture(rows = fixtures, fail = false) {
     useMemo(fn, deps) { const i = cursor++; if (!same(slots[i]?.deps, deps)) slots[i] = { value: fn(), deps }; return slots[i].value; },
     useEffect(fn, deps) { const i = cursor++; if (!same(slots[i]?.deps, deps)) effects.push(() => { slots[i]?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; }); },
   };
-  const jsx = (type, props) => ({ type, props: props || {} });
+  const jsx = (type, props) => typeof type === 'function' ? type(props || {}) : ({ type, props: props || {} });
   const generic = new Proxy({}, { get: (_, key) => key === '__esModule' ? false : String(key) });
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : [now.getTime()])); } }
   const document = {
     body: { appendChild() {}, removeChild() {} },
     createElement() { return { setAttribute(key, value) { this[key] = value; }, click() { downloads.push(this); } }; },
   };
+  const view = load('frontend/src/app/pages/product-admin/RevenueAnalyticsView.tsx', {
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'lucide-react': generic,
+    '../../components/PartialDataNotice': generic,
+    './RevenueAnalytics.css': {},
+  });
   const page = load('frontend/src/app/pages/product-admin/RevenueAnalytics.tsx', {
     react,
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'motion/react': generic, 'lucide-react': generic,
-    '../../components/PartialDataNotice': generic,
-    '../../components/crm/DashboardPrimitives': generic,
+    './RevenueAnalyticsView': view,
     '../../lib/revenueLedger': ledger,
     '../../lib/api': { apiGetAll: async (url, signal) => { calls.push({ url, signal }); if (fail) throw new Error('Synthetic report read failed'); return rows; } },
   }, { Date: FixedDate, document });
@@ -166,7 +170,7 @@ function panelFixture(rows = fixtures, fail = false) {
   return {
     downloads, calls, nodes,
     find: predicate => nodes().find(predicate),
-    card(title) { const group = this.find(n => n.props?.['aria-label'] === 'Filtered revenue totals'); return nodes(group).find(n => n.type === 'MetricCard' && n.props.title === title)?.props.metric; },
+    card(title) { const group = this.find(n => n.props?.['aria-label'] === title); return nodes(group).find(n => n.props?.className === 'revenue-metric__value')?.props.children; },
     async flush() {
       for (let i = 0; i < 40; i++) {
         if (dirty) { dirty = false; cursor = 0; tree = page.RevenueAnalytics(); effects.splice(0).forEach(fn => fn()); }
@@ -232,7 +236,8 @@ test('failed report loads show unavailable cards and disable export', async () =
 
 test('the entire revenue screen has one active filter and no separate fixed-period totals', async () => {
   const h = panelFixture(); await h.flush();
-  assert.equal(h.nodes().filter(n => n.type === 'MetricCard').length, 5);
+  const totals = h.find(n => n.props?.['aria-label'] === 'Filtered revenue totals');
+  assert.equal(h.nodes(totals).filter(n => n.props?.role === 'group').length, 5);
   assert.equal(h.nodes().filter(n => n.type === 'button' && n.props.children === 'Today').length, 1);
   const activeLabel = () => JSON.stringify(h.find(n => n.props?.['aria-label'] === 'Active revenue filter').props.children);
   assert.match(activeLabel(), /All time/);
