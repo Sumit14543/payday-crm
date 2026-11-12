@@ -1,5 +1,6 @@
 const { query } = require('../config/db');
 const { createTenantCache } = require('../utils/tenantCache');
+const { databaseDateOnly } = require('../utils/sanctionDates');
 
 const DEFAULT_DOCUMENT_CHECKS = [
   { key: 'pan', label: 'PAN captured and name matched' },
@@ -1332,7 +1333,7 @@ function mapAccountingQueueItem(row) {
     disbursementAmount: Number(row.disbursementAmount || 0),
     repaymentAmount: Number(row.repaymentAmount || 0),
     tenureDays: Number(row.tenureDays || 30),
-    dueDate: row.dueDate || null,
+    dueDate: databaseDateOnly(row.dueDate) || null,
     bankName: row.bankName || '',
     accountNumber: row.accountNumber || '',
     ifscCode: row.ifscCode || '',
@@ -1366,9 +1367,9 @@ function mapRecentAccountingPayment(row) {
     paidBy: row.paidBy || '',
     disbursedAt: row.disbursedAt || row.paidAt || null,
     paidAt: row.paidAt || null,
-    startDate: row.startDate || null,
-    dueDate: row.dueDate || null,
-    nextPaymentDate: row.nextPaymentDate || null,
+    startDate: databaseDateOnly(row.startDate) || null,
+    dueDate: databaseDateOnly(row.dueDate) || null,
+    nextPaymentDate: databaseDateOnly(row.nextPaymentDate) || null,
     accountNumber: row.accountNumber || '',
     bankName: row.bankName || '',
     ifscCode: row.ifscCode || '',

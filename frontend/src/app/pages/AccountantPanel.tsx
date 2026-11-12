@@ -6,6 +6,7 @@ import { EmptyState, MetricCard } from "../components/crm/DashboardPrimitives";
 import { PageLoading } from "../components/PageLoading";
 import { apiGet, apiPost } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
+import { accountingDateOnly } from "../lib/accountingDateOnly";
 
 type AccountingLead = {
   id: string;
@@ -473,7 +474,7 @@ export function AccountantPanel() {
   const openTransferModal = (lead: AccountingLead) => {
     setSelectedLead(lead);
     const todayIso = getTodayIsoDate();
-    const leadDueIso = lead.dueDate ? (lead.dueDate.match(/^(\d{4})-(\d{2})-(\d{2})/)?.[0] || "") : "";
+    const leadDueIso = accountingDateOnly(lead.dueDate);
     const fallbackTenure = Number(lead.tenureDays || 30);
     const initialDue = leadDueIso || addDaysToIsoDate(todayIso, fallbackTenure);
     const initialTenure = calculateDaysDifference(todayIso, initialDue);
