@@ -2,7 +2,7 @@
 
 All regular files under the CRM's configured uploads directory, default `backend/uploads`, and existing OS fallback `payday-uploads` are mirrored to the existing `GCS_BUCKET_NAME` and `GCS_PREFIX`. This includes uploaded KYC/proofs and generated CIBIL, sanction, agreement and signed-agreement PDFs, regardless of whether the writing controller calls the immediate-upload helper.
 
-An independent Linux cron job runs every minute under `flock`. Stable new/changed files are normally copied within one to two minutes, depending on file size and network availability. A run has a four-minute budget; overlapping cron ticks skip the lock. Files left pending or failed are retried on later scans. Existing application uploads/downloads continue to use their current paths. No DB schema/data changes, application imports, CRM restarts, bucket-policy changes, signed URL changes or document deletions are needed.
+An independent Linux cron job runs every ten minutes (`*/10 * * * *`) under `flock`, at minutes 00, 10, 20, 30, 40 and 50 of each hour. Stable new/changed files are picked up at the next scheduled scan, subject to the 20-second stability check, file size and network availability. A run has a four-minute budget; overlapping cron ticks skip the lock. Files left pending or failed are retried on later scans. Existing application uploads/downloads continue to use their current paths. No DB schema/data changes, application imports, CRM restarts, bucket-policy changes, signed URL changes or document deletions are needed.
 
 ## Integrity and source preservation
 

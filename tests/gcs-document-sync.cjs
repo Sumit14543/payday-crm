@@ -174,10 +174,10 @@ test('prefix pagination remains isolated and never enumerates/deletes database b
   assert.ok(queries.every(query => query.prefix === config.prefix + '/'));
 });
 
-test('cron installs one locked minute-wise mirror and preserves the database backup and other jobs', () => {
+test('cron installs one locked ten-minute mirror and preserves the database backup and other jobs', () => {
   const config = sync.readSyncConfig({ ENABLE_GCS_SYNC: 'true' });
   const block = cron.makeCron(config, '/usr/bin/node');
-  assert.ok(block.includes('* * * * *'));
+  assert.match(block, /^\*\/10 \* \* \* \* /m);
   assert.ok(block.includes('flock -n'));
   const existing = '# BEGIN PAYDAY CRM GCS DATABASE BACKUP\n*/5 * * * * node backup\n# END PAYDAY CRM GCS DATABASE BACKUP\n0 0 * * * unrelated\n';
   const installed = cron.replaceManagedCron(existing, block);

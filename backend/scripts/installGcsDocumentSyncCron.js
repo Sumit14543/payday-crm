@@ -11,7 +11,7 @@ function makeCron(config, nodePath = process.execPath) {
   const root = path.resolve(__dirname, '..');
   const command = `cd ${quote(root)} && NODE_ENV=production flock -n ${quote(config.lockFile)} ${quote(nodePath)} ${quote(path.join(root, 'scripts', 'syncDocumentsToGcs.js'))} --once >> ${quote(path.join(config.stateDir, 'sync.log'))} 2>&1`;
   if (/[\r\n%]/.test(command)) throw new Error('Invalid cron path.');
-  return `${START}\n# Mirror all stable uploaded/generated documents; no deletions.\n* * * * * ${command}\n${END}`;
+  return `${START}\n# Mirror all stable uploaded/generated documents every 10 minutes; no deletions.\n*/10 * * * * ${command}\n${END}`;
 }
 function replaceManagedCron(existing, block) {
   const start = existing.indexOf(START), end = existing.indexOf(END);
@@ -39,7 +39,9 @@ async function main(args = process.argv.slice(2)) {
   const log = path.join(config.stateDir, 'sync.log');
   const handle = await fsp.open(log, 'a', 0o600); await handle.close(); await fsp.chmod(log, 0o600);
   execFileSync('crontab', ['-'], { input: updated, encoding: 'utf8', stdio: ['pipe', 'ignore', 'pipe'] });
-  console.log(args.includes('--remove') ? 'Removed managed document sync job only.' : 'Installed document sync every minute; existing jobs preserved.');
+  const installed = execFileSync('crontab', ['-l'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (args.includes('--remove') ? installed.includes(START) : !installed.includes(block)) throw new Error('Document sync crontab verification failed.');
+  console.log(args.includes('--remove') ? 'Removed managed document sync job only.' : 'Verified document sync every 10 minutes; existing jobs preserved.');
 }
 if (require.main === module) main().catch(error => { console.error('Document sync cron setup failed: ' + (error.code || error.name)); process.exitCode = 1; });
 module.exports = { makeCron, replaceManagedCron, quote };
