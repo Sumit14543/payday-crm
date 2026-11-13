@@ -16,6 +16,7 @@ on:
       - tests/gcs-backup.cjs
       - .github/workflows/deploy-database-backup.yml
       - .github/workflows/deploy-production.yml
+      - .github/workflows/audit-gcs-documents.yml
   workflow_dispatch:
 
 jobs:

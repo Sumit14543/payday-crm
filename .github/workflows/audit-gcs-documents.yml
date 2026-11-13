@@ -1,0 +1,191 @@
+name: Audit GCS Documents Read Only
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/audit-gcs-documents.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-gcs-document-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Compare server documents, database references and GCS metadata
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 18m
+          script: |
+            set -e
+            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
+              . /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            fi
+            cd /home/waqtmoney/public_html/payday-api
+            NODE_ENV=production node <<'NODE'
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const os = require('node:os');
+            const { execFileSync } = require('node:child_process');
+            require('./config/env');
+            const gcs = require('./config/gcs');
+            const root = process.cwd();
+            const fallback = path.join(root, 'uploads');
+            const configured = process.env.UPLOADS_DIR ? path.resolve(root, process.env.UPLOADS_DIR) : fallback;
+            const temporary = path.join(os.tmpdir(), 'payday-uploads');
+            const prefix = String(process.env.GCS_PREFIX || gcs.GCS_PREFIX || '').replace(/^\/+|\/+$/g, '');
+            const counters = () => ({ files: 0, bytes: 0, exactPathAndSize: 0, alternatePathAndSize: 0, sizeMismatch: 0, notFound: 0, sameNameElsewhereUnconfirmed: 0, underFiveMinutes: 0, zeroBytes: 0 });
+            const remote = new Map(), byBasename = new Map(), suffixes = new Map(), local = new Map();
+            const report = { checkedAt: new Date().toISOString(), readOnly: true, bucket: gcs.BUCKET_NAME, syncEnabled: gcs.ENABLE_GCS_SYNC, prefix, inventory: { objects: 0, bytes: 0, folders: {} }, roots: [], localFiles: counters(), categories: {}, databaseReferences: { fields: [], unique: 0, inGcs: 0, localOnly: 0, absentLocallyAndInGcs: 0, externalOrUnrecognized: 0, missingByCategory: {} }, skippedSymlinks: 0, readErrors: 0 };
+            const categories = relative => relative.includes('/') ? relative.split('/')[0] : '(root)';
+            const addSuffix = (key, name) => { const list = suffixes.get(key) || []; list.push(name); suffixes.set(key, list); };
+            async function writable(directory) { try { await fs.access(directory, 2); return (await fs.stat(directory)).isDirectory(); } catch { return false; } }
+            function remoteCandidates(relative) {
+              const clean = relative.replace(/^\/+/, '').replace(/^uploads\//, '');
+              return [...new Set([prefix ? prefix + '/' + clean : clean, clean, 'uploads/' + clean, 'waqtmoney-documents/test-uploads/' + clean, 'waqtmoney-documents/' + clean, ...(suffixes.get(clean) || [])])].filter(name => remote.has(name));
+            }
+            async function walk(directory, base, tally) {
+              let entries;
+              try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { report.readErrors++; return; }
+              for (const entry of entries) {
+                const filename = path.join(directory, entry.name);
+                if (entry.isSymbolicLink()) { report.skippedSymlinks++; continue; }
+                if (entry.isDirectory()) { await walk(filename, base, tally); continue; }
+                if (!entry.isFile() || ['.htaccess', '.gitkeep', '.DS_Store'].includes(entry.name)) continue;
+                let stat;
+                try { stat = await fs.stat(filename); } catch { report.readErrors++; continue; }
+                const relative = path.relative(base, filename).split(path.sep).join('/');
+                const category = categories(relative);
+                const group = report.categories[category] ||= counters();
+                const candidates = remoteCandidates(relative);
+                const matching = candidates.find(name => Number(remote.get(name).size) === stat.size);
+                const expected = prefix ? prefix + '/' + relative : relative;
+                const status = matching ? (matching === expected ? 'exactPathAndSize' : 'alternatePathAndSize') : candidates.length ? 'sizeMismatch' : 'notFound';
+                for (const target of [tally, report.localFiles, group]) {
+                  target.files++; target.bytes += stat.size; target[status]++;
+                  if (!stat.size) target.zeroBytes++;
+                  if (Date.now() - stat.mtimeMs < 300000) target.underFiveMinutes++;
+                  if (!candidates.length && byBasename.has(entry.name)) target.sameNameElsewhereUnconfirmed++;
+                }
+                local.set(relative, true);
+              }
+            }
+            function normalizeReference(value) {
+              let ref = String(value || '').trim();
+              if (!ref || ref.length > 8192) return null;
+              try {
+                if (ref.startsWith('gs://')) { const u = new URL(ref); return u.hostname === gcs.BUCKET_NAME ? { object: decodeURIComponent(u.pathname.slice(1)) } : null; }
+                if (/^https?:\/\//i.test(ref)) {
+                  const u = new URL(ref);
+                  if (u.hostname === 'storage.googleapis.com') return u.pathname.startsWith('/' + gcs.BUCKET_NAME + '/') ? { object: decodeURIComponent(u.pathname.slice(gcs.BUCKET_NAME.length + 2)) } : null;
+                  if (u.hostname === gcs.BUCKET_NAME + '.storage.googleapis.com') return { object: decodeURIComponent(u.pathname.slice(1)) };
+                  ref = decodeURIComponent(u.pathname);
+                }
+                if (/^\/?uploads\//.test(ref)) return { relative: ref.replace(/^\/?uploads\//, '').split('?')[0].split('#')[0] };
+              } catch {}
+              return null;
+            }
+            async function main() {
+              const bucket = gcs.getBucket();
+              if (!bucket) throw new Error('GCS credentials are not available.');
+              let query = { autoPaginate: false, maxResults: 1000 };
+              do {
+                const [files, next] = await bucket.getFiles(query);
+                for (const file of files) {
+                  if (file.name.endsWith('/')) continue;
+                  remote.set(file.name, file.metadata);
+                  const base = path.posix.basename(file.name);
+                  const names = byBasename.get(base) || []; names.push(file.name); byBasename.set(base, names);
+                  const parts = file.name.split('/');
+                  for (let i = 0; i < parts.length; i++) addSuffix(parts.slice(i).join('/'), file.name);
+                  const category = parts[0];
+                  const group = report.inventory.folders[category] ||= { files: 0, bytes: 0, newest: '' };
+                  group.files++; group.bytes += Number(file.metadata.size || 0);
+                  group.newest = [group.newest, file.metadata.timeCreated || ''].sort().at(-1);
+                  report.inventory.objects++; report.inventory.bytes += Number(file.metadata.size || 0);
+                }
+                query = next ? { ...next, autoPaginate: false, maxResults: 1000 } : null;
+              } while (query);
+              const active = await writable(configured) ? configured : await writable(fallback) ? fallback : await writable(temporary) ? temporary : fallback;
+              for (const base of [...new Set([active, configured, fallback, temporary])]) {
+                try { if (!(await fs.stat(base)).isDirectory()) continue; } catch { continue; }
+                const tally = { root: base, active: base === active, ...counters() };
+                report.roots.push(tally);
+                await walk(base, base, tally);
+              }
+              const connection = require('mysql').createConnection({ host: process.env.DB_HOST || 'localhost', port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER, password: process.env.DB_PASSWORD ?? process.env.DB_PASS ?? '', database: process.env.DB_NAME, connectTimeout: 15000, multipleStatements: false });
+              const refs = new Map();
+              try {
+                const columns = await new Promise((resolve, reject) => connection.query({ sql: 'SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ?', values: [process.env.DB_NAME], timeout: 30000 }, (error, rows) => error ? reject(error) : resolve(rows)));
+                for (const column of columns.filter(item => /(?:^|_)(?:url|path|file|filename|attachment|document)(?:$|_)/i.test(item.COLUMN_NAME) && /char|text|json/i.test(item.DATA_TYPE))) {
+                  if (!/^[a-z0-9_]+$/i.test(column.TABLE_NAME) || !/^[a-z0-9_]+$/i.test(column.COLUMN_NAME)) continue;
+                  const field = { field: column.TABLE_NAME + '.' + column.COLUMN_NAME, values: 0, recognizedPaths: 0 };
+                  const sql = 'SELECT `' + column.COLUMN_NAME + '` AS reference FROM `' + column.TABLE_NAME + '` WHERE `' + column.COLUMN_NAME + '` IS NOT NULL AND `' + column.COLUMN_NAME + "` <> ''";
+                  for await (const row of connection.query({ sql, timeout: 30000 }).stream()) {
+                    field.values++;
+                    const reference = normalizeReference(row.reference);
+                    if (reference) { field.recognizedPaths++; refs.set(JSON.stringify(reference), reference); }
+                    else report.databaseReferences.externalOrUnrecognized++;
+                  }
+                  report.databaseReferences.fields.push(field);
+                }
+              } finally { connection.destroy(); }
+              for (const reference of refs.values()) {
+                report.databaseReferences.unique++;
+                const found = reference.object ? remote.has(reference.object) : remoteCandidates(reference.relative).length > 0;
+                if (found) report.databaseReferences.inGcs++;
+                else {
+                  const category = reference.relative ? categories(reference.relative) : '(gcs-object)';
+                  report.databaseReferences.missingByCategory[category] = (report.databaseReferences.missingByCategory[category] || 0) + 1;
+                  if (reference.relative && local.has(reference.relative)) report.databaseReferences.localOnly++;
+                  else report.databaseReferences.absentLocallyAndInGcs++;
+                }
+              }
+              try {
+                const entries = execFileSync('crontab', ['-l'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).split('\n');
+                report.gcsRelatedCronJobs = entries.filter(line => !/^\s*#/.test(line) && /gcs|gcloud|rclone|migrate_upload/i.test(line)).map(line => ({ schedule: line.trim().split(/\s+/).slice(0, 5).join(' '), kind: /backupDatabaseToGcs/.test(line) ? 'database-backup' : /rclone/.test(line) ? 'rclone' : /migrate_upload/.test(line) ? 'bulk-upload' : 'other-gcs-job' }));
+              } catch { report.cronReadUnavailable = true; }
+              report.sourceHooks = {};
+              for (const name of ['services/cibilService.js', 'services/sanctionLetterService.js', 'services/loanAgreementService.js', 'controllers/loanAgreementController.js', 'controllers/documentRequestController.js', 'controllers/collectionController.js', 'controllers/sanctionController.js']) {
+                try { report.sourceHooks[name] = /syncUploadedFile|uploadToGCS/.test(await fs.readFile(path.join(root, name), 'utf8')); } catch { report.sourceHooks[name] = 'unreadable'; }
+              }
+              report.scope = 'All regular files under known production upload roots, plus direct DB URL/path/file/document columns. Presence and byte size checked; document contents not downloaded. Other applications, JSON-embedded references and external provider files are not fully audited.';
+              // Strict allowlist: public CI logs get only non-identifying counts
+              // and boolean results. Never emit report, filenames, bucket names,
+              // paths, timestamps, DB field names, references or customer data.
+              const summary = {
+                auditSucceeded: true,
+                syncEnabled: Boolean(report.syncEnabled),
+                serverFiles: report.localFiles.files,
+                matchedCurrentPathAndSize: report.localFiles.exactPathAndSize,
+                matchedAlternatePathAndSize: report.localFiles.alternatePathAndSize,
+                sizeMismatches: report.localFiles.sizeMismatch,
+                missingAtKnownPaths: report.localFiles.notFound,
+                sameNameElsewhereUnconfirmed: report.localFiles.sameNameElsewhereUnconfirmed,
+                modifiedUnderFiveMinutes: report.localFiles.underFiveMinutes,
+                emptyLocalFiles: report.localFiles.zeroBytes,
+                unreadableEntries: report.readErrors,
+                skippedSymlinks: report.skippedSymlinks,
+                dbReferencesChecked: report.databaseReferences.unique,
+                dbReferencesInCloud: report.databaseReferences.inGcs,
+                dbReferencesLocalOnly: report.databaseReferences.localOnly,
+                dbReferencesNotFound: report.databaseReferences.absentLocallyAndInGcs,
+                unrecognizedReferenceValues: report.databaseReferences.externalOrUnrecognized,
+                documentSyncCronJobs: (report.gcsRelatedCronJobs || []).filter(item => item.kind !== 'database-backup').length,
+                sourceFlowsWithDirectSync: Object.values(report.sourceHooks).filter(value => value === true).length,
+                sourceFlowsWithoutDirectSync: Object.values(report.sourceHooks).filter(value => value === false).length,
+              };
+              console.log('GCS_DOCUMENT_AUDIT_COUNTS ' + JSON.stringify(summary));
+            }
+            main().catch(error => { console.error('Document audit failed: ' + (error.code || error.name)); process.exitCode = 1; });
+            NODE

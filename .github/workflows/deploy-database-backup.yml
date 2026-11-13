@@ -9,8 +9,6 @@ on:
       - backend/scripts/backupDatabaseToGcs.js
       - backend/scripts/installGcsBackupCron.js
       - backend/config/gcsBackupDefaults.json
-      - .github/workflows/deploy-database-backup.yml
-      - .github/workflows/deploy-production.yml
   workflow_dispatch:
     inputs:
       full_test:
