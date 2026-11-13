@@ -48,6 +48,7 @@ jobs:
             const remote = new Map(), byBasename = new Map(), suffixes = new Map(), local = new Map();
             const report = { checkedAt: new Date().toISOString(), readOnly: true, bucket: gcs.BUCKET_NAME, syncEnabled: gcs.ENABLE_GCS_SYNC, prefix, inventory: { objects: 0, bytes: 0, folders: {} }, roots: [], localFiles: counters(), categories: {}, databaseReferences: { fields: [], unique: 0, inGcs: 0, localOnly: 0, absentLocallyAndInGcs: 0, externalOrUnrecognized: 0, missingByCategory: {} }, skippedSymlinks: 0, readErrors: 0 };
             const categories = relative => relative.includes('/') ? relative.split('/')[0] : '(root)';
+            let auditStage = 'inventory';
             const addSuffix = (key, name) => { const list = suffixes.get(key) || []; list.push(name); suffixes.set(key, list); };
             async function writable(directory) { try { await fs.access(directory, 2); return (await fs.stat(directory)).isDirectory(); } catch { return false; } }
             function remoteCandidates(relative) {
@@ -116,6 +117,7 @@ jobs:
                 }
                 query = next ? { ...next, autoPaginate: false, maxResults: 1000 } : null;
               } while (query);
+              auditStage = 'filesystem';
               const active = await writable(configured) ? configured : await writable(fallback) ? fallback : await writable(temporary) ? temporary : fallback;
               for (const base of [...new Set([active, configured, fallback, temporary])]) {
                 try { if (!(await fs.stat(base)).isDirectory()) continue; } catch { continue; }
@@ -123,6 +125,7 @@ jobs:
                 report.roots.push(tally);
                 await walk(base, base, tally);
               }
+              auditStage = 'database-references';
               const connection = require('mysql').createConnection({ host: process.env.DB_HOST || 'localhost', port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER, password: process.env.DB_PASSWORD ?? process.env.DB_PASS ?? '', database: process.env.DB_NAME, connectTimeout: 15000, multipleStatements: false });
               const refs = new Map();
               try {
@@ -131,12 +134,17 @@ jobs:
                   if (!/^[a-z0-9_]+$/i.test(column.TABLE_NAME) || !/^[a-z0-9_]+$/i.test(column.COLUMN_NAME)) continue;
                   const field = { field: column.TABLE_NAME + '.' + column.COLUMN_NAME, values: 0, recognizedPaths: 0 };
                   const sql = 'SELECT `' + column.COLUMN_NAME + '` AS reference FROM `' + column.TABLE_NAME + '` WHERE `' + column.COLUMN_NAME + '` IS NOT NULL AND `' + column.COLUMN_NAME + "` <> ''";
-                  for await (const row of connection.query({ sql, timeout: 30000 }).stream()) {
-                    field.values++;
-                    const reference = normalizeReference(row.reference);
-                    if (reference) { field.recognizedPaths++; refs.set(JSON.stringify(reference), reference); }
-                    else report.databaseReferences.externalOrUnrecognized++;
-                  }
+                  await new Promise((resolve, reject) => {
+                    const reading = connection.query({ sql, timeout: 30000 });
+                    reading.on('result', row => {
+                      field.values++;
+                      const reference = normalizeReference(row.reference);
+                      if (reference) { field.recognizedPaths++; refs.set(JSON.stringify(reference), reference); }
+                      else report.databaseReferences.externalOrUnrecognized++;
+                    });
+                    reading.once('error', reject);
+                    reading.once('end', resolve);
+                  });
                   report.databaseReferences.fields.push(field);
                 }
               } finally { connection.destroy(); }
@@ -184,8 +192,18 @@ jobs:
                 documentSyncCronJobs: (report.gcsRelatedCronJobs || []).filter(item => item.kind !== 'database-backup').length,
                 sourceFlowsWithDirectSync: Object.values(report.sourceHooks).filter(value => value === true).length,
                 sourceFlowsWithoutDirectSync: Object.values(report.sourceHooks).filter(value => value === false).length,
+                cibilFiles: report.categories.cibil?.files || 0,
+                cibilFilesMissing: report.categories.cibil?.notFound || 0,
+                agreementFiles: report.categories.agreements?.files || 0,
+                agreementFilesMissing: report.categories.agreements?.notFound || 0,
+                sanctionFiles: report.categories.sanctions?.files || 0,
+                sanctionFilesMissing: report.categories.sanctions?.notFound || 0,
+                acceptanceFiles: report.categories['sanction-acceptance']?.files || 0,
+                acceptanceFilesMissing: report.categories['sanction-acceptance']?.notFound || 0,
+                paymentProofFilesMissing: report.categories['payment-proofs']?.notFound || 0,
+                leadDocumentFilesMissing: report.categories['lead-documents']?.notFound || 0,
               };
               console.log('GCS_DOCUMENT_AUDIT_COUNTS ' + JSON.stringify(summary));
             }
-            main().catch(error => { console.error('Document audit failed: ' + (error.code || error.name)); process.exitCode = 1; });
+            main().catch(error => { console.error('Document audit failed: ' + (error.code || error.name) + '; stage=' + auditStage); process.exitCode = 1; });
             NODE
