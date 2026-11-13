@@ -1,0 +1,57 @@
+name: Deploy GCS Document Sync Only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/services/gcsDocumentSync.js
+      - backend/scripts/syncDocumentsToGcs.js
+      - backend/scripts/installGcsDocumentSyncCron.js
+      - .github/workflows/deploy-gcs-document-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-gcs-document-sync-setup
+  cancel-in-progress: false
+
+jobs:
+  install-and-backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare independent document sync files
+        run: |
+          mkdir -p document-sync-deploy/services document-sync-deploy/scripts
+          cp backend/services/gcsDocumentSync.js document-sync-deploy/services/
+          cp backend/scripts/syncDocumentsToGcs.js backend/scripts/installGcsDocumentSyncCron.js document-sync-deploy/scripts/
+      - name: Copy sync files without restarting the CRM
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: document-sync-deploy/
+          TARGET: /home/waqtmoney/public_html/payday-api/
+          ARGS: '-rlDztvc'
+      - name: Install retry job, backfill all available documents and verify hashes
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 55m
+          script: |
+            set -e
+            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
+              . /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            fi
+            cd /home/waqtmoney/public_html/payday-api
+            NODE_ENV=production node scripts/installGcsDocumentSyncCron.js --install
+            sync_lock=$(NODE_ENV=production node -e "require('./config/env'); process.stdout.write(require('./services/gcsDocumentSync').readSyncConfig().lockFile);")
+            NODE_ENV=production flock -w 300 "$sync_lock" sh -c 'node scripts/syncDocumentsToGcs.js --backfill && node scripts/syncDocumentsToGcs.js --verify'

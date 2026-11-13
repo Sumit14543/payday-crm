@@ -17,6 +17,12 @@ on:
       - .github/workflows/deploy-database-backup.yml
       - .github/workflows/deploy-production.yml
       - .github/workflows/audit-gcs-documents.yml
+      - .github/workflows/deploy-gcs-document-sync.yml
+      - backend/services/gcsDocumentSync.js
+      - backend/scripts/syncDocumentsToGcs.js
+      - backend/scripts/installGcsDocumentSyncCron.js
+      - backend/docs/gcs-document-sync.md
+      - tests/gcs-document-sync.cjs
   workflow_dispatch:
 
 jobs:
