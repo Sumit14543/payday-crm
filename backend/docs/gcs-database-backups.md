@@ -34,7 +34,7 @@ Google references: [Soft Delete](https://docs.cloud.google.com/storage/docs/soft
 
 The **Deploy Database Backup Only** GitHub workflow copies only the backup/notification services, two commands and defaults. It runs the read-only readiness check and then installs the independent cron entry. Backup-only commits skip the regular application deployment, so this rollout does not restart the CRM or run its database initialization.
 
-Backup-code pushes also run an immediate full backup smoke test under the same cron lock, read back the latest archive to verify GCS CRC32C, gzip integrity and the dump-completion marker, and send a clearly marked simulated failure alert. This manual test does not replace the daily 21:00 snapshot. A workflow dispatch can opt into the same test with `full_test`; readiness-only dispatches do not create an immediate snapshot.
+Backup-code pushes read back the latest archive to verify GCS CRC32C, gzip integrity and the dump-completion marker, check SMTP readiness, retry queued notifications and send a clearly marked simulated failure alert. A workflow dispatch can request an immediate full backup with `full_test`; otherwise an existing archive is verified without taking another snapshot. A manual test does not replace the daily 21:00 snapshot.
 
 From the production backend directory with its normal Node environment active:
 

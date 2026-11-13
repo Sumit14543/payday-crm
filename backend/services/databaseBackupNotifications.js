@@ -45,7 +45,7 @@ function makeReport(config, { result, error, test = false, now = new Date(), env
   return { id: hash(identity), subject: `[Waqt Finance] ${test ? '[TEST] ' : ''}DB Backup ${outcome}`, text: lines.join('\n'), createdAt: time };
 }
 
-async function sendBackupEmail(settings, report, env = process.env, nodemailer = require('nodemailer')) {
+function smtpOptions(env = process.env) {
   const host = String(env.SMTP_HOST || '').trim();
   const user = String(env.SMTP_USERNAME || '').trim();
   const pass = String(env.SMTP_PASSWORD || '').trim();
@@ -53,7 +53,29 @@ async function sendBackupEmail(settings, report, env = process.env, nodemailer =
   const port = Number(env.SMTP_PORT || 587);
   if (!host || !user || !pass || !from || !Number.isInteger(port)) throw new Error('Backup notification SMTP settings are incomplete.');
   const secure = port === 465 || (port !== 587 && port !== 25 && ['1', 'true', 'yes', 'ssl'].includes(String(env.SMTP_SECURE || '').toLowerCase()));
-  const transport = nodemailer.createTransport({ host, port, secure, family: 4, auth: { user, pass }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000 });
+  return { host, port, secure, family: 4, auth: { user, pass }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000 };
+}
+
+function smtpDiagnostic(error) {
+  const message = String(error.message || '');
+  const reason = /certificate|self.signed|hostname|altname/i.test(message) ? 'TLS_CERTIFICATE'
+    : /wrong version|packet length|ssl routines/i.test(message) ? 'TLS_PROTOCOL'
+      : error.code === 'EAUTH' ? 'AUTHENTICATION' : 'CONNECTION_OR_DELIVERY';
+  return { code: /^[A-Z0-9_]+$/.test(error.code || '') ? error.code : 'SMTP_FAILED', reason };
+}
+
+async function checkSmtp(env = process.env, nodemailer = require('nodemailer')) {
+  const options = smtpOptions(env);
+  const transport = nodemailer.createTransport(options);
+  try { await transport.verify(); return { ready: true, host: options.host, port: options.port, secure: options.secure }; }
+  catch (error) { return { ready: false, host: options.host, port: options.port, secure: options.secure, ...smtpDiagnostic(error) }; }
+  finally { transport.close(); }
+}
+
+async function sendBackupEmail(settings, report, env = process.env, nodemailer = require('nodemailer')) {
+  const options = smtpOptions(env);
+  const from = String(env.SMTP_FROM_EMAIL || options.auth.user).trim();
+  const transport = nodemailer.createTransport(options);
   try {
     const info = await transport.sendMail({
       from: { name: 'Waqt Finance Backups', address: from }, to: settings.to,
@@ -129,4 +151,4 @@ async function runWithNotifications(config, run, options = {}) {
   return { ...result, durationSeconds: Math.round(((options.now ? options.now() : new Date()) - started) / 1000), notification };
 }
 
-module.exports = { notificationSettings, safeFailure, makeReport, sendBackupEmail, deliverReports, runWithNotifications };
+module.exports = { notificationSettings, safeFailure, makeReport, smtpOptions, smtpDiagnostic, checkSmtp, sendBackupEmail, deliverReports, runWithNotifications };

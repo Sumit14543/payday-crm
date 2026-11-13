@@ -4,14 +4,20 @@ const notifications = require('../services/databaseBackupNotifications');
 
 async function main(args = process.argv.slice(2)) {
   if (args.includes('--help')) {
-    console.log('Usage: node scripts/backupDatabaseToGcs.js [--check | --configure-lifecycle | --scheduled | --cleanup | --verify | --test-alert]');
+    console.log('Usage: node scripts/backupDatabaseToGcs.js [--check | --configure-lifecycle | --scheduled | --cleanup | --verify | --test-alert | --smtp-check]');
     return;
   }
-  if (args.length > 1 || args.some(arg => !['--check', '--configure-lifecycle', '--scheduled', '--cleanup', '--verify', '--test-alert'].includes(arg))) throw new Error('Unknown backup command; use --help.');
+  if (args.length > 1 || args.some(arg => !['--check', '--configure-lifecycle', '--scheduled', '--cleanup', '--verify', '--test-alert', '--smtp-check'].includes(arg))) throw new Error('Unknown backup command; use --help.');
   require('../config/env'); // Environment loading only; no app/database initialization.
   const config = backup.readBackupConfig();
   if (!config.enabled && !args.includes('--configure-lifecycle') && !args.includes('--check')) {
     console.log(JSON.stringify({ skipped: true, reason: 'GCS_BACKUP_ENABLED=false' }));
+    return;
+  }
+  if (args.includes('--smtp-check')) {
+    const smtp = await notifications.checkSmtp();
+    console.log(JSON.stringify({ smtp }));
+    if (!smtp.ready) process.exitCode = 1;
     return;
   }
   if (args.includes('--test-alert')) {

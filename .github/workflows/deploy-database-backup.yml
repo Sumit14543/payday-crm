@@ -63,7 +63,7 @@ jobs:
             cd /home/waqtmoney/public_html/payday-api
             NODE_ENV=production node scripts/backupDatabaseToGcs.js --check
             NODE_ENV=production node scripts/installGcsBackupCron.js --install
-      - name: Test a full backup and both email notification outcomes
+      - name: Verify uploaded backup and both email notification outcomes
         if: github.event_name == 'push' || inputs.full_test
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -79,4 +79,7 @@ jobs:
             fi
             cd /home/waqtmoney/public_html/payday-api
             backup_lock=$(NODE_ENV=production node -e "require('./config/env'); const b=require('./services/databaseBackup'); process.stdout.write(b.lockPath(b.readBackupConfig()));")
-            NODE_ENV=production flock -w 120 "$backup_lock" sh -c 'node scripts/backupDatabaseToGcs.js && node scripts/backupDatabaseToGcs.js --verify && node scripts/backupDatabaseToGcs.js --test-alert'
+            if [ "${{ inputs.full_test }}" = "true" ]; then
+              NODE_ENV=production flock -w 120 "$backup_lock" node scripts/backupDatabaseToGcs.js
+            fi
+            NODE_ENV=production flock -w 120 "$backup_lock" sh -c 'node scripts/backupDatabaseToGcs.js --verify && node scripts/backupDatabaseToGcs.js --smtp-check && node scripts/backupDatabaseToGcs.js --scheduled && node scripts/backupDatabaseToGcs.js --test-alert'
