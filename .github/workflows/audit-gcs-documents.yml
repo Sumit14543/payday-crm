@@ -1,4 +1,5 @@
 name: Audit GCS Documents Read Only
+# Recheck database-reference coverage after the document mirror backfill.
 
 on:
   push:
