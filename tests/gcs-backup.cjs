@@ -315,6 +315,7 @@ test('SMTP acceptance is required; credentials stay in transport and missing/rej
   let closed = 0;
   const mailer = { createTransport(options) {
     assert.equal(options.secure, false);
+    assert.equal(options.tls.rejectUnauthorized, true);
     assert.equal(options.auth.pass, env.SMTP_PASSWORD);
     return { close() { closed++; }, async sendMail(message) {
       assert.equal(message.to, 'waqtit3@gmail.com');
@@ -330,4 +331,14 @@ test('SMTP acceptance is required; credentials stay in transport and missing/rej
   const simulation = notifications.makeReport(config, { error: new Error('Simulated failure.'), test: true, now });
   assert.match(simulation.subject, /\[TEST\]/);
   assert.match(simulation.text, /No database backup failed/);
+});
+
+test('only the existing loopback SMTP relay can use a local certificate; remote certificate checks remain enabled', async () => {
+  const env = { SMTP_HOST: '127.0.0.1', SMTP_PORT: '587', SMTP_USERNAME: 'relay@example.test', SMTP_PASSWORD: 'synthetic-secret' };
+  assert.equal(notifications.smtpOptions(env).tls.rejectUnauthorized, false);
+  assert.equal(notifications.smtpOptions({ ...env, SMTP_HOST: 'smtp.example.test' }).tls.rejectUnauthorized, true);
+  assert.equal(notifications.smtpOptions({ ...env, SMTP_HOST: '127.0.0.1.attacker.example' }).tls.rejectUnauthorized, true);
+  const mailer = { createTransport: options => ({ verify: async () => { assert.equal(options.tls.rejectUnauthorized, false); }, close() {} }) };
+  assert.equal((await notifications.checkSmtp(env, mailer)).ready, true);
+  assert.deepEqual(notifications.smtpDiagnostic({ code: 'ESOCKET', message: 'self signed certificate' }), { code: 'ESOCKET', reason: 'TLS_CERTIFICATE' });
 });

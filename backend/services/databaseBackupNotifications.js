@@ -53,7 +53,10 @@ function smtpOptions(env = process.env) {
   const port = Number(env.SMTP_PORT || 587);
   if (!host || !user || !pass || !from || !Number.isInteger(port)) throw new Error('Backup notification SMTP settings are incomplete.');
   const secure = port === 465 || (port !== 587 && port !== 25 && ['1', 'true', 'yes', 'ssl'].includes(String(env.SMTP_SECURE || '').toLowerCase()));
-  return { host, port, secure, family: 4, auth: { user, pass }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000 };
+  // The existing cPanel mail relay is on loopback and presents a local certificate.
+  // Trust that local host only; external SMTP certificates remain verified.
+  const localRelay = ['127.0.0.1', '::1', 'localhost'].includes(host.toLowerCase());
+  return { host, port, secure, family: 4, auth: { user, pass }, tls: { rejectUnauthorized: !localRelay }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000 };
 }
 
 function smtpDiagnostic(error) {
