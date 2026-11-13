@@ -32,7 +32,9 @@ Google references: [Soft Delete](https://docs.cloud.google.com/storage/docs/soft
 
 ## Deployment
 
-The **Deploy Database Backup Only** GitHub workflow copies only the service, two commands and defaults. It runs the read-only readiness check and then installs the independent cron entry. Backup-only commits skip the regular application deployment, so this rollout does not restart the CRM or run its database initialization.
+The **Deploy Database Backup Only** GitHub workflow copies only the backup/notification services, two commands and defaults. It runs the read-only readiness check and then installs the independent cron entry. Backup-only commits skip the regular application deployment, so this rollout does not restart the CRM or run its database initialization.
+
+Backup-code pushes also run an immediate full backup smoke test under the same cron lock, read back the latest archive to verify GCS CRC32C, gzip integrity and the dump-completion marker, and send a clearly marked simulated failure alert. This manual test does not replace the daily 21:00 snapshot. A workflow dispatch can opt into the same test with `full_test`; readiness-only dispatches do not create an immediate snapshot.
 
 From the production backend directory with its normal Node environment active:
 
@@ -42,7 +44,7 @@ NODE_ENV=production node scripts/installGcsBackupCron.js --preview
 NODE_ENV=production node scripts/installGcsBackupCron.js --install
 ```
 
-The check does not take an immediate database backup. The installer preserves unrelated cron jobs. `mysqldump`/`mariadb-dump`, `flock` and `crontab` must already be installed. Readiness checks do not prove a complete dump or restore has succeeded; verify the first scheduled archive and test restoring it on an isolated test database.
+The `--check` command does not take an immediate database backup. The installer preserves unrelated cron jobs. `mysqldump`/`mariadb-dump`, `flock` and `crontab` must already be installed. Reading and decompressing an archive verifies its integrity, not its restorability; restore testing belongs on an isolated test database.
 
 An administrator can optionally install an independent GCS lifecycle fallback with `node scripts/backupDatabaseToGcs.js --configure-lifecycle`. This merges only `Delete`, `age: 7`, `matchesPrefix: ["waqtmoneypay/database-backups/"]` into existing rules using a metadata precondition. It rejects detected earlier-delete conflicts and incompatible retention/holds. It does not alter bucket-wide protection settings. The automatic deployment does not invoke this command. Google applies lifecycle actions asynchronously; it is not an exact deletion deadline.
 
@@ -55,6 +57,7 @@ GCS_BACKUP_ENABLED=true
 GCS_BACKUP_BUCKET=waqt-finance-loan-documents-prod
 GCS_BACKUP_PREFIX=waqtmoneypay/database-backups
 GCS_BACKUP_TIME_IST=21:00
+GCS_BACKUP_NOTIFY_EMAIL=waqtit3@gmail.com
 # GCS_BACKUP_DATABASES=your_crm_database,your_master_database
 # GCS_BACKUP_DB_USER=existing_backup_reader
 # GCS_BACKUP_DB_PASSWORD=provided_securely_on_server
@@ -77,3 +80,18 @@ NODE_ENV=production node scripts/installGcsBackupCron.js --remove
 ```
 
 Private locks and logs default to `~/.local/state/payday-crm-db-backup/`, outside the web root. Failures return a nonzero exit status without logging SQL or passwords. Monitor `backup.log` and daily GCS object timestamps. Expiry continues independently of snapshot success, so failed jobs need prompt attention. This implementation never restores into or writes to the production database.
+
+## Email alerts
+
+Actual successful uploads and failed backup attempts generate email to **waqtit3@gmail.com** by default. Idle cron ticks do not send mail. Identical failed retries are grouped hourly; a different failure gets a separate alert. Success includes the India time, GCS path, compressed size and table count. No database contents, SQL attachments, passwords or signed access URLs are emailed.
+
+The independent notification service reuses existing `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM_EMAIL` settings, without importing the application or database module. It uses verified TLS and bounded timeouts. SMTP acceptance is required before an alert is marked delivered; acceptance does not prove Gmail inbox delivery.
+
+An atomic private outbox persists unsent alerts. Later cron ticks retry them even when no new database snapshot is due. A successful snapshot remains successful when SMTP is unavailable; CLI output separately reports the pending notification and returns nonzero to surface the mail problem. If the host, cron, Node runtime or SMTP service is down, the same process cannot guarantee an immediate failure email. External infrastructure monitoring is required to detect those outages.
+
+```sh
+# Read and verify the latest uploaded archive; no SQL is executed:
+NODE_ENV=production node scripts/backupDatabaseToGcs.js --verify
+# Clearly labelled simulated failure email; does not fail or alter a real backup:
+NODE_ENV=production node scripts/backupDatabaseToGcs.js --test-alert
+```

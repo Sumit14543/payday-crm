@@ -5,8 +5,8 @@ const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { pipeline } = require('node:stream/promises');
-const { Transform } = require('node:stream');
-const { createGzip } = require('node:zlib');
+const { Transform, Writable } = require('node:stream');
+const { createGzip, createGunzip } = require('node:zlib');
 const { randomUUID, createHash } = require('node:crypto');
 const defaults = require('../config/gcsBackupDefaults.json');
 
@@ -116,7 +116,7 @@ async function getDumpArguments(config, database, optionFile, execute = execFile
   try { ({ stdout } = await execute(config.dumpCommand, ['--version'], { timeout: 10000, maxBuffer: 16384, windowsHide: true })); }
   catch { throw new Error('mysqldump is unavailable. Set GCS_BACKUP_DUMP_COMMAND to the installed mysqldump or mariadb-dump binary.'); }
   const maria = /mariadb/i.test(stdout);
-  const major = Number(String(stdout).match(/(?:Ver|Distrib)\s+(\d+)\./i)?.[1] || 0);
+  const major = Number((String(stdout).match(/Distrib\s+(\d+)\./i) || String(stdout).match(/Ver\s+(\d+)\./i))?.[1] || 0);
   return [
     `--defaults-file=${optionFile}`, '--single-transaction', '--quick', '--no-tablespaces',
     '--routines', '--triggers', '--events', '--hex-blob', '--default-character-set=utf8mb4',
@@ -152,11 +152,18 @@ async function createCompressedDump(config, database, directory, { spawnProcess 
   const child = spawnProcess(config.dumpCommand, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let rawBytes = 0;
   let timedOut = false;
-  // Drain errors without persisting SQL, credentials or server diagnostics in logs.
-  child.stderr.resume();
+  let diagnostic = '';
+  // Keep a bounded diagnostic in memory only; output fixed categories, never raw stderr.
+  child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString()).slice(-16384); });
+  const failureReason = () => {
+    if (/access denied|permission denied|privilege/i.test(diagnostic)) return ' Database user lacks a required dump/read permission; no grants were changed.';
+    if (/unknown (?:option|variable)/i.test(diagnostic)) return ' The installed dump client rejected an option.';
+    if (/connect to|connection|server has gone away/i.test(diagnostic)) return ' The dump connection could not be completed.';
+    return '';
+  };
   const finished = new Promise((resolve, reject) => {
     child.once('error', () => reject(new Error('Unable to start mysqldump.')));
-    child.once('close', code => code === 0 && !timedOut ? resolve() : reject(new Error(timedOut ? 'Database backup exceeded its time limit.' : `mysqldump failed (exit ${code}); no backup will be uploaded.`)));
+    child.once('close', code => code === 0 && !timedOut ? resolve() : reject(new Error(timedOut ? 'Database backup exceeded its time limit.' : `mysqldump failed (exit ${code}); no backup will be uploaded.${failureReason()}`)));
   });
   const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, config.timeoutMs);
   timer.unref();
@@ -213,6 +220,31 @@ async function listBackups(bucket, config) {
   return files;
 }
 
+async function verifyLatestBackups(bucket, config) {
+  const files = await listBackups(bucket, config);
+  const verified = [];
+  for (const database of config.databases) {
+    const latest = files.filter(file => file.metadata?.metadata?.database === database && !file.metadata.timeDeleted && Number(file.metadata.size) > 0)
+      .sort((a, b) => Date.parse(b.metadata.timeCreated) - Date.parse(a.metadata.timeCreated))[0];
+    if (!latest) throw new Error('No uploaded backup exists for a configured database.');
+    let uncompressedBytes = 0;
+    let head = '', tail = '';
+    await pipeline(
+      bucket.file(latest.name, { generation: latest.metadata.generation }).createReadStream({ validation: 'crc32c' }),
+      createGunzip(),
+      new Writable({ write(chunk, encoding, callback) {
+        uncompressedBytes += chunk.length;
+        if (head.length < 2048) head = (head + chunk.toString('utf8')).slice(0, 2048);
+        tail = (tail + chunk.subarray(Math.max(0, chunk.length - 2048)).toString('utf8')).slice(-2048);
+        callback();
+      } }),
+    );
+    if (!uncompressedBytes || !/(?:MySQL|MariaDB) dump/i.test(head) || !/-- Dump completed on/.test(tail)) throw new Error('The uploaded SQL archive is incomplete or has an unexpected dump format.');
+    verified.push({ database, object: latest.name, bytes: Number(latest.metadata.size), uncompressedBytes, crc32cVerified: true, gzipVerified: true });
+  }
+  return verified;
+}
+
 async function cleanupExpiredBackups(bucket, config, files, now = new Date()) {
   let deleted = 0;
   for (const file of files) {
@@ -258,4 +290,4 @@ function lockPath(config) {
   return path.join(config.stateDir, `${id}.lock`);
 }
 
-module.exports = { RETENTION_MS, OWNER, readBackupConfig, createStorageClient, lifecycleRule, configureBackupLifecycle, checkStorageAccess, getDumpArguments, checkDatabaseTables, optionValue, createCompressedDump, backupDatabase, isManagedBackup, listBackups, cleanupExpiredBackups, dailySchedule, runBackupJob, lockPath };
+module.exports = { RETENTION_MS, OWNER, readBackupConfig, createStorageClient, lifecycleRule, configureBackupLifecycle, checkStorageAccess, getDumpArguments, checkDatabaseTables, optionValue, createCompressedDump, backupDatabase, isManagedBackup, listBackups, verifyLatestBackups, cleanupExpiredBackups, dailySchedule, runBackupJob, lockPath };

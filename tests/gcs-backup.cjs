@@ -5,8 +5,10 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { gunzipSync } = require('node:zlib');
+const { gunzipSync, gzipSync } = require('node:zlib');
+const { Readable } = require('node:stream');
 const backup = require('../backend/services/databaseBackup');
+const notifications = require('../backend/services/databaseBackupNotifications');
 const cron = require('../backend/scripts/installGcsBackupCron');
 const config = backup.readBackupConfig({ DB_NAME: 'crm', DB_USER: 'reader', DB_PASSWORD: 'synthetic-only-password' });
 const now = new Date('2026-11-13T15:30:00Z');
@@ -105,6 +107,8 @@ test('MySQL dump flags make a streaming non-locking snapshot with no credentials
   assert.ok(!args.some(arg => /flush-logs|master-data|source-data|all-databases/.test(arg)));
   const maria = await backup.getDumpArguments(config, 'crm', '/private/mysql.cnf', async () => ({ stdout: 'mariadb-dump Ver 10.19 Distrib 10.11.6-MariaDB' }));
   assert.ok(!maria.some(arg => /gtid-purged|column-statistics/.test(arg)));
+  const mysql57 = await backup.getDumpArguments(config, 'crm', '/private/mysql.cnf', async () => ({ stdout: 'mysqldump Ver 10.13 Distrib 5.7.44, for Linux' }));
+  assert.ok(!mysql57.includes('--column-statistics=0'));
 });
 
 test('database preflight only reads information_schema and refuses non-transactional tables', async () => {
@@ -226,11 +230,104 @@ test('cron is timezone-independent, locked, idempotent and preserves unrelated j
 });
 
 test('backup scripts never import the app, schema or database bootstraps', () => {
-  for (const file of ['backend/services/databaseBackup.js', 'backend/scripts/backupDatabaseToGcs.js', 'backend/scripts/installGcsBackupCron.js']) {
+  for (const file of ['backend/services/databaseBackup.js', 'backend/services/databaseBackupNotifications.js', 'backend/scripts/backupDatabaseToGcs.js', 'backend/scripts/installGcsBackupCron.js']) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
     assert.ok(!/require\(['"].*(?:config\/db|database\/|index\.js|app\.js)['"]\)/.test(source));
   }
   const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/deploy-database-backup.yml'), 'utf8');
   assert.ok(!/node index\.js|npm run setup|restart\.txt|fuser|kill-port/.test(workflow));
   assert.ok(workflow.includes('--check') && workflow.includes('--install'));
+});
+
+test('remote verification checks CRC32C, gzip integrity and SQL completion without restoring SQL', async () => {
+  const archive = gzipSync('-- MySQL dump 10.13\nCREATE TABLE synthetic(id INT);\n-- Dump completed on 2026-11-13\n');
+  const bucket = { getFiles: async () => [[file(0)], null], file(name, options) {
+    assert.equal(options.generation, '42');
+    return { createReadStream(opts) { assert.equal(opts.validation, 'crc32c'); return Readable.from([archive.subarray(0, 12), archive.subarray(12)]); } };
+  } };
+  const [result] = await backup.verifyLatestBackups(bucket, config);
+  assert.equal(result.gzipVerified, true);
+  assert.ok(result.uncompressedBytes > 0);
+  archive[archive.length - 1] ^= 255;
+  await assert.rejects(backup.verifyLatestBackups(bucket, config));
+  bucket.file = () => ({ createReadStream: () => Readable.from([gzipSync('-- MySQL dump\npartial SQL')]) });
+  await assert.rejects(backup.verifyLatestBackups(bucket, config), /incomplete/);
+});
+
+async function withNotificationState(fn) {
+  const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'payday-notify-test-'));
+  try { await fn({ ...config, stateDir: directory }); }
+  finally {
+    assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(directory).startsWith('payday-notify-test-'));
+    await fsp.rm(directory, { recursive: true, force: true });
+  }
+}
+const success = () => ({ uploaded: [{ database: 'crm', object: `${config.prefix}/crm/synthetic.sql.gz`, bytes: 123, tables: 5 }], deleted: 0 });
+
+test('success alert targets the requested address and includes path, size and India time, without SQL attachments', async () => withNotificationState(async cfg => {
+  const sent = [];
+  const result = await notifications.runWithNotifications(cfg, async () => success(), { now: () => now, env: {}, send: async (settings, report) => sent.push({ settings, report }) });
+  assert.equal(result.notification.accepted, true);
+  assert.equal(sent[0].settings.to, 'waqtit3@gmail.com');
+  assert.match(sent[0].report.subject, /SUCCESS/);
+  assert.match(sent[0].report.text, /123 bytes; tables: 5/);
+  assert.ok(sent[0].report.text.includes('gs://' + config.bucket + '/' + config.prefix));
+  assert.match(sent[0].report.text, /IST/);
+  assert.ok(!('attachments' in sent[0].report));
+}));
+
+test('no-op scheduled ticks send no email and retrying an already delivered report does not duplicate it', async () => withNotificationState(async cfg => {
+  let sent = 0;
+  const options = { now: () => now, env: {}, send: async () => { sent++; } };
+  await notifications.runWithNotifications(cfg, async () => ({ uploaded: [], deleted: 0 }), options);
+  assert.equal(sent, 0);
+  await notifications.runWithNotifications(cfg, async () => success(), options);
+  await notifications.runWithNotifications(cfg, async () => success(), options);
+  assert.equal(sent, 1);
+}));
+
+test('backup failures remain failures, redact credentials and throttle identical failed retries hourly', async () => withNotificationState(async cfg => {
+  const sent = [];
+  const options = { now: () => now, env: { DB_PASSWORD: 'fake-sensitive-password' }, send: async (settings, report) => sent.push(report) };
+  for (let i = 0; i < 2; i++) await assert.rejects(notifications.runWithNotifications(cfg, async () => { throw new Error('Connection denied: fake-sensitive-password'); }, options), /Connection denied/);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].subject, /FAILED/);
+  assert.ok(!sent[0].text.includes('fake-sensitive-password'));
+  assert.ok(sent[0].text.includes('[redacted]'));
+}));
+
+test('SMTP outage queues success durably and next idle tick retries without creating another backup', async () => withNotificationState(async cfg => {
+  const result = await notifications.runWithNotifications(cfg, async () => success(), { now: () => now, env: {}, send: async () => { throw new Error('synthetic SMTP failure'); } });
+  assert.equal(result.uploaded.length, 1);
+  assert.equal(result.notification.accepted, false);
+  assert.equal(result.notification.pending, 1);
+  const sent = [];
+  const retried = await notifications.runWithNotifications(cfg, async () => ({ uploaded: [], deleted: 0 }), { now: () => now, env: {}, send: async (settings, report) => sent.push(report) });
+  assert.equal(retried.notification.pending, 0);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].subject, /SUCCESS/);
+}));
+
+test('SMTP acceptance is required; credentials stay in transport and missing/rejected mail does not claim delivery', async () => {
+  const env = { SMTP_HOST: 'smtp.example.test', SMTP_USERNAME: 'backup@example.test', SMTP_PASSWORD: 'synthetic-mail-password', SMTP_PORT: '587' };
+  const report = notifications.makeReport(config, { result: success(), now });
+  let closed = 0;
+  const mailer = { createTransport(options) {
+    assert.equal(options.secure, false);
+    assert.equal(options.auth.pass, env.SMTP_PASSWORD);
+    return { close() { closed++; }, async sendMail(message) {
+      assert.equal(message.to, 'waqtit3@gmail.com');
+      assert.ok(!JSON.stringify(message).includes(env.SMTP_PASSWORD));
+      return { accepted: ['waqtit3@gmail.com'], rejected: [] };
+    } };
+  } };
+  assert.deepEqual(await notifications.sendBackupEmail({ to: 'waqtit3@gmail.com' }, report, env, mailer), { accepted: true });
+  assert.equal(closed, 1);
+  await assert.rejects(notifications.sendBackupEmail({ to: 'waqtit3@gmail.com' }, report, {}, mailer), /incomplete/);
+  const rejected = { createTransport: () => ({ close() {}, sendMail: async () => ({ accepted: [], rejected: ['waqtit3@gmail.com'] }) }) };
+  await assert.rejects(notifications.sendBackupEmail({ to: 'waqtit3@gmail.com' }, report, env, rejected), /not accepted/);
+  const simulation = notifications.makeReport(config, { error: new Error('Simulated failure.'), test: true, now });
+  assert.match(simulation.subject, /\[TEST\]/);
+  assert.match(simulation.text, /No database backup failed/);
 });

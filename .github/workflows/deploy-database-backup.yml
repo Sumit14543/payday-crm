@@ -5,12 +5,18 @@ on:
     branches: [main]
     paths:
       - backend/services/databaseBackup.js
+      - backend/services/databaseBackupNotifications.js
       - backend/scripts/backupDatabaseToGcs.js
       - backend/scripts/installGcsBackupCron.js
       - backend/config/gcsBackupDefaults.json
       - .github/workflows/deploy-database-backup.yml
       - .github/workflows/deploy-production.yml
   workflow_dispatch:
+    inputs:
+      full_test:
+        description: Run a real backup, verify its archive, and test failure notification
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,13 +28,13 @@ concurrency:
 jobs:
   install-backup-job:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Prepare backup-only files
         run: |
           mkdir -p backup-deploy/services backup-deploy/scripts backup-deploy/config
-          cp backend/services/databaseBackup.js backup-deploy/services/
+          cp backend/services/databaseBackup.js backend/services/databaseBackupNotifications.js backup-deploy/services/
           cp backend/scripts/backupDatabaseToGcs.js backend/scripts/installGcsBackupCron.js backup-deploy/scripts/
           cp backend/config/gcsBackupDefaults.json backup-deploy/config/
       - name: Copy backup files without restarting the CRM
@@ -57,3 +63,20 @@ jobs:
             cd /home/waqtmoney/public_html/payday-api
             NODE_ENV=production node scripts/backupDatabaseToGcs.js --check
             NODE_ENV=production node scripts/installGcsBackupCron.js --install
+      - name: Test a full backup and both email notification outcomes
+        if: github.event_name == 'push' || inputs.full_test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 45m
+          script: |
+            set -e
+            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
+              . /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            fi
+            cd /home/waqtmoney/public_html/payday-api
+            backup_lock=$(NODE_ENV=production node -e "require('./config/env'); const b=require('./services/databaseBackup'); process.stdout.write(b.lockPath(b.readBackupConfig()));")
+            NODE_ENV=production flock -w 120 "$backup_lock" sh -c 'node scripts/backupDatabaseToGcs.js && node scripts/backupDatabaseToGcs.js --verify && node scripts/backupDatabaseToGcs.js --test-alert'

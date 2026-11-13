@@ -8,6 +8,7 @@ on:
     # application or its existing database initialization/migration code.
     paths-ignore:
       - backend/services/databaseBackup.js
+      - backend/services/databaseBackupNotifications.js
       - backend/scripts/backupDatabaseToGcs.js
       - backend/scripts/installGcsBackupCron.js
       - backend/config/gcsBackupDefaults.json
