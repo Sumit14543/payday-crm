@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - main
+    # Backup-only changes have a separate deployment. They must not start the
+    # application or its existing database initialization/migration code.
+    paths-ignore:
+      - backend/services/databaseBackup.js
+      - backend/scripts/backupDatabaseToGcs.js
+      - backend/scripts/installGcsBackupCron.js
+      - backend/config/gcsBackupDefaults.json
+      - backend/docs/gcs-database-backups.md
+      - tests/gcs-backup.cjs
+      - .github/workflows/deploy-database-backup.yml
+      - .github/workflows/deploy-production.yml
   workflow_dispatch:
 
 jobs:

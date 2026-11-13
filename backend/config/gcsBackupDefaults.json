@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "bucket": "waqt-finance-loan-documents-prod",
+  "prefix": "waqtmoneypay/database-backups",
+  "time": "21:00",
+  "retentionDays": 7
+}

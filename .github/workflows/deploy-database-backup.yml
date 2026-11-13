@@ -1,0 +1,59 @@
+name: Deploy Database Backup Only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/services/databaseBackup.js
+      - backend/scripts/backupDatabaseToGcs.js
+      - backend/scripts/installGcsBackupCron.js
+      - backend/config/gcsBackupDefaults.json
+      - .github/workflows/deploy-database-backup.yml
+      - .github/workflows/deploy-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-backup-setup
+  cancel-in-progress: false
+
+jobs:
+  install-backup-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare backup-only files
+        run: |
+          mkdir -p backup-deploy/services backup-deploy/scripts backup-deploy/config
+          cp backend/services/databaseBackup.js backup-deploy/services/
+          cp backend/scripts/backupDatabaseToGcs.js backend/scripts/installGcsBackupCron.js backup-deploy/scripts/
+          cp backend/config/gcsBackupDefaults.json backup-deploy/config/
+      - name: Copy backup files without restarting the CRM
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: backup-deploy/
+          TARGET: /home/waqtmoney/public_html/payday-api/
+          ARGS: '-rlDztvc'
+      - name: Check read-only access and install the independent schedule
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 5m
+          script: |
+            set -e
+            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
+              . /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            fi
+            cd /home/waqtmoney/public_html/payday-api
+            NODE_ENV=production node scripts/backupDatabaseToGcs.js --check
+            NODE_ENV=production node scripts/installGcsBackupCron.js --install
