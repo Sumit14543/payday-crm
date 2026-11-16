@@ -291,10 +291,19 @@ async function generateSanctionPdf(sanction) {
 
 function buildSanctionEmailHtml(sanction) {
   const summary = agreementSummary(sanction);
-  const domainUrl = sanction.baseUrl || process.env.PUBLIC_APP_URL || 'https://payday.waqtmoney.com';
+  const domainUrl = String(sanction.baseUrl || process.env.PUBLIC_APP_URL || 'https://payday.waqtmoney.com').replace(/\/+$/, '');
   const token = sanction.decisionToken || '';
-  const acceptUrl = `${domainUrl}/sanction-decision/${encodeURIComponent(token)}?action=accept`;
-  const rejectUrl = `${domainUrl}/sanction-decision/${encodeURIComponent(token)}?action=reject`;
+  // Database tenant is authoritative, independently of lender branding or lead source.
+  const slug = String(getActiveBrand()?.slug || sanction.tenantSlug || sanction.sourceSystem || sanction.source_system || 'waqtfinance');
+  const tenant = slug === 'waqtmoney' ? 'waqtfinance' : slug;
+  const decisionLink = action => {
+    const url = new URL(`${domainUrl}/sanction-decision/${encodeURIComponent(token)}`);
+    url.searchParams.set('action', action);
+    url.searchParams.set('tenant', tenant);
+    return url.toString().replace(/&/g, '&amp;');
+  };
+  const acceptUrl = decisionLink('accept');
+  const rejectUrl = decisionLink('reject');
 
   return `
     <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.55;font-size:14px;max-width:600px;margin:0 auto">

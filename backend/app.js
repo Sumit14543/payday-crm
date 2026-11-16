@@ -5,7 +5,7 @@ const apiRoutes = require('./routes');
 const cashfreeWebhookController = require('./controllers/cashfreeWebhookController');
 const cors = require('./middleware/cors');
 const securityHeaders = require('./middleware/securityHeaders');
-const { apiLimiter, webhookLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, webhookLimiter, publicSanctionLimiter } = require('./middleware/rateLimiter');
 const { authOptional } = require('./middleware/auth');
 const asyncHandler = require('./utils/asyncHandler');
 const errorHandler = require('./middleware/errorHandler');
@@ -29,6 +29,7 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 const tenantMiddleware = require('./middleware/tenantMiddleware');
 const verifyTenantSession = require('./middleware/verifyTenantSession');
+app.use('/api/sanction-decision', publicSanctionLimiter);
 app.use(tenantMiddleware);
 app.use(authOptional);
 app.use(asyncHandler(verifyTenantSession));

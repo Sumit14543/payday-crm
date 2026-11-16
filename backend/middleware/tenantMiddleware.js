@@ -13,10 +13,10 @@ function timingSafeStringEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-async function resolveTenantByToken(token, isEsign = false) {
+async function resolveTenantByToken(token, isEsign = false, isSanction = false) {
   if (!token) return null;
   const cleanToken = String(token).trim();
-  const cacheKey = `${isEsign ? 'esign' : 'doc'}:${cleanToken}`;
+  const cacheKey = `${isSanction ? 'sanction' : isEsign ? 'esign' : 'doc'}:${cleanToken}`;
 
   // Check in-memory cache
   const cached = tokenTenantCache.get(cacheKey);
@@ -50,10 +50,12 @@ async function resolveTenantByToken(token, isEsign = false) {
       return new Promise((resolve) => {
         try {
           const pool = getTenantPool(tenant);
-          const queryStr = isEsign
+          const queryStr = isSanction
+            ? 'SELECT id FROM lead_sanctions WHERE decision_token = ? LIMIT 1'
+            : isEsign
             ? 'SELECT id FROM lead_esigns WHERE token = ? LIMIT 1'
             : 'SELECT id FROM lead_document_requests WHERE token = ? OR group_token = ? LIMIT 1';
-          const queryParams = isEsign ? [cleanToken] : [cleanToken, cleanToken];
+          const queryParams = isSanction || isEsign ? [cleanToken] : [cleanToken, cleanToken];
 
           pool.query(queryStr, queryParams, (err, rows) => {
             if (err || !rows || !rows.length) {
@@ -125,12 +127,17 @@ async function tenantMiddleware(req, res, next) {
   const path = req.path || '';
   const docMatch = path.match(/\/(?:api\/)?document-upload\/([a-f0-9]+)/i);
   const esignMatch = path.match(/\/(?:api\/)?esign\/([a-f0-9]+)/i);
+  const sanctionMatch = path.match(/^\/(?:api\/)?sanction-decision\/([a-f0-9]{32,64})(?:\/|$)/i);
   
   let resolvedTenant = null;
   if (docMatch) {
     resolvedTenant = await resolveTenantByToken(docMatch[1], false);
   } else if (esignMatch) {
     resolvedTenant = await resolveTenantByToken(esignMatch[1], true);
+  } else if (sanctionMatch && !req.headers['x-tenant-slug'] && !req.query.tenant && !req.body?.tenant) {
+    // New links already specify their company. Discover only older bare links,
+    // so a healthy company's normal requests do not wait for other databases.
+    resolvedTenant = await resolveTenantByToken(sanctionMatch[1], false, true);
   }
 
   if (resolvedTenant) {

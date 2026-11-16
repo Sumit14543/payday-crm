@@ -1,5 +1,13 @@
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { createHash } = require('crypto');
+// Bound legacy sanction token discovery before any cross-company DB lookup.
+// Matches the existing anonymous API budget, without changing staff API limits.
+const publicSanctionLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 60,
+  keyGenerator: req => ipKeyGenerator(req.ip),
+  validate: { ip: false }, standardHeaders: true, legacyHeaders: false,
+  handler: createRateLimitHandler('Too many sanction link requests. Please retry in a minute.', 60),
+});
 const otpVerifyLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, max: 10,
   keyGenerator: req => ipKeyGenerator(req.ip) + ':' + createHash('sha256').update(String(req.body?.tempToken || '')).digest('hex'),
@@ -107,6 +115,7 @@ const webhookLimiter = rateLimit({
 });
 
 module.exports = {
+  publicSanctionLimiter,
   customerCheckoutLimiter,
   otpVerifyLimiter,
   apiLimiter,

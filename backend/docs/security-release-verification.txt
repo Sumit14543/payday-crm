@@ -8,6 +8,10 @@ Customer sanction decisions
 - Superseded/nonlatest sanctions and tokens replaced by resend are rejected.
 - Confirmation mail runs after commit. A mail outage does not undo acceptance.
 - Browser/network failures show an error/retry, never a false recorded response.
+- Email links carry the database company even when the lender/source branding
+  differs. Older unqualified hexadecimal tokens resolve their owning company
+  under a public rate limit applied before database discovery. Existing
+  document/esign token caches and normal staff request budgets stay separate.
 - Existing formulas, financial payloads and calculation functions remain covered
   by the existing business compatibility tests. The reviewed decision guard is
   the only normalized addition in staff acceptance/proof function comparisons.
