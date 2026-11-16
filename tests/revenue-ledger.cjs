@@ -5,11 +5,16 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const esbuild = require('../frontend/node_modules/esbuild');
 const root = path.resolve(__dirname, '..');
+// The ledger and screen must share the same clock when testing Today/Yesterday.
+class FixtureDate extends Date {
+  constructor(...args) { super(...(args.length ? args : ['2026-11-12T12:00:00Z'])); }
+  static now() { return new FixtureDate().getTime(); }
+}
 function load(file, overrides = {}, globals = {}) {
   const module = { exports: {} };
   const source = fs.readFileSync(path.join(root, file), 'utf8');
   const code = esbuild.transformSync(source, { loader: file.endsWith('tsx') ? 'tsx' : 'ts', format: 'cjs', jsx: 'automatic' }).code;
-  vm.runInNewContext(code, { module, exports: module.exports, Date, Intl, console, URLSearchParams, AbortController, ...globals,
+  vm.runInNewContext(code, { module, exports: module.exports, Date: FixtureDate, Intl, console, URLSearchParams, AbortController, ...globals,
     require: name => { if (!Object.hasOwn(overrides, name)) throw new Error(`Unexpected dependency: ${name}`); return overrides[name]; },
   });
   return module.exports;

@@ -10,12 +10,13 @@ const uploads = { uploadPath: (...parts) => path.join('/test-uploads', ...parts)
 function controller(name, overrides) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'backend/controllers', name), 'utf8'), {
-    module, console,
+    module, console, process: { env: {} },
     require: name => {
       if (Object.hasOwn(overrides, name)) return overrides[name];
       if (name === 'path') return path;
       if (name === '../utils/http') return http;
       if (name === '../config/uploads') return uploads;
+      if (name === '../middleware/auth') return { createDocumentCapability: () => 'synthetic-exact-file-capability' };
       return {};
     },
   });

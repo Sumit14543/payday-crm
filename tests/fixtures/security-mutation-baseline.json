@@ -1,0 +1,67 @@
+{
+  "frontend/src/app/pages/product-admin/Leads.tsx": [
+    "apiDelete(`/leads/${id}`)",
+    "apiPost(\"/leads\",payload)",
+    "apiPost(`/leads/${encodeURIComponent(leadId)}/credit-handoffs`,{actor:\"Product Admin\",checklistSnapshot:[]})"
+  ],
+  "frontend/src/app/pages/product-admin/CreditApplications.tsx": [
+    "apiDelete(`/leads/${deleteAppId}`)"
+  ],
+  "frontend/src/app/pages/LoanManagement.tsx": [
+    "apiPostForm<{success:boolean;totalRows:number;successCount:number;failureCount:number;results:Array<{row:number;status:string;loanId?:string;customer?:string;amount?:number;reference:string;balance?:number;closed?:boolean;reason?:string;}>;}>(\"/loans/bulk-repayment\",formData)"
+  ],
+  "frontend/src/app/pages/LoanCollection.tsx": [
+    "apiPost<{success:boolean;message:string;nocRef:string;issuedAt:string;}>(`/collections/${nocTargetCase.id}/noc/release`,{remarks:nocCustomFields?.remarks||\"Full settlement verified and NOC issued.\",customFields:nocCustomFields})",
+    "apiPost<{success:boolean;message:string;}>(`/collections/${nocTargetCase.id}/noc/revoke`,{remarks:\"NOC revoked by agent. Case reverted to Active.\"})",
+    "apiPostForm(`/collections/${encodeURIComponent(logPaymentCase.id)}/payment`,formData)",
+    "apiPost(`/collections/${encodeURIComponent(logPaymentCase.id)}/payment`,{amount:Number(logPaymentAmount||0),method:logPaymentMethod,notes:logNotes,reference:logPaymentReference.trim(),paidAt:logTransactionDate||null})",
+    "apiPost<{activity:CollectionActivity;}>(`/collections/${encodeURIComponent(targetCase.id)}/call-log`,{disposition:actionForm.disposition,nextActionAt:actionForm.followupAt||null,notes:actionForm.notes})",
+    "apiPost<{activity:CollectionActivity;}>(`/collections/${encodeURIComponent(targetCase.id)}/followups`,{dueAt:actionForm.followupAt,notes:actionForm.notes,reason:actionForm.disposition})",
+    "apiPost<{activity:CollectionActivity;}>(`/collections/${encodeURIComponent(targetCase.id)}/ptp`,{amount:Number(actionForm.ptpAmount||0),notes:actionForm.notes,ptpDate:actionForm.ptpDate})",
+    "apiPostForm<{activity:CollectionActivity;}>(`/collections/${encodeURIComponent(targetCase.id)}/payment`,formData)",
+    "apiPost<{activity:CollectionActivity;}>(`/collections/${encodeURIComponent(targetCase.id)}/payment`,{amount:Number(actionForm.paymentAmount||0),method:actionForm.paymentMethod,notes:actionForm.notes,reference:actionForm.paymentReference.trim(),paidAt:actionForm.transactionDate||null,closeFully:Boolean(actionForm.closeFully)})",
+    "apiPatch<{activity:CollectionActivity;}>(`/collections/${encodeURIComponent(selectedCase.id)}/ptp/${encodeURIComponent(String(ptpId))}`,{keptAmount:status===\"kept\"?Number(actionForm.paymentAmount||0):0,notes:actionForm.notes,status})"
+  ],
+  "frontend/src/app/pages/AccountantPanel.tsx": [
+    "apiPost<PaymentLinkResponse>(`/leads/${encodeURIComponent(transfer.applicationId||transfer.leadId||transfer.loanId)}/repayment-link`,{amount,loanId:transfer.loanId,validForHours:24})",
+    "apiPost<TransferResponse>(`/leads/${encodeURIComponent(selectedLead.id)}/accounting-payment`,{loanId:selectedLead.loanId,paymentProofUrl:transferForm.paymentProofUrl.trim(),transactionId,transferType:transferForm.transferType,disbursementDate:transferForm.disbursementDate||undefined,dueDate:transferForm.dueDate||undefined,tenureDays:Number(transferForm.tenureDays)||undefined})"
+  ],
+  "frontend/src/app/pages/LeadDetails.tsx": [
+    "apiPost<AadhaarReport>(reportPath,{})",
+    "apiPost<CibilReport>(reportPath,{})",
+    "apiPost<CibilReport>(`${reportPath}/analyze`,{})",
+    "apiPost<LeadActivity>(activitiesPath,{description,type:\"note\",user:\"CRM User\"})",
+    "apiPost<{success:boolean;lead:Lead;message?:string;}>(`/leads/${encodeURIComponent(targetLeadId)}/add-reference`,{fullName:name,relation:relation||\"Reference\",mobile:mobile,leadId:targetLeadId,applicationId:targetLeadId})",
+    "apiPost<{success:boolean;maskedEmail:string;message?:string;}>(\"/credit/official-email/send-otp\",{applicationId:lead.id})",
+    "apiPost<{lead:Lead;sanction:SanctionLetter;}>(`/leads/${encodeURIComponent(lead.id)}/sanction/reject-post-sanction`,{emailTo:postSanctionRejectEmail.trim(),emailSubject:postSanctionRejectSubject.trim(),emailBody:postSanctionRejectBody.trim(),reason:postSanctionRejectReason.trim()})",
+    "apiPost<any>(`/account-aggregator/leads/${encodeURIComponent(leadId)}/generate-url`,{sendWhatsApp:true})",
+    "apiPost(`/account-aggregator/leads/${encodeURIComponent(leadId)}/send-whatsapp`,{})",
+    "apiPost(`/account-aggregator/leads/${encodeURIComponent(leadId)}/reset`,{})",
+    "apiPost<{success:boolean;message:string;officeEmail:string;}>(\"/credit/official-email/update\",{applicationId:lead.id,officialEmail:trimmed})",
+    "apiPost<{success:boolean;message:string;emandateProvider?:string;emandateStatus:string;emandateId:string;emandateAuthUrl:string;emandateMaxAmount:number;}>(endpoint,{applicationId:lead.id,maxAmount:parsedMaxAmount,bankName:emandateBankName,accountNumber:emandateAccountNumber,ifscCode:emandateIfscCode,email:emandateEmail.trim()})",
+    "apiPost<any>(`/leads/${encodeURIComponent(lead.id)}/reloan`,{})",
+    "apiPost<any>(endpoint,{email:target,applicationId:leadId})",
+    "apiPatch<Lead>(`/leads/${encodeURIComponent(leadId)}/operations`,changes)",
+    "apiPost<TelecallerRejectResponse>(`/leads/${encodeURIComponent(leadId)}/reject`,{reason})",
+    "apiPost<TelecallerCallLog>(`/leads/${encodeURIComponent(leadId)}/call-logs`,{...callForm,callDurationSeconds:shouldShowDuration?Number(callForm.callDurationSeconds||0):0,followupReason:shouldShowFollowup?callForm.followupReason||callForm.disposition:\"\",nextFollowupAt:shouldShowFollowup?callForm.nextFollowupAt:\"\",user:\"Telecaller\"})",
+    "apiPatch<TelecallerDocumentCheck>(`/leads/${encodeURIComponent(leadId)}/document-checks`,{key:check.key,label:check.label,remark:check.remark,status,user:\"Telecaller\"})",
+    "apiPatch<TelecallerDocumentCheck>(`/leads/${encodeURIComponent(leadId)}/document-checks`,{key:check.key,label:check.label,remark:check.remark,status,user:user?.name||\"Telecaller\"})",
+    "apiPost<WorkflowLeadResponse>(`/leads/${encodeURIComponent(leadId)}/credit-handoffs`,{checklistSnapshot:telecallerWorkspace.documentChecks,notes:handoffNote,proceededBy:trimmedProceededBy,leadProceededBy:trimmedProceededBy,user:trimmedProceededBy})",
+    "apiPost<LeadDocumentRequestGroup>(`/leads/${encodeURIComponent(leadId)}/document-requests`,{documents:selectedOptions.map(option=>({key:option.key,label:option.label})),user:user?.name||roleLabels[currentRole]})",
+    "apiPost<ESignRequest>(`/leads/${encodeURIComponent(leadId)}/esign-requests`,{camSheetId:latestCamSheet?.id||null,approvedAmount,user:user?.name||\"Credit Manager\"})",
+    "apiPost<LoanAgreement>(`/leads/${encodeURIComponent(leadId)}/loan-agreement/send-esign`,{user:user?.name||\"Credit Manager\"})",
+    "apiPost<LoanAgreement>(`/leads/${encodeURIComponent(leadId)}/loan-agreement/refresh-status`,{user:user?.name||roleLabels[activeRole||user?.role||\"\"]||\"Credit Manager\"})",
+    "apiPostForm<SanctionLetter>(`/leads/${encodeURIComponent(leadId)}/sanction/acceptance-proof`,body)",
+    "apiPost<WorkflowLeadResponse>(`/leads/${encodeURIComponent(leadId)}/accounting-handoff`,{user:user?.name||\"Credit Manager\"})",
+    "apiPost<SanctionLetter>(`/leads/${encodeURIComponent(leadId)}/sanction/resend`,{user:user?.name||\"Credit Manager\",email:targetEmail,emailTo:targetEmail})",
+    "apiPost<SanctionLetter>(`/leads/${encodeURIComponent(leadId)}/sanction/mark-accepted`,{reason:\"Customer confirmed acceptance verbally / on chat\",user:user?.name||\"Credit Manager\"})",
+    "apiDelete<LeadDocumentRequest[]>(`/leads/${encodeURIComponent(leadId)}/document-requests/${encodeURIComponent(token)}`)",
+    "apiDelete<{counts:Record<string,number>;id:string;removedFiles:number;}>(`/leads/${encodeURIComponent(leadId)}`)",
+    "apiPost<CamSheet>(`/leads/${encodeURIComponent(leadId)}/cam-sheet`,buildCamPayload(\"draft\"))",
+    "apiPost<{sanction:SanctionLetter;camSheet:CamSheet|null;}>(`/leads/${encodeURIComponent(leadId)}/sanction/revise`,{approvedAmount:sanctionPayload.principalAmount,cam:buildApprovalCamPayload(sanctionPayload),revisionReason:sanctionRevisionReason.trim(),sanction:sanctionPayload,user:user?.name||\"Credit Manager\"})",
+    "apiPost<WorkflowLeadResponse>(`/leads/${encodeURIComponent(leadId)}/credit-decision`,{approvedAmount:sanctionPayload.principalAmount,cam:buildApprovalCamPayload(sanctionPayload),decision:\"approved\",notes:buildCamSummary(\"approved\"),sanction:sanctionPayload,user:user?.name||\"Credit Manager\"})",
+    "apiPost<WorkflowLeadResponse>(`/leads/${encodeURIComponent(leadId)}/credit-decision`,{cam:buildCamPayload(\"rejected\"),decision:\"rejected\",notes:camDecisionReason.trim()||camNotes.trim()||camConditions.trim()||\"Rejected during credit review.\",user:user?.name||\"Credit Manager\"})",
+    "apiPost<CamSheet>(`/leads/${encodeURIComponent(leadId)}/cam-sheet`,{...buildCamPayload(\"draft\"),recommendation:\"Request More Information\",conditions:fallbackConditions})",
+    "apiPost<WorkflowLeadResponse>(`/leads/${encodeURIComponent(leadId)}/accounting-payment`,{transactionId,transferType:paymentMethod,notes:paymentNotes,disbursementDate:paymentDisbursementDate||undefined,user:user?.name||\"Accountant\"})"
+  ]
+}
