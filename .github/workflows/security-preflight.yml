@@ -1,0 +1,47 @@
+name: Security Read-only Preflight
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/scripts/securityPreflight.js
+      - .github/workflows/security-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-security-preflight
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare isolated read-only script
+        run: |
+          mkdir -p security-preflight
+          cp backend/scripts/securityPreflight.js security-preflight/
+      - name: Copy script outside the application directory
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: security-preflight/
+          TARGET: /home/waqtmoney/security-preflight/
+          ARGS: '-rlDztvc'
+      - name: Check database permissions and verify SMTP without sending email
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            set -e
+            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
+              . /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            fi
+            cd /home/waqtmoney/public_html/payday-api
+            CRM_ROOT=/home/waqtmoney/public_html/payday-api NODE_ENV=production PORT=8081 node /home/waqtmoney/security-preflight/securityPreflight.js

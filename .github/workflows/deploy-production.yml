@@ -7,6 +7,8 @@ on:
     # Backup-only changes have a separate deployment. They must not start the
     # application or its existing database initialization/migration code.
     paths-ignore:
+      - backend/scripts/securityPreflight.js
+      - .github/workflows/security-preflight.yml
       - backend/services/databaseBackup.js
       - backend/services/databaseBackupNotifications.js
       - backend/scripts/backupDatabaseToGcs.js
