@@ -23,8 +23,9 @@ Other changes
 - Query credentials remain compatible with deprecation headers until accounting
   clients are verified to send X-Tally-Api-Key. Set TALLY_ALLOW_QUERY_KEY=false
   only after that migration is confirmed; this remains an operational item.
-- Deployment restricts legacy log and central credential files to owner-only
-  permissions, without reading/deleting log contents or changing key values.
+- Deployment restricts owned legacy log and central credential files to owner-only
+  permissions. Inactive host-owned logs are preserved in an owner-only private
+  archive. No log content is read/deleted and credential values/paths do not change.
 
 Verification
   node tests/run-security.cjs
