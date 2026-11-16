@@ -57,6 +57,6 @@ app.handle = function(req, res, next) {
   return originalHandle.call(this, req, res, next);
 };
 const listen = app.listen;
-app.listen = function(...args) { server = listen.apply(this, args); return server; };
+app.listen = function(...args) { if (typeof args[1] === 'string') args[1] = '127.0.0.1'; else args.splice(1, 0, '127.0.0.1'); server = listen.apply(this, args); return server; };
 process.on('SIGTERM', () => { draining = true; clearInterval(interval); server?.close(() => { if (!syncRunning) process.exit(0); }); server?.closeIdleConnections?.(); const timer = setInterval(() => { if (!active && !syncRunning) process.exit(0); }, 100); timer.unref(); });
 require(path.join(backend, 'server')).start();
