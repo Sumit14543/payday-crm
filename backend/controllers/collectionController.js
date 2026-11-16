@@ -1,6 +1,7 @@
 const collectionModel = require('../models/collectionModel');
 const leadStatusModel = require('../models/leadStatusModel');
 const repaymentModel = require('../models/repaymentModel');
+const documentRequestModel = require('../models/documentRequestModel');
 const sourceStatusWebhookService = require('../services/sourceStatusWebhookService');
 const { invalidateCollectionsCache } = require('./referenceController');
 const { syncUploadedFile } = require('../config/uploads');
@@ -31,6 +32,39 @@ async function getActivity(req, res) {
   await getCaseOr404(req.params.caseId);
   const activity = await collectionModel.getActivity(req.params.caseId);
   return success(res, activity);
+}
+
+async function getBankStatements(req, res) {
+  const collectionCase = await getCaseOr404(req.params.caseId);
+  const requests = await documentRequestModel.findBankStatementsForLoan(collectionCase.loanId);
+  const bankStatementKeys = new Set(['bank_statement_last_6_months', 'bank_statement_6_months']);
+  const statements = requests
+    .filter((request) => bankStatementKeys.has(request.documentKey) && request.uploadedFile)
+    .map((request) => ({
+      id: request.id,
+      documentKey: request.documentKey,
+      label: request.label || 'Bank statement',
+      uploadedFile: request.uploadedFile,
+      originalFileName: request.originalFileName || 'bank-statement.pdf',
+      mimeType: request.mimeType,
+      fileSize: request.fileSize,
+      uploadedAt: request.uploadedAt || request.createdAt,
+    }));
+  return success(res, statements);
+}
+
+async function getDocuments(req, res) {
+  const collectionCase = await getCaseOr404(req.params.caseId);
+  const documents = await documentRequestModel.findCollectionDocumentsForLoan(collectionCase.loanId);
+  const allowedKeys = new Set(['bank_statement_last_6_months', 'bank_statement_6_months', 'company_id_card', 'selfie']);
+  return success(res, documents
+    .filter((document) => allowedKeys.has(document.documentKey) && document.uploadedFile)
+    .map((document) => ({
+      id: document.id, documentKey: document.documentKey, label: document.label,
+      uploadedFile: document.uploadedFile, originalFileName: document.originalFileName,
+      mimeType: document.mimeType, fileSize: document.fileSize,
+      uploadedAt: document.uploadedAt || document.createdAt,
+    })));
 }
 
 async function createCallLog(req, res) {
@@ -244,6 +278,8 @@ module.exports = {
   createPayment,
   createPtp,
   getActivity,
+  getBankStatements,
+  getDocuments,
   getReports,
   getSummary,
   reopenCase,

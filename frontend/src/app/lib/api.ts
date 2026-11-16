@@ -264,6 +264,16 @@ export async function apiGetBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+// Imported website documents must not receive CRM credentials. Local/GCS-mirror
+// uploads continue through the authenticated download endpoint.
+export async function apiGetDocumentBlob(path: string): Promise<Blob> {
+  const value = String(path || '').trim();
+  if (extractUploadPath(value) || !/^(https?:\/\/|data:image\/)/i.test(value)) return apiGetBlob(value);
+  const response = await fetch(value, { credentials: "omit", referrerPolicy: "no-referrer" });
+  if (!response.ok) throw new Error(`Unable to load document (${response.status})`);
+  return response.blob();
+}
+
 function resolveBlobUrl(path: string) {
   const value = String(path || "").trim();
   if (!value) return value;

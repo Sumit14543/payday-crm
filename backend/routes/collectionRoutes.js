@@ -53,6 +53,8 @@ router.get('/summary', requireRole(['collection']), asyncHandler(collectionContr
 router.post('/summary/fetch', requireRole(['collection']), asyncHandler(collectionController.getSummary));
 router.get('/reports', requireRole(['collection']), asyncHandler(collectionController.getReports));
 router.get('/:caseId/activity', requireRole(['collection']), asyncHandler(collectionController.getActivity));
+router.get('/:caseId/bank-statements', requireRole(['collection']), asyncHandler(collectionController.getBankStatements));
+router.get('/:caseId/documents', requireRole(['collection']), asyncHandler(collectionController.getDocuments));
 router.post('/:caseId/call-log', requireRole(['collection']), asyncHandler(collectionController.createCallLog));
 router.post('/:caseId/followups', requireRole(['collection']), asyncHandler(collectionController.createFollowup));
 router.post('/:caseId/payment', requireRole(['collection']), paymentUploadMiddleware(), asyncHandler(collectionController.createPayment));

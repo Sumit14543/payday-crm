@@ -118,6 +118,90 @@ async function findByLead(lead) {
   return rows.map(mapRequest);
 }
 
+async function findBankStatementsForLoan(loanId) {
+  return findUploadedDocumentsForLoan(loanId, ['bank_statement_last_6_months', 'bank_statement_6_months']);
+}
+
+async function findUploadedDocumentsForLoan(loanId, keys) {
+  const id = String(loanId || '').trim();
+  if (!id) return [];
+  // Resolve documents through the loan's recorded application, never a shared
+  // phone number or borrower name (particularly important for repeat loans).
+  const rows = await query(`
+    SELECT request.*
+    FROM lead_document_requests request
+    WHERE request.document_key IN (${keys.map(() => '?').join(', ')})
+      AND request.uploaded_file IS NOT NULL AND request.uploaded_file <> ''
+      AND (EXISTS (
+        SELECT 1 FROM loan_repayment_schedule schedule
+        WHERE schedule.loan_id = ?
+          AND (
+            (NULLIF(schedule.application_id, '') IS NOT NULL AND request.application_id = schedule.application_id)
+            OR (NULLIF(schedule.lead_id, '') IS NOT NULL AND request.lead_id = schedule.lead_id)
+          )
+      ) OR EXISTS (
+        SELECT 1 FROM lead_accounting_payments payment
+        WHERE payment.loan_id = ?
+          AND (
+            (NULLIF(payment.application_id, '') IS NOT NULL AND request.application_id = payment.application_id)
+            OR (NULLIF(payment.lead_id, '') IS NOT NULL AND request.lead_id = payment.lead_id)
+          )
+      ))
+    ORDER BY COALESCE(request.uploaded_at, request.created_at) DESC, request.id DESC
+  `, [...keys, id, id]);
+  return rows.map(mapRequest);
+}
+
+function sourceDocumentPath(value, sourceSystem) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^(https?:\/\/|data:image\/)/i.test(raw) || raw.startsWith('/uploads/')) return raw;
+  const relative = raw.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/^\/+/, '');
+  if (sourceSystem === 'waqtfinance') return `https://waqtfinance.com/uploads/${relative.replace(/^uploads?\//i, '')}`;
+  if (sourceSystem === 'waqtmoney') return `https://api.waqtmoney.com/${relative}`;
+  if (/^uploads\/lead-documents\//i.test(relative)) return `/${relative}`;
+  if (/^uploads?\//i.test(relative)) return `https://api.waqtmoney.com/${relative}`;
+  return raw;
+}
+
+async function findCollectionDocumentsForLoan(loanId) {
+  const id = String(loanId || '').trim();
+  if (!id) return [];
+  const documents = await findUploadedDocumentsForLoan(id, ['bank_statement_last_6_months', 'bank_statement_6_months', 'company_id_card', 'selfie']);
+  const applications = await query(`
+    SELECT application.id, application.source_system, application.company_id_card,
+      application.selfie_image, application.updated_at
+    FROM loan_applications application
+    WHERE EXISTS (
+      SELECT 1 FROM loan_repayment_schedule schedule WHERE schedule.loan_id = ?
+        AND (
+          (NULLIF(schedule.application_id, '') IS NOT NULL AND application.application_id = schedule.application_id)
+          OR (NULLIF(schedule.lead_id, '') IS NOT NULL AND CAST(application.id AS CHAR) = schedule.lead_id)
+        )
+    ) OR EXISTS (
+      SELECT 1 FROM lead_accounting_payments payment WHERE payment.loan_id = ?
+        AND (
+          (NULLIF(payment.application_id, '') IS NOT NULL AND application.application_id = payment.application_id)
+          OR (NULLIF(payment.lead_id, '') IS NOT NULL AND CAST(application.id AS CHAR) = payment.lead_id)
+        )
+    )
+    ORDER BY application.id DESC
+  `, [id, id]);
+  const seen = new Set(documents.map((document) => `${document.documentKey}:${document.uploadedFile}`));
+  for (const application of applications) {
+    for (const [key, column, label] of [['company_id_card', 'company_id_card', 'Company ID card'], ['selfie', 'selfie_image', 'Customer selfie']]) {
+      const uploadedFile = sourceDocumentPath(application[column], String(application.source_system || '').toLowerCase().trim());
+      if (!uploadedFile || seen.has(`${key}:${uploadedFile}`)) continue;
+      seen.add(`${key}:${uploadedFile}`);
+      const fileName = /^data:image\//i.test(uploadedFile) ? (key === 'selfie' ? 'selfie.jpg' : 'id-card.jpg') : uploadedFile.split(/[?#]/)[0].split('/').pop();
+      documents.push({ id: `application-${application.id}-${key}`, documentKey: key, label, uploadedFile,
+        originalFileName: fileName || (key === 'selfie' ? 'selfie.jpg' : 'id-card'),
+        uploadedAt: application.updated_at, mimeType: '', fileSize: 0 });
+    }
+  }
+  return documents;
+}
+
 async function findByToken(token) {
   const rows = await query('SELECT * FROM lead_document_requests WHERE token = ? LIMIT 1', [token]);
   return mapRequest(rows[0]);
@@ -196,6 +280,8 @@ module.exports = {
   cancelGroupByToken,
   createForLead,
   findByLead,
+  findBankStatementsForLoan,
+  findCollectionDocumentsForLoan,
   findGroupByToken,
   findByToken,
   markUploaded,

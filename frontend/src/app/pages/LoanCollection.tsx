@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import { NiceSelect } from "../components/ui/nice-select";
 import { EmptyState, MetricCard } from "../components/crm/DashboardPrimitives";
+import { CollectionDocuments } from "../components/crm/CollectionDocuments";
 import { PageLoading } from "../components/PageLoading";
 import { apiGet, apiPatch, apiPost, apiPostRead, apiPostForm, resolveBackendUploadUrl, openSecureDocument } from "../lib/api";
 import { useSmartPolling } from "../lib/useSmartPolling";
@@ -551,7 +552,7 @@ export function LoanCollection() {
   // Modal / Drawer States
   const [selectedCase, setSelectedCase] = useState<CollectionCase | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<CollectionActivity | null>(null);
-  const [modalTab, setModalTab] = useState<"overview" | "contact" | "payment" | "history">("overview");
+  const [modalTab, setModalTab] = useState<"overview" | "contact" | "payment" | "history" | "documents">("overview");
 
   // Selected Borrower & Filters for Log Payment Page
   const [selectedLogPaymentCaseId, setSelectedLogPaymentCaseId] = useState<string>("");
@@ -3765,6 +3766,7 @@ if (isLogPaymentPage) {
 
               {myCollectionsTab === "documents" && (
                 <div className="space-y-4 text-xs py-2">
+                  <CollectionDocuments key={selectedReportCase.id} caseId={selectedReportCase.id} />
                   {paymentProofItems.length > 0 && (
                     <div className="space-y-2">
                       <p className="font-extrabold uppercase text-[10px] tracking-wider text-emerald-700 dark:text-emerald-400">
@@ -4190,7 +4192,7 @@ if (isLogPaymentPage) {
             </div>
 
             {/* Sub Nav Tabs */}
-            <div className="flex border-b border-slate-200 bg-white px-6 text-xs font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            <div className="flex overflow-x-auto whitespace-nowrap border-b border-slate-200 bg-white px-6 text-xs font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               <button
                 type="button"
                 onClick={() => setModalTab("overview")}
@@ -4211,6 +4213,13 @@ if (isLogPaymentPage) {
                 className={`py-3 px-4 border-b-2 transition ${modalTab === "history" ? "border-emerald-600 font-bold text-emerald-700 dark:border-emerald-500 dark:text-emerald-400" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"}`}
               >
                 Interaction History ({selectedActivity ? selectedActivity.calls.length + selectedActivity.ptps.length + selectedActivity.followups.length : 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalTab("documents")}
+                className={`whitespace-nowrap py-3 px-4 border-b-2 transition ${modalTab === "documents" ? "border-emerald-600 font-bold text-emerald-700 dark:border-emerald-500 dark:text-emerald-400" : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"}`}
+              >
+                Customer documents
               </button>
             </div>
 
@@ -4431,6 +4440,10 @@ if (isLogPaymentPage) {
                     </button>
                   </div>
                 </form>
+              )}
+
+              {modalTab === "documents" && (
+                <CollectionDocuments key={selectedCase.id} caseId={selectedCase.id} />
               )}
 
               {modalTab === "history" && (
