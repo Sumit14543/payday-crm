@@ -1,27 +1,152 @@
-name: Production Release Control
+name: Deploy Production
 
-# The live app is deployed privately with staged health checks. Do not copy an
-# older public main-branch build over it. Source publication is a separate step.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'tests/**'
+      - '.github/workflows/deploy-production.yml'
   workflow_dispatch:
     inputs:
       action:
-        description: Inspect release or restore previous app (keeps current customer data)
-        required: true
+        description: Deploy the tested commit, inspect status, or restore the previous app
         type: choice
-        options: [status, rollback]
-        default: status
+        options: [deploy, status, rollback]
+        default: deploy
+        required: true
+
 permissions:
   contents: read
-concurrency:
-  group: production-private-release-control
-  cancel-in-progress: false
+
+env:
+  RELEASE_ID: github-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
 jobs:
+  verify:
+    if: github.event_name == 'push' || inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix backend --ignore-scripts --no-audit --no-fund
+          npm ci --prefix frontend --no-audit --no-fund
+      - name: Verify security and existing business flows
+        run: node tests/run-security.cjs
+      - name: Build production frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://payday-api.waqtmoney.com/api
+          VITE_DOCUMENT_BASE_URL: https://payday-api.waqtmoney.com/uploads
+          VITE_FORCE_DIRECT_API: 'true'
+          VITE_SUPPORT_PHONE: '+919217086608'
+          VITE_SUPPORT_WHATSAPP: '919217086608'
+        run: npm run build
+      - name: Prepare release without secrets, uploads or installed modules
+        run: |
+          mkdir -p deploy-package/backend deploy-package/frontend
+          rsync -a --exclude='/node_modules/' --exclude='/.env*' --exclude='/uploads/' --exclude='/backups/' --exclude='/scratch/' --exclude='/tmp/' --exclude='gcp-key*.json' --exclude='*.log' --exclude='*.err' --exclude='*.key' --exclude='*.pem' backend/ deploy-package/backend/
+          cp -a frontend/dist/. deploy-package/frontend/
+          node - <<'NODE'
+          const fs=require('fs'),crypto=require('crypto');
+          const digest=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+          fs.writeFileSync('deploy-package/deployment-manifest.json',JSON.stringify({commit:process.env.GITHUB_SHA,backendLock:digest('deploy-package/backend/package-lock.json'),frontendIndex:digest('deploy-package/frontend/index.html')},null,2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-release
+          path: deploy-package/
+          retention-days: 3
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: production-private-release-control
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip a commit superseded on main
+        id: current
+        env:
+          GH_EVENT_SHA: ${{ github.sha }}
+        run: |
+          git fetch origin main --depth=1
+          if [ "$(git rev-parse origin/main)" = "$GH_EVENT_SHA" ]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'deploy=false' >> "$GITHUB_OUTPUT"
+            echo 'A newer commit is on main. Its successful workflow will deploy it.'
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.current.outputs.deploy == 'true'
+        with:
+          name: production-release
+          path: deploy-package/
+      - name: Prepare private release directory
+        if: steps.current.outputs.deploy == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            set -eu
+            umask 077
+            mkdir -p /home/waqtmoney/payday-releases/${{ env.RELEASE_ID }}
+            chmod 700 /home/waqtmoney/payday-releases /home/waqtmoney/payday-releases/${{ env.RELEASE_ID }}
+      - name: Upload to the new release without replacing the running app
+        if: steps.current.outputs.deploy == 'true'
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: deploy-package/
+          TARGET: /home/waqtmoney/payday-releases/${{ env.RELEASE_ID }}/
+          ARGS: '-rlDztv --chmod=D755,F644'
+      - name: Install isolated dependencies, verify access, and switch healthy releases
+        if: steps.current.outputs.deploy == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 10m
+          script: |
+            set -eu
+            release=/home/waqtmoney/payday-releases/${{ env.RELEASE_ID }}
+            node=/opt/alt/alt-nodejs24/root/usr/bin/node
+            cd "$release/backend"
+            "$node" /opt/alt/alt-nodejs24/root/usr/lib/node_modules/npm/bin/npm-cli.js ci --omit=dev --ignore-scripts --no-audit --no-fund
+            "$node" scripts/deployManagedRelease.js
+            "$node" /home/waqtmoney/payday-releases/manageRelease.js status
+
   control:
+    if: github.event_name == 'workflow_dispatch' && inputs.action != 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: production-private-release-control
+      cancel-in-progress: false
     steps:
-      - name: Inspect or roll back the privately managed release
+      - name: Inspect or restore the previous release without restoring customer data
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.CPANEL_HOST }}

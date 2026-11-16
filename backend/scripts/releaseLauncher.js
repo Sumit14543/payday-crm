@@ -43,11 +43,11 @@ app.handle = function(req, res, next) {
     const action = req.url.split('?')[0].slice('/__release/'.length);
     if (action === 'activate' && req.method === 'POST') {
       if (!ready) { res.statusCode = 503; return res.end(); }
-      if (!activated) { activated = true; interval = setInterval(sync, 3600000); interval.unref(); void sync(); }
+      if (!activated || !interval) { activated = true; interval = setInterval(sync, 3600000); interval.unref(); void sync(); }
       draining = false;
-    } else if (action === 'drain' && req.method === 'POST') { draining = true; clearInterval(interval); }
+    } else if (action === 'drain' && req.method === 'POST') { draining = true; clearInterval(interval); interval = undefined; }
     else if (action !== 'status') { res.statusCode = 404; return res.end(); }
-    res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ id: config.id, ready, active, activated, draining, syncRunning }));
+    res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ id: config.id, ready, active, activated, draining, syncRunning, resumeSafe: true, schedulerRunning: Boolean(interval) }));
   }
   if (draining) { res.statusCode = 503; res.setHeader('Retry-After', '2'); return res.end('Release is draining. Please retry.'); }
   active++;
