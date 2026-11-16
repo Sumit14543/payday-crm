@@ -22,6 +22,15 @@ test('an exact verified file capability permits only its one shared file without
 test('path traversal and alternate private paths fail before ownership lookup', async () => {
   const f = documents([]); for (const documentPath of ['/uploads/../.env', '/uploads/a\\b.pdf', '/backend/.env']) assert.equal((await f.run({ documentPath })).res.statusCode, 403); assert.equal(f.queries, 0);
 });
+
+test('repeated agreement names cannot overwrite another company or an earlier PDF', () => {
+  const crypto = require('node:crypto'), { AsyncLocalStorage } = require('node:async_hooks');
+  const context = new AsyncLocalStorage();
+  const storage = load('backend/utils/documentStorage.js', { crypto, '../config/db': { tenantLocalStorage: context } });
+  const make = slug => context.run({ tenant: { slug, db_name: 'synthetic-' + slug } }, () => storage.privateDocumentName('AG-SYN.pdf'));
+  const a = make('a'), again = make('a'), b = make('b');
+  assert.notEqual(a, again); assert.notEqual(a.slice(0, 24), b.slice(0, 24)); assert.ok(a.endsWith('-AG-SYN.pdf')); assert.ok(!a.includes('synthetic-'));
+});
 test('document byte validation accepts PDF and JPEG and removes disguised HTML before storage metadata can be committed', async () => {
   const root = path.resolve(__dirname, '../tmp/security-remediation/upload-tests'); await fs.mkdir(root, { recursive: true });
   const valid = [{ path: path.join(root, 'synthetic.pdf'), originalname: 'synthetic.pdf' }, { path: path.join(root, 'synthetic.jpg'), originalname: 'synthetic.jpeg' }];

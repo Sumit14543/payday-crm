@@ -59,19 +59,22 @@ function cashfreeRequest(method, endpoint, bodyData = null) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(parsed);
           } else {
-            reject(new Error(parsed.message || parsed.reason || `Cashfree HTTP ${res.statusCode}`));
+            const error = new Error(parsed.message || parsed.reason || `Cashfree HTTP ${res.statusCode}`);
+            error.statusCode = res.statusCode; reject(error);
           }
         } catch (e) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve({ raw: data });
           } else {
-            reject(new Error(`Cashfree response error (${res.statusCode}): ${data}`));
+            const error = new Error(`Cashfree response error (${res.statusCode})`);
+            error.statusCode = res.statusCode; reject(error);
           }
         }
       });
     });
 
     req.on('error', (err) => reject(err));
+    req.setTimeout(15000, () => req.destroy(new Error('Cashfree request timed out')));
     if (payloadString) req.write(payloadString);
     req.end();
   });
@@ -473,8 +476,10 @@ async function getPublicCashfreeDetails(req, res) {
   // If a subscription ID exists, check live status from Cashfree first
   if (subscriptionId) {
     try {
-      const liveSub = await cashfreeRequest('GET', `/pg/subscriptions/${encodeURIComponent(subscriptionId)}`).catch(() => null);
+      const liveSub = await cashfreeRequest('GET', `/pg/subscriptions/${encodeURIComponent(subscriptionId)}`);
       if (liveSub) {
+        const verifiedId = liveSub.subscription_id || liveSub.data?.subscription_id;
+        if (verifiedId && verifiedId !== subscriptionId) return res.status(422).json({ success: false, message: 'Provider subscription does not match this registration.' });
         currentStatus = resolveCashfreeStatus(liveSub);
         subscriptionSessionId = liveSub.subscription_session_id || liveSub.subscriptionSessionId || liveSub.data?.subscription_session_id || '';
         if (liveSub.auth_url || liveSub.subscription_meta?.payment_url) {
@@ -497,7 +502,9 @@ async function getPublicCashfreeDetails(req, res) {
         });
       }
     } catch (checkErr) {
-      console.warn('[getPublicCashfreeDetails Live Status Warning]:', checkErr.message);
+      // A known missing legacy subscription can be recreated. A provider outage
+      // must be retried without accidentally creating a second mandate.
+      if (checkErr.statusCode !== 404) return res.status(503).json({ success: false, message: 'The registration provider is temporarily unavailable. Please retry.' });
     }
   }
 

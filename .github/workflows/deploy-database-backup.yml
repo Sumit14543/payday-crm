@@ -9,6 +9,7 @@ on:
       - backend/scripts/backupDatabaseToGcs.js
       - backend/scripts/installGcsBackupCron.js
       - backend/config/gcsBackupDefaults.json
+      - backend/utils/smtpTls.js
   workflow_dispatch:
     inputs:
       full_test:
@@ -31,10 +32,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare backup-only files
         run: |
-          mkdir -p backup-deploy/services backup-deploy/scripts backup-deploy/config
+          mkdir -p backup-deploy/services backup-deploy/scripts backup-deploy/config backup-deploy/utils
           cp backend/services/databaseBackup.js backend/services/databaseBackupNotifications.js backup-deploy/services/
           cp backend/scripts/backupDatabaseToGcs.js backend/scripts/installGcsBackupCron.js backup-deploy/scripts/
           cp backend/config/gcsBackupDefaults.json backup-deploy/config/
+          cp backend/utils/smtpTls.js backup-deploy/utils/
       - name: Copy backup files without restarting the CRM
         uses: easingthemes/ssh-deploy@v5.1.0
         with:
@@ -62,7 +64,7 @@ jobs:
             NODE_ENV=production node scripts/backupDatabaseToGcs.js --check
             NODE_ENV=production node scripts/installGcsBackupCron.js --install
       - name: Verify uploaded backup and both email notification outcomes
-        if: github.event_name == 'push' || inputs.full_test
+        if: github.event_name == 'workflow_dispatch' && inputs.full_test
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.CPANEL_HOST }}

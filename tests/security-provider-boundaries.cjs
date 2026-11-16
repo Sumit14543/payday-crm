@@ -7,15 +7,15 @@ const env = { NODE_ENV: 'production', RAZORPAY_WEBHOOK_SECRET: secret, RAZORPAY_
 function cashfreeFixture(provider = { subscription_id: 'sub_SYN', subscription_status: 'ACTIVE' }) {
   const changes = [], requests = [];
   const { EventEmitter } = require('node:events');
-  const client = { request(options, callback) { requests.push(options.path); const req = new EventEmitter(); req.write = () => {}; req.end = () => queueMicrotask(() => { if (provider instanceof Error) return req.emit('error', provider); const res = new EventEmitter(); res.statusCode = 200; callback(res); res.emit('data', JSON.stringify(provider)); res.emit('end'); }); return req; } };
+  const client = { request(options, callback) { requests.push(options.path); const req = new EventEmitter(); req.write = () => {}; req.setTimeout = duration => { assert.equal(duration, 15000); }; req.destroy = error => req.emit('error', error); req.end = () => queueMicrotask(() => { if (provider instanceof Error) return req.emit('error', provider); const res = new EventEmitter(); res.statusCode = 200; callback(res); res.emit('data', JSON.stringify(provider)); res.emit('end'); }); return req; } };
   const controller = load('backend/controllers/cashfreeEmandateController.js', {
-    http: client, https: client, '../config/db': { query: async () => [{ id: 'APP-SYN', rawId: '1' }] }, '../database/schema': {}, '../utils/customerAction': {},
-    '../models/leadModel': { updateEmandateStatus: async (id, value) => changes.push({ id, ...value }) }, '../models/auditModel': {}, '../services/emailService': {}, '../services/authkeyWhatsAppService': {},
+    http: client, https: client, '../config/db': { query: async () => [{ id: 'APP-SYN', rawId: '1' }] }, '../database/schema': {}, '../utils/customerAction': { assertCheckoutAccess() {}, assertStaffLead() {} },
+    '../models/leadModel': { findById: async () => ({ id: 'APP-SYN', rawId: '1', mandateId: 'sub_SYN', emandateProvider: 'cashfree' }), updateEmandateStatus: async (id, value) => changes.push({ id, ...value }) }, '../models/auditModel': {}, '../services/emailService': {}, '../services/authkeyWhatsAppService': {},
   }, { process: { env: { NODE_ENV: 'production', CASHFREE_CLIENT_SECRET: secret } } });
   const body = { type: 'SUBSCRIPTION_STATUS_CHANGED', data: { subscription: { subscription_id: 'sub_SYN', subscription_status: 'ACTIVE' } } };
   const rawBody = Buffer.from(JSON.stringify(body)), timestamp = String(Date.now());
   const headers = { 'x-webhook-timestamp': timestamp, 'x-webhook-signature': crypto.createHmac('sha256', secret).update(timestamp + rawBody.toString()).digest('base64') };
-  return { changes, requests, run: async (overrides = {}) => { const res = response(); await controller.handleCashfreeWebhook({ body, rawBody, headers, ...overrides }, res); return res; } };
+  return { changes, requests, runPublic: async () => { const res = response(); await controller.getPublicCashfreeDetails({ params: { id: 'APP-SYN' }, query: {} }, res); return res; }, run: async (overrides = {}) => { const res = response(); await controller.handleCashfreeWebhook({ body, rawBody, headers, ...overrides }, res); return res; } };
 }
 test('Cashfree mandate rejects missing signatures and modified raw bytes before provider access', async () => {
   const f = cashfreeFixture(); assert.equal((await f.run({ headers: {} })).statusCode, 401); assert.equal((await f.run({ rawBody: Buffer.from('{}') })).statusCode, 401); assert.equal(f.requests.length, 0); assert.equal(f.changes.length, 0);
@@ -25,6 +25,11 @@ test('Cashfree mandate provider outage or reference mismatch cannot activate cal
 });
 test('valid Cashfree mandate callback preserves current provider-confirmed activation', async () => {
   const f = cashfreeFixture(); assert.equal((await f.run()).statusCode, 200); assert.equal(f.changes[0].status, 'ACTIVE');
+});
+test('customer status reads preserve a verified active mandate and do not create a replacement on provider outage', async () => {
+  const active = cashfreeFixture(); const result = await active.runPublic(); assert.equal(result.statusCode, 200); assert.equal(result.body.status, 'ACTIVE'); assert.equal(active.requests.length, 1);
+  const unavailable = cashfreeFixture(new Error('Synthetic outage')); assert.equal((await unavailable.runPublic()).statusCode, 503); assert.equal(unavailable.requests.length, 1); assert.equal(unavailable.changes.length, 0);
+  const mismatch = cashfreeFixture({ subscription_id: 'sub_OTHER', subscription_status: 'ACTIVE' }); assert.equal((await mismatch.runPublic()).statusCode, 422); assert.equal(mismatch.changes.length, 0);
 });
 function razorFixture(provider, leadMandate = 'sub_SYN') {
   const changes = [], reads = [];

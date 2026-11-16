@@ -33,7 +33,7 @@ jobs:
           SOURCE: backend/
           TARGET: /home/waqtmoney/security-candidates/${{ github.sha }}/backend/
           ARGS: '-rlDztvc'
-          EXCLUDE: '/node_modules/,/.env,/.env.*, /uploads/,/backups/,gcp-key*.json,*.log,*.err,*.pem,*.key'
+          EXCLUDE: '/node_modules/,/.env,/.env.*,/uploads/,/backups/,gcp-key*.json,*.log,*.err,*.pem,*.key'
       - name: Verify deployed configuration and isolated MySQL login/transactions
         uses: appleboy/ssh-action@v1.2.0
         with:
