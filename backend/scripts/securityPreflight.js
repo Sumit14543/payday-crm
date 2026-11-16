@@ -4,9 +4,25 @@ const root = process.env.CRM_ROOT || path.resolve(__dirname, '..');
 const { config } = require(path.join(root, 'config/env'));
 const mysql = require(path.join(root, 'node_modules/mysql'));
 const nodemailer = require(path.join(root, 'node_modules/nodemailer'));
+const tls = require('tls');
+async function relayCertificate(host, port) {
+  if (port !== 465 || !['localhost', '127.0.0.1', '::1'].includes(host)) return null;
+  return new Promise(resolve => {
+    // Retrieve only the public certificate on the server's own loopback socket.
+    // No authentication is attempted on this diagnostic connection.
+    const socket = tls.connect({ host, port, rejectUnauthorized: false, timeout: 8000 }, () => {
+      const cert = socket.getPeerCertificate();
+      resolve({ subject: cert.subject?.CN, issuer: cert.issuer?.CN, validTo: cert.valid_to, fingerprint256: cert.fingerprint256, authorizationError: socket.authorizationError || null });
+      socket.end();
+    });
+    socket.on('error', error => resolve({ code: error.code }));
+    socket.on('timeout', () => { socket.destroy(); resolve({ code: 'TIMEOUT' }); });
+  });
+}
 async function main() {
   const report = { mode: process.env.NODE_ENV, authSecretConfigured: String(process.env.AUTH_TOKEN_SECRET || '').length >= 32, writesPerformed: false, emailSent: false };
   report.providers = Object.fromEntries(['CRIF_API_USER', 'CRIF_API_PASSWORD', 'BIFROST_API_TOKEN', 'CASHFREE_CLIENT_SECRET', 'CASHFREE_SECRET_KEY', 'BILLDESK_SIGNING_KEY', 'BILLDESK_ENCRYPTION_KEY', 'DIGIO_CLIENT_ID', 'DIGIO_CLIENT_SECRET'].map(key => [key, Boolean(process.env[key])]));
+  report.relatedConfigurationNames = Object.keys(process.env).filter(key => /RAZORPAY|WEBHOOK.*SECRET|SMTP.*(TLS|CA|HOST|PORT)/i.test(key));
   const connection = mysql.createConnection({ host: config.db.host, user: config.db.user, password: config.db.password, port: config.db.port, database: config.db.database, connectTimeout: 10000 });
   const query = (sql, params = []) => new Promise((resolve, reject) => connection.query(sql, params, (error, rows) => error ? reject(error) : resolve(rows)));
   try {
@@ -28,7 +44,7 @@ async function main() {
     if (!host || !user || !pass) { report[kind] = { configured: false }; continue; }
     const transport = nodemailer.createTransport({ host, port, secure: port === 465, requireTLS: port !== 465, auth: { user, pass }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 10000, tls: { rejectUnauthorized: true } });
     try { await transport.verify(); report[kind] = { configured: true, certificateAndAuthVerified: true, loopbackRelay: ['localhost', '127.0.0.1', '::1'].includes(host) }; }
-    catch (error) { report[kind] = { configured: true, certificateAndAuthVerified: false, code: error.code || 'TLS_FAILURE', loopbackRelay: ['localhost', '127.0.0.1', '::1'].includes(host) }; }
+    catch (error) { report[kind] = { configured: true, certificateAndAuthVerified: false, code: error.code || 'TLS_FAILURE', loopbackRelay: ['localhost', '127.0.0.1', '::1'].includes(host), certificate: await relayCertificate(host, port) }; }
     finally { transport.close(); }
   }
   console.log(JSON.stringify(report, null, 2));
