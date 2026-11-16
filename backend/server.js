@@ -57,7 +57,7 @@ function startBackgroundSyncScheduler() {
 
 async function start() {
   // Start listening instantly to prevent Phusion Passenger startup timeout
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, process.env.BIND_ADDRESS || '127.0.0.1', () => {
     console.log('\nPayday Loan CRM API');
     console.log(`Server: http://localhost:${PORT}`);
     console.log(`Endpoints: /, /api/health, /api/leads, /api/dashboard/stats, /api/health-check-diagnostic`);

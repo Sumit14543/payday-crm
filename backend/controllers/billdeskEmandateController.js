@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const leadModel = require('../models/leadModel');
+const { checkoutUrl, assertCheckoutAccess, assertStaffLead } = require('../utils/customerAction');
 const auditModel = require('../models/auditModel');
 const authkeyWhatsAppService = require('../services/authkeyWhatsAppService');
 const emailService = require('../services/emailService');
@@ -76,6 +77,7 @@ async function createEmandateLink(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  if (lead) assertStaffLead(req, lead);
   if (!lead) {
     return res.status(404).json({
       success: false,
@@ -129,7 +131,7 @@ async function createEmandateLink(req, res) {
     const orderId = `BD_${lead.id.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
     const requestHost = `${req.protocol}://${req.get('host')}`;
     const baseUrl = process.env.PUBLIC_APP_URL || requestHost || 'https://payday.waqtmoney.com';
-    const authUrl = `${baseUrl}/emandate/pay/${encodeURIComponent(lead.id)}?provider=billdesk`;
+    const authUrl = checkoutUrl(lead, 'billdesk');
 
     // 1. Create BillDesk Order JSON Request
     const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, '+05:30');
@@ -274,6 +276,8 @@ async function getPublicEmandateDetails(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  assertCheckoutAccess(req, lead?.id || targetId, 'billdesk');
+  if (lead) assertStaffLead(req, lead);
   if (!lead) {
     return res.status(404).json({ success: false, message: 'Application record not found' });
   }
@@ -369,13 +373,15 @@ async function verifyPublicEmandate(req, res) {
   }
 
   const lead = await resolveLead(applicationId);
+  assertCheckoutAccess(req, lead?.id || applicationId, 'billdesk');
+  if (lead) assertStaffLead(req, lead);
   if (!lead) {
     return res.status(404).json({ success: false, message: 'Application record not found' });
   }
 
   try {
     let responseObj = null;
-    const isSandbox = process.env.NODE_ENV !== 'production' || process.env.BILLDESK_ENV === 'sandbox';
+    const isSandbox = process.env.NODE_ENV !== 'production' && process.env.BILLDESK_ENV === 'sandbox';
     if (joseResponse) {
       responseObj = billdeskJose.parseJoseResponse(joseResponse);
     } else if (isSandbox && paymentId) {
@@ -387,7 +393,10 @@ async function verifyPublicEmandate(req, res) {
       });
     }
 
-    const authStatus = responseObj?.auth_status || responseObj?.authstatus || '0300';
+    const orders = await query('SELECT billdesk_order_id, billdesk_txn_id FROM billdesk_emandates WHERE application_id = ? ORDER BY id DESC LIMIT 1', [lead.id]);
+    const expectedOrder = orders[0];
+    if (!expectedOrder || ![expectedOrder.billdesk_order_id, expectedOrder.billdesk_txn_id].filter(Boolean).includes(responseObj?.orderid || responseObj?.bdorderid)) return res.status(422).json({ success: false, message: 'Payment response does not match this mandate.' });
+    const authStatus = responseObj?.auth_status || responseObj?.authstatus || '';
     const isSuccess = authStatus === '0300' || authStatus === 'SUCCESS' || authStatus === 'active';
 
     if (!isSuccess) {
@@ -442,6 +451,7 @@ async function getEmandateStatus(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  if (lead) assertStaffLead(req, lead);
   if (!lead) {
     return res.status(404).json({
       success: false,
@@ -489,16 +499,8 @@ async function getEmandateStatus(req, res) {
 async function handleBilldeskWebhook(req, res) {
   await ensureBilldeskEmandateColumns().catch(() => {});
   try {
-    let payload = req.body;
-    
-    // If webhook sends raw JOSE string
-    if (typeof payload === 'string' && payload.includes('.')) {
-      try {
-        payload = billdeskJose.parseJoseResponse(payload);
-      } catch (e) {
-        console.warn('⚠️ BillDesk Webhook JOSE decrypt warning:', e.message);
-      }
-    }
+    if (typeof req.body !== 'string') return res.status(401).json({ success: false, message: 'A signed BillDesk callback is required.' });
+    const payload = billdeskJose.parseJoseResponse(req.body);
 
     const orderId = payload.orderid || payload.objectid || payload.additional_info?.additional_info2;
     const authStatus = payload.auth_status || payload.authstatus || payload.transaction_error_type;
@@ -548,7 +550,7 @@ async function handleBilldeskWebhook(req, res) {
     return res.status(200).json({ status: 'ok' });
   } catch (err) {
     console.error('[BillDesk Webhook Error]:', err.message);
-    return res.status(200).json({ status: 'error', message: err.message });
+    return res.status(401).json({ status: 'error', message: 'BillDesk callback verification failed.' });
   }
 }
 

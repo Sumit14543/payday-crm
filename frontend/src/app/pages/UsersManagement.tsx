@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { apiGet, apiPost, apiPatch } from "../lib/api";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
+import { useAuth } from "../lib/auth";
 
 interface CRMUser {
   id: number;
@@ -37,8 +38,10 @@ interface Tenant {
 }
 
 export function UsersManagement() {
+  const { user } = useAuth();
+  const platformAdmin = user?.isMasterSuperadmin === true;
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [selectedTenantSlug, setSelectedTenantSlug] = useState<string>("waqtfinance");
+  const [selectedTenantSlug, setSelectedTenantSlug] = useState<string>("");
   const [users, setUsers] = useState<CRMUser[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -63,15 +66,16 @@ export function UsersManagement() {
     async function loadTenants() {
       try {
         const res = await apiGet<Tenant[]>("/superadmin/tenants");
-        // Always add default waqtfinance tenant at the top
         const waqtTenant: Tenant = { id: 0, name: "Waqt Finance (Default)", slug: "waqtfinance", status: "active" };
-        setTenants([waqtTenant, ...res]);
+        const list = platformAdmin && !res.some(tenant => tenant.slug === 'waqtfinance') ? [waqtTenant, ...res] : res;
+        setTenants(list);
+        setSelectedTenantSlug(current => list.some(tenant => tenant.slug === current) ? current : (list.find(tenant => tenant.slug === 'waqtfinance') || list[0])?.slug || '');
       } catch (err) {
         console.error("Failed to load tenants:", err);
       }
     }
     loadTenants();
-  }, []);
+  }, [platformAdmin]);
 
   // Load users of selected tenant
   const loadUsers = async () => {
@@ -194,7 +198,7 @@ export function UsersManagement() {
               User Management
               <span className="text-xs font-bold text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 px-2.5 py-0.5 rounded-full ml-2">Super Admin</span>
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">Manage users, permissions, status and reset passwords for any tenant instance</p>
+            <p className="text-xs text-slate-400 mt-0.5">{platformAdmin ? 'Manage company users, permissions and account status' : 'Manage users, permissions and account status in your company'}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -384,7 +388,8 @@ export function UsersManagement() {
                   <option value="credit-manager">Credit Underwriter</option>
                   <option value="accountant">Accountant / Disbursals</option>
                   <option value="collection">Collections Agent</option>
-                  <option value="superadmin">Super Admin</option>
+                  <option value="product-admin">Company Admin</option>
+                  <option value="superadmin">Company Super Admin</option>
                 </select>
               </div>
               <div>
@@ -393,8 +398,9 @@ export function UsersManagement() {
                   type="password"
                   required
                   value={newUserPassword}
+                  minLength={12}
                   onChange={(e) => setNewUserPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
+                  placeholder="Minimum 12 characters"
                   className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm text-slate-800 dark:text-white focus:border-indigo-500 focus:outline-none"
                 />
               </div>
@@ -439,8 +445,9 @@ export function UsersManagement() {
                   type="password"
                   required
                   value={newPasswordValue}
+                  minLength={12}
                   onChange={(e) => setNewPasswordValue(e.target.value)}
-                  placeholder="Minimum 6 characters"
+                  placeholder="Minimum 12 characters"
                   className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-sm text-slate-800 dark:text-white focus:border-indigo-500 focus:outline-none"
                 />
               </div>

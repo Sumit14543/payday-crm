@@ -1,3 +1,4 @@
+import { escapeHtml, safeCsvText } from "../lib/outputSafety";
 import { type ComponentType, type FormEvent, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -1108,12 +1109,8 @@ function AuthenticatedImage({
       })
       .catch(() => {
         if (isMounted) {
-          const token = getAuthToken();
-          if (token) {
-            setDisplaySrc(`${value}${value.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`);
-          } else {
-            setHasError(true);
-          }
+          const safeUrl = resolveBackendUploadUrl(value);
+          if (safeUrl) setDisplaySrc(safeUrl); else setHasError(true);
         }
       });
 
@@ -1215,12 +1212,8 @@ function AuthenticatedVideo({
       })
       .catch(() => {
         if (isMounted) {
-          const token = getAuthToken();
-          if (token) {
-            setDisplaySrc(`${value}${value.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`);
-          } else {
-            setHasError(true);
-          }
+          const safeUrl = resolveBackendUploadUrl(value);
+          if (safeUrl) setDisplaySrc(safeUrl); else setHasError(true);
         }
       });
 
@@ -1312,7 +1305,21 @@ function SanctionInput({
   );
 }
 
+function resourceCacheKey(value: string) {
+  const identity = localStorage.getItem('paydayops.auth.user') || localStorage.getItem('paydayops.auth.superadmin') || '';
+  return window.location.hostname + ':' + identity + ':' + value;
+}
 const leadDetailsResourceCache = new Map<string, SuspenseResource<LeadDetailsResourceResult>>();
+
+if (typeof window !== 'undefined') {
+  const clearPrivateResources = () => {
+    leadDetailsResourceCache.clear();
+    objectUrlCache.forEach(url => URL.revokeObjectURL(url));
+    objectUrlCache.clear();
+  };
+  window.addEventListener('paydayops:session-changed', clearPrivateResources);
+  window.addEventListener('paydayops:auth-required', clearPrivateResources);
+}
 
 const createLeadDetailsResource = (leadId?: string): SuspenseResource<LeadDetailsResourceResult> => {
   if (!leadId) {
@@ -1355,7 +1362,7 @@ const createLeadDetailsResource = (leadId?: string): SuspenseResource<LeadDetail
 };
 
 const getLeadDetailsResource = (leadId?: string) => {
-  const cacheKey = leadId || "__missing_lead_id__";
+  const cacheKey = resourceCacheKey(leadId || "__missing_lead_id__");
   const cachedResource = leadDetailsResourceCache.get(cacheKey);
 
   if (cachedResource) return cachedResource;
@@ -2137,7 +2144,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       const csvContent =
         "\uFEFF" +
         rows
-          .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+          .map((r) => r.map((c) => `"${safeCsvText(c)}"`).join(","))
           .join("\r\n");
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
@@ -2163,13 +2170,13 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
   ) => {
     if (!lead) return;
     try {
-      const bankName = account?.bankName || lead.bankName || "Bank";
-      const maskedAcc = account?.maskedAccNumber || (lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : "XXXX");
-      const accType = account?.accountType || "SAVINGS";
-      const ifsc = account?.ifscCode || lead.ifscCode || "N/A";
-      const leadName = lead.name || "Customer";
-      const leadIdVal = lead.id || "";
-      const printDate = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+      const bankName = escapeHtml(account?.bankName || lead.bankName || "Bank");
+      const maskedAcc = escapeHtml(account?.maskedAccNumber || (lead.accountNumber ? `XXXX${lead.accountNumber.slice(-4)}` : "XXXX"));
+      const accType = escapeHtml(account?.accountType || "SAVINGS");
+      const ifsc = escapeHtml(account?.ifscCode || lead.ifscCode || "N/A");
+      const leadName = escapeHtml(lead.name || "Customer");
+      const leadIdVal = escapeHtml(lead.id || "");
+      const printDate = escapeHtml(new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }));
 
       const printWindow = window.open("", "_blank", "width=1000,height=900");
       if (!printWindow) {
@@ -2196,10 +2203,10 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
           return `
             <tr style="background-color: ${bg};">
-              <td style="padding: 7px 10px; font-family: monospace; font-size: 11px; color: #475569; white-space: nowrap; border-bottom: 1px solid #e2e8f0;">${tx.date || "-"}</td>
-              <td style="padding: 7px 10px; font-size: 11px; color: #0f172a; border-bottom: 1px solid #e2e8f0; word-break: break-word;">${tx.narration || "-"}</td>
+              <td style="padding: 7px 10px; font-family: monospace; font-size: 11px; color: #475569; white-space: nowrap; border-bottom: 1px solid #e2e8f0;">${escapeHtml(tx.date || "-")}</td>
+              <td style="padding: 7px 10px; font-size: 11px; color: #0f172a; border-bottom: 1px solid #e2e8f0; word-break: break-word;">${escapeHtml(tx.narration || "-")}</td>
               <td style="padding: 7px 10px; border-bottom: 1px solid #e2e8f0; text-align: center;">
-                <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; ${typeStyle}">${tx.type}</span>
+                <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; ${typeStyle}">${escapeHtml(tx.type)}</span>
               </td>
               <td style="padding: 7px 10px; font-size: 11px; text-align: right; border-bottom: 1px solid #e2e8f0; ${amtStyle}">₹${formattedAmt}</td>
               <td style="padding: 7px 10px; font-family: monospace; font-size: 11px; text-align: right; color: #475569; border-bottom: 1px solid #e2e8f0;">${formattedBal}</td>
@@ -3027,7 +3034,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
 
     try {
       const updatedLead = await apiPatch<Lead>(`/leads/${encodeURIComponent(leadId)}/operations`, changes);
-      if (leadId) leadDetailsResourceCache.delete(leadId);
+      if (leadId) leadDetailsResourceCache.delete(resourceCacheKey(leadId));
       applyUpdatedLead(updatedLead);
       toast.success("Lead operation updated");
       refreshActivities();
@@ -3226,7 +3233,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     try {
       setIsTelecallerSaving(true);
       setTelecallerError("");
-      if (leadId) leadDetailsResourceCache.delete(leadId);
+      if (leadId) leadDetailsResourceCache.delete(resourceCacheKey(leadId));
       await apiPost<TelecallerCallLog>(`/leads/${encodeURIComponent(leadId)}/call-logs`, {
         ...callForm,
         callDurationSeconds: shouldShowDuration ? Number(callForm.callDurationSeconds || 0) : 0,
@@ -3265,7 +3272,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     try {
       setIsTelecallerSaving(true);
       setTelecallerError("");
-      if (leadId) leadDetailsResourceCache.delete(leadId);
+      if (leadId) leadDetailsResourceCache.delete(resourceCacheKey(leadId));
       await apiPatch<TelecallerDocumentCheck>(`/leads/${encodeURIComponent(leadId)}/document-checks`, {
         key: check.key,
         label: check.label,
@@ -3529,10 +3536,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (error) {
       console.warn("apiGetBlob failed, falling back to direct window.open:", error);
-      const token = getAuthToken();
-      const authenticatedUrl = token 
-        ? `${href}${href.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` 
-        : href;
+      const authenticatedUrl = resolveBackendUploadUrl(href);
       window.open(authenticatedUrl, "_blank", "noopener,noreferrer");
     }
   };
@@ -3827,7 +3831,7 @@ function LeadDetailsContent({ leadId }: { leadId?: string }) {
     try {
       setIsLeadDeleting(true);
       await apiDelete<{ counts: Record<string, number>; id: string; removedFiles: number }>(`/leads/${encodeURIComponent(leadId)}`);
-      leadDetailsResourceCache.delete(leadId);
+      leadDetailsResourceCache.delete(resourceCacheKey(leadId));
       setShowDeleteLeadDialog(false);
       toast.success("Lead deleted successfully");
       navigate(leadReturnHref, { replace: true });

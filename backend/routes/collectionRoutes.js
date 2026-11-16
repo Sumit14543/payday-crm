@@ -1,3 +1,4 @@
+const transactional = require('../utils/transactionalHandler');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -58,8 +59,8 @@ router.get('/:caseId/documents', requireRole(['collection']), asyncHandler(colle
 router.get('/:caseId/account-aggregator-statements', requireRole(['collection']), asyncHandler(collectionController.getAccountAggregatorStatements));
 router.post('/:caseId/call-log', requireRole(['collection']), asyncHandler(collectionController.createCallLog));
 router.post('/:caseId/followups', requireRole(['collection']), asyncHandler(collectionController.createFollowup));
-router.post('/:caseId/payment', requireRole(['collection']), paymentUploadMiddleware(), asyncHandler(collectionController.createPayment));
-router.post('/:caseId/reopen', requireRole(['collection']), asyncHandler(collectionController.reopenCase));
+router.post('/:caseId/payment', requireRole(['collection']), paymentUploadMiddleware(), asyncHandler(transactional(collectionController.createPayment)));
+router.post('/:caseId/reopen', requireRole(['collection']), asyncHandler(transactional(collectionController.reopenCase)));
 router.post('/:caseId/noc/release', requireRole(['collection', 'accountant', 'superadmin', 'product-admin']), asyncHandler(collectionController.releaseNoc));
 router.post('/:caseId/noc/revoke', requireRole(['collection', 'accountant', 'superadmin', 'product-admin']), asyncHandler(collectionController.revokeNoc));
 router.post('/:caseId/ptp', requireRole(['collection']), asyncHandler(collectionController.createPtp));

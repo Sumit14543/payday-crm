@@ -1,8 +1,11 @@
+const { moneyInput } = require('../utils/financialInput');
+const { booleanInput } = require('../utils/adminScope');
 const loanModel = require('../models/loanModel');
 const repaymentModel = require('../models/repaymentModel');
 const leadStatusModel = require('../models/leadStatusModel');
 const sourceStatusWebhookService = require('../services/sourceStatusWebhookService');
-const { query } = require('../config/db');
+const { query, withSavepoint } = require('../config/db');
+const { readImportRows } = require('../utils/readImportRows');
 const { notFound, success } = require('../utils/http');
 const xlsx = require('xlsx');
 
@@ -74,10 +77,7 @@ async function bulkRepayment(req, res) {
   }
 
   try {
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rows = xlsx.utils.sheet_to_json(worksheet);
+    const rows = await readImportRows(req.file.buffer);
 
     if (!rows.length) {
       return res.status(400).json({ success: false, message: 'The uploaded file is empty.' });
@@ -181,6 +181,7 @@ async function bulkRepayment(req, res) {
       }
 
       try {
+        await withSavepoint(async () => {
         // Record repayment
         const repayment = await repaymentModel.createRepayment(context, {
           amount,
@@ -253,6 +254,7 @@ async function bulkRepayment(req, res) {
           balance: loanUpdate.balance,
           closed: loanUpdate.balance <= 0
         });
+        });
 
       } catch (err) {
         failureCount++;
@@ -313,8 +315,9 @@ async function recordRepayment(req, res) {
     return notFound(res, 'Loan record not found.');
   }
 
-  const isFullClose = Boolean(closeFully);
-  const numAmount = Number(amount);
+  const isFullClose = booleanInput(closeFully);
+  if (amount !== undefined && amount !== null && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) return res.status(400).json({ success: false, message: 'Repayment amount cannot be negative or non-finite.' });
+  const numAmount = moneyInput(amount);
   const remainingBalance = Number(context.loan.balance || (context.loan.totalAmount - context.loan.amountPaid) || 0);
 
   if (!isFullClose && (!Number.isFinite(numAmount) || numAmount <= 0)) {
@@ -326,6 +329,7 @@ async function recordRepayment(req, res) {
     : numAmount;
 
   const paymentRef = (reference && String(reference).trim()) ? String(reference).trim() : `MAN-${Date.now()}`;
+  if (await repaymentModel.findByReference(paymentRef)) return res.status(409).json({ success: false, message: 'This payment reference has already been recorded.' });
   let repayment = null;
 
   if (effectiveAmount > 0) {

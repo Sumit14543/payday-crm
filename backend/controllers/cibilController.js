@@ -1,3 +1,4 @@
+const { createTenantState } = require('../utils/tenantCache');
 const activityModel = require('../models/activityModel');
 const cibilReportModel = require('../models/cibilReportModel');
 const leadModel = require('../models/leadModel');
@@ -6,8 +7,7 @@ const { normalizeApiResponse, requestCibilReport } = require('../services/cibilS
 const { analyzeCibilPdf } = require('../services/openaiCibilAnalysisService');
 const { notFound, success } = require('../utils/http');
 
-const inFlightCibilRequests = new Map();
-const inFlightCibilAnalyses = new Map();
+const inFlightCibil = createTenantState(() => ({ requests: new Map(), analyses: new Map() }));
 
 function findFirstPayloadValue(input, keyPatterns) {
   const seen = new Set();
@@ -279,7 +279,7 @@ async function analyzeLeadCibilReport(req, res) {
   if (!report) return notFound(res, 'CIBIL report not found');
 
   const key = String(report.id);
-  const inFlightAnalysis = inFlightCibilAnalyses.get(key);
+  const inFlightAnalysis = inFlightCibil().analyses.get(key);
 
   if (inFlightAnalysis) {
     const updatedReport = await inFlightAnalysis;
@@ -287,13 +287,13 @@ async function analyzeLeadCibilReport(req, res) {
   }
 
   const analysisPromise = analyzeAndSaveCibilReport(lead, report, req.body || {});
-  inFlightCibilAnalyses.set(key, analysisPromise);
+  inFlightCibil().analyses.set(key, analysisPromise);
 
   try {
     const updatedReport = await analysisPromise;
     return success(res, updatedReport, 'CIBIL analysis completed.');
   } finally {
-    inFlightCibilAnalyses.delete(key);
+    inFlightCibil().analyses.delete(key);
   }
 }
 
@@ -346,7 +346,7 @@ async function requestLeadCibilReport(req, res) {
   if (!lead) return notFound(res, 'Lead not found');
 
   const key = cibilRequestKey(lead);
-  const inFlightRequest = inFlightCibilRequests.get(key);
+  const inFlightRequest = inFlightCibil().requests.get(key);
 
   if (inFlightRequest) {
     await inFlightRequest;
@@ -355,25 +355,32 @@ async function requestLeadCibilReport(req, res) {
   }
 
   const requestPromise = startOrReuseCibilReport(lead, req.body || {});
-  inFlightCibilRequests.set(key, requestPromise);
+  inFlightCibil().requests.set(key, requestPromise);
 
   try {
     const result = await requestPromise;
     return success(res, result.report, result.message, result.statusCode);
   } finally {
-    inFlightCibilRequests.delete(key);
+    inFlightCibil().requests.delete(key);
   }
 }
 
 async function receiveScoreCallback(req, res) {
+  const callback = require('../middleware/auth').verifyProviderCallbackToken(req.query?.callbackToken, 'cibil');
+  if (!callback || callback.tenant !== req.tenant?.slug) return res.status(401).json({ success: false, message: 'Invalid provider callback authorization.' });
+  const lead = await leadModel.findById(callback.applicationId || callback.leadId);
+  if (!lead || String(lead.rawId) !== String(callback.leadId)) return res.status(404).json({ success: false, message: 'Callback request not found.' });
   const payload = req.body || {};
-  const normalized = await normalizeApiResponse(payload);
+  const payloadPan = String(payload.pan || payload.PAN_Number || payload.pan_number || '').toUpperCase();
+  if (payloadPan && payloadPan !== String(lead.panNumber || '').toUpperCase()) return res.status(422).json({ success: false, message: 'Callback identity mismatch.' });
+  const normalized = await normalizeApiResponse(payload, lead);
+  if (!normalized.pdfUrl) return success(res, { received: true, status: 'PENDING' });
+  const { query } = require('../config/db');
+  const existing = await query('SELECT id FROM cibil_reports WHERE application_id = ? OR lead_id = ? ORDER BY id DESC LIMIT 1', [lead.id, lead.rawId]);
 
   const report = await cibilReportModel.saveReport({
-    fullName: payload.full_name || payload.Full_Name || payload.name || findFirstPayloadValue(payload, [/^fullname$/, /^name$/]) || '',
-    email: payload.email || payload.Email || findFirstPayloadValue(payload, [/^email$/, /^emailid$/]) || '',
-    mobile: payload.mobile || payload.Mobile_Number || payload.mobile_number || findFirstPayloadValue(payload, [/^mobile$/, /^mobilenumber$/, /^phone$/]) || '',
-    pan: payload.pan || payload.PAN_Number || payload.pan_number || findFirstPayloadValue(payload, [/^pan$/, /^pannumber$/]) || '',
+    id: existing[0]?.id || -1, leadId: lead.rawId, applicationId: lead.id,
+    fullName: lead.name, email: lead.email || '', mobile: lead.phone, pan: lead.panNumber,
     score: normalized.score,
     pdfUrl: normalized.pdfUrl,
     refId: normalized.refId,
@@ -397,14 +404,13 @@ async function receiveScoreCallback(req, res) {
     await leadModel.updateCibilReportUrl({
       leadId: report.leadId,
       applicationId: report.applicationId,
-      mobile: report.mobile,
-      pan: report.pan,
+
       pdfUrl: report.pdfUrl,
     });
 
   }
 
-  return success(res, report, 'CIBIL callback saved successfully.');
+  return success(res, { received: true }, 'CIBIL callback verified.');
 }
 
 module.exports = {

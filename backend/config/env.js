@@ -1,5 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const securityKeyFile = process.env.AUTH_TOKEN_SECRET_FILE || path.join(require('os').homedir(), '.config/payday-crm/auth-key-v2');
+if (fs.existsSync(securityKeyFile)) process.env.AUTH_TOKEN_SECRET = fs.readFileSync(securityKeyFile, 'utf8').trim();
+if (process.env.PORT === '8081') process.env.NODE_ENV = 'production';
+const externalEnvironment = new Set(Object.keys(process.env));
 
 function loadEnv(filePath = path.join(__dirname, '..', '.env'), override = true) {
   if (!fs.existsSync(filePath)) return;
@@ -16,7 +20,7 @@ function loadEnv(filePath = path.join(__dirname, '..', '.env'), override = true)
       const key = trimmed.slice(0, separatorIndex).trim();
       const value = trimmed.slice(separatorIndex + 1).trim().replace(/^["']|["']$/g, '');
 
-      if (key === 'PORT' && process.env.PORT) {
+      if (externalEnvironment.has(key)) {
         return;
       }
 
@@ -188,8 +192,8 @@ const config = {
   },
   crif: {
     baseUrl: process.env.CRIF_BASE_URL || 'https://orch.crif.com/orchestrator',
-    apiUser: process.env.CRIF_API_USER || 'waqtit3@gmail.com',
-    apiPassword: process.env.CRIF_API_PASSWORD || 'Waqt@#@#08#@',
+    apiUser: process.env.CRIF_API_USER || '',
+    apiPassword: process.env.CRIF_API_PASSWORD || '',
     templateCode: process.env.CRIF_TEMPLATE_CODE || 'CT003',
     flowId: process.env.CRIF_FLOW_ID || 'F001',
     redirectUrl: process.env.CRIF_REDIRECT_URL || (process.env.PUBLIC_APP_URL ? `${process.env.PUBLIC_APP_URL}/account-aggregator/callback` : 'https://payday.waqtmoney.com/account-aggregator/callback'),

@@ -1,13 +1,17 @@
 const express = require('express');
 const accountAggregatorController = require('../controllers/accountAggregatorController');
-const { authOptional, requireRole } = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
 const { webhookLimiter } = require('../middleware/rateLimiter');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-// Apply authOptional so req.user is populated from Bearer token for all routes
-router.use(authOptional);
+router.param('id', asyncHandler(async (req, res, next) => {
+  const lead = await require('../models/leadModel').findById(req.params.id);
+  if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+  require('../utils/leadAccess').assertLeadAccess(req.user, lead);
+  next();
+}));
 
 // Webhook & Callback verification endpoints
 router.post('/webhook', webhookLimiter, asyncHandler(accountAggregatorController.handleWebhook));

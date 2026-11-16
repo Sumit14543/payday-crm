@@ -482,8 +482,6 @@ async function loadCollectionRows() {
       || (rawCustId && appsByAppId.get(rawCustId))
       || (cPhone && appsByPhone.get(cPhone))
       || (rawPhoneDigits && appsByPhone.get(rawPhoneDigits))
-      || (rawCustName && appsByName.get(rawCustName))
-      || (nCustName && appsByNormName.get(nCustName))
       || null;
 
     const aadhaar = (targetAppId && aadhaarByAppId.get(String(targetAppId).trim()))
@@ -493,8 +491,6 @@ async function loadCollectionRows() {
       || (la && la.source_lead_id && aadhaarByLeadId.get(String(la.source_lead_id).trim()))
       || (cPhone && aadhaarByPhone.get(cPhone))
       || (rawPhoneDigits && aadhaarByPhone.get(rawPhoneDigits))
-      || (rawCustName && aadhaarByName.get(rawCustName))
-      || (nCustName && aadhaarByNormName.get(nCustName))
       || null;
 
     const cibil = (targetAppId && cibilByAppId.get(String(targetAppId).trim()))
@@ -505,8 +501,6 @@ async function loadCollectionRows() {
       || (cPhone && cibilByPhone.get(cPhone))
       || (rawPhoneDigits && cibilByPhone.get(rawPhoneDigits))
       || (la && la.pan_number && cibilByPan.get(String(la.pan_number).toUpperCase().trim()))
-      || (rawCustName && cibilByName.get(rawCustName))
-      || (nCustName && cibilByNormName.get(nCustName))
       || null;
 
     const rep = repaymentsByLoanId.get(rawLoanId) || repaymentsByNormLoan.get(nLoan) || null;

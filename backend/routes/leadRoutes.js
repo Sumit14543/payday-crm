@@ -1,3 +1,4 @@
+const transactional = require('../utils/transactionalHandler');
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const aadhaarController = require('../controllers/aadhaarController');
@@ -16,6 +17,14 @@ const billdeskEmandateRoutes = require('./billdeskEmandateRoutes');
 const { requireRole } = require('../middleware/auth');
 
 const router = express.Router();
+router.param('id', (req, res, next, id) => {
+  require('../models/leadModel').findById(id).then(lead => {
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    require('../utils/leadAccess').assertLeadAccess(req.user, lead);
+    req.authorizedLead = lead;
+    next();
+  }).catch(next);
+});
 
 router.use('/official-email', officialEmailOtpRoutes);
 router.use('/:id/official-email', officialEmailOtpRoutes);
@@ -65,7 +74,7 @@ router.post('/:id/loan-agreement/send-esign', requireRole(['credit-manager', 'pr
 router.post('/:id/loan-agreement/refresh-status', requireRole(['credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(loanAgreementController.refreshLoanAgreementStatus));
 router.get('/:id/loan-agreement/signed-pdf', requireRole(['credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(loanAgreementController.downloadSignedLoanAgreement));
 router.post('/:id/credit-decision', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(telecallerController.reviewCreditDecision));
-router.post('/:id/accounting-payment', requireRole(['accountant', 'product-admin', 'superadmin']), asyncHandler(telecallerController.createAccountingPayment));
+router.post('/:id/accounting-payment', requireRole(['accountant', 'product-admin', 'superadmin']), asyncHandler(transactional(telecallerController.createAccountingPayment)));
 router.post('/:id/repayment-link', requireRole(['accountant', 'product-admin', 'superadmin']), asyncHandler(paymentLinkController.createLeadRepaymentLink));
 router.post('/:id/accounting-handoff', requireRole(['credit-manager', 'product-admin', 'superadmin']), asyncHandler(telecallerController.sendLeadToAccounting));
 router.get('/:id/document-requests', requireRole(['telecaller', 'credit-manager', 'accountant', 'product-admin', 'superadmin']), asyncHandler(documentRequestController.listLeadDocumentRequests));

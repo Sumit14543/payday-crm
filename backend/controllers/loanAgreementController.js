@@ -10,6 +10,7 @@ const digioService = require('../services/digioService');
 const loanAgreementService = require('../services/loanAgreementService');
 const { resolveUploadPath: resolveConfiguredUploadPath, uploadPath } = require('../config/uploads');
 const { notFound, success } = require('../utils/http');
+const { privateDocumentName } = require('../utils/documentStorage');
 
 const signedDir = uploadPath('agreements', 'signed');
 
@@ -172,7 +173,7 @@ async function sendLoanAgreementForEsign(req, res) {
 
 function isAgreementCompleted(status) {
   const normalized = String(status || '').toLowerCase();
-  return normalized.includes('complete') || normalized.includes('signed');
+  return ['complete', 'completed', 'signed', 'executed'].includes(normalized);
 }
 
 function safeFileSegment(value, fallback = 'document') {
@@ -191,9 +192,13 @@ function signedAgreementFileName(agreement) {
 
 async function saveSignedPdfBuffer(agreement, fileBuffer) {
   if (!fileBuffer || !fileBuffer.length) return '';
+  if (!Buffer.isBuffer(fileBuffer) || fileBuffer.subarray(0, 5).toString() !== '%PDF-') {
+    const error = new Error('The provider did not return a valid signed PDF. Please retry.');
+    error.statusCode = 502; error.publicMessage = error.message; throw error;
+  }
 
   await fs.promises.mkdir(signedDir, { recursive: true });
-  const fileName = signedAgreementFileName(agreement);
+  const fileName = privateDocumentName(signedAgreementFileName(agreement));
   const absolutePath = path.join(signedDir, fileName);
   await fs.promises.writeFile(absolutePath, fileBuffer);
   return `/uploads/agreements/signed/${fileName}`;
@@ -265,6 +270,10 @@ async function refreshLoanAgreementStatus(req, res) {
       };
     }
 
+    if (!signedPdfPath) {
+      const error = new Error('Verified signed document is not available yet. Retry later.');
+      error.statusCode = 503; error.publicMessage = error.message; throw error;
+    }
     agreement = await loanAgreementModel.markSigned(agreement.id, {
       providerStatus: providerStatus.providerStatus || 'completed',
       signedAt: providerStatus.signedAt,
@@ -452,13 +461,15 @@ async function receiveDigioWebhook(req, res) {
     return success(res, { received: true, matched: false }, 'Webhook received.');
   }
 
+  if (!agreement.providerDocumentId) return res.status(422).json({ success: false, message: 'Provider document reference is required.' });
+  const verified = await digioService.getDocument(agreement.providerDocumentId);
+  if (verified.providerDocumentId && verified.providerDocumentId !== agreement.providerDocumentId) return res.status(422).json({ success: false, message: 'Provider document mismatch.' });
+  if (agreement.status === 'signed' && agreement.signedPdfPath) return success(res, { received: true, matched: true });
+  payload.status = verified.providerStatus;
+  payload.signedAt = verified.signedAt;
+  payload.raw = { verifiedProviderStatus: verified.providerStatus };
   let signedPdfPath = '';
-  if (payload.documentBase64) {
-    signedPdfPath = await saveSignedPdfBuffer(agreement, Buffer.from(payload.documentBase64, 'base64'));
-  }
-
-  const isCompleted = String(payload.status || '').toLowerCase().includes('complete') ||
-    String(payload.status || '').toLowerCase().includes('signed');
+  const isCompleted = isAgreementCompleted(verified.providerStatus);
 
   if (isCompleted) {
     let signedPdfError = null;
@@ -472,6 +483,8 @@ async function receiveDigioWebhook(req, res) {
         };
       }
     }
+
+    if (!signedPdfPath) return res.status(503).json({ success: false, message: 'Verified signed document is not available yet. Retry later.' });
 
     agreement = await loanAgreementModel.markSigned(agreement.id, {
       providerStatus: payload.status || 'completed',
@@ -528,7 +541,7 @@ async function receiveDigioWebhook(req, res) {
     }
   }
 
-  return success(res, { received: true, matched: true, agreement }, 'Webhook processed.');
+  return success(res, { received: true, matched: true }, 'Webhook processed.');
 }
 
 module.exports = {

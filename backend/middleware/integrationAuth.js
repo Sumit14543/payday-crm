@@ -46,6 +46,8 @@ function requireIntegrationApiKey(req, res, next) {
     }
   }
 
+  const expectedTenant = ['waqtmoney', 'waqtfinance'].includes(matchedKey.sourceSystem) ? 'waqtfinance' : matchedKey.sourceSystem;
+  if (!expectedTenant || req.tenant?.slug !== expectedTenant) return res.status(403).json({ success: false, message: 'Integration key does not match the selected company.' });
   req.integration = {
     sourceSystem: matchedKey.sourceSystem || sourceSystem,
   };

@@ -1,10 +1,12 @@
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, Fragment, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { apiPost, AUTH_REQUIRED_EVENT, AUTH_STORAGE_KEY } from "./api";
+import { apiPost, getAuthToken, AUTH_REQUIRED_EVENT, AUTH_STORAGE_KEY } from "./api";
 
 export type UserRole = "telecaller" | "credit-manager" | "accountant" | "collection" | "superadmin" | "product-admin";
 
 export type AuthUser = {
+  tenant?: string;
+  isMasterSuperadmin?: boolean;
   email: string;
   name: string;
   role: UserRole;
@@ -19,7 +21,7 @@ type LoginInput = {
 };
 
 export type LoginResult =
-  | { requiresOtp: true; tempToken: string; email: string; message: string }
+  | { requiresOtp: true; tempToken: string; email: string; message: string; tenant?: string }
   | { requiresOtp?: false; user: AuthUser };
 
 type AuthContextValue = {
@@ -34,8 +36,8 @@ type AuthContextValue = {
 };
 
 type LoginResponse =
-  | { requiresOtp: true; tempToken: string; email: string; message: string }
-  | { requiresOtp?: false; token: string; user: AuthUser };
+  | { requiresOtp: true; tempToken: string; email: string; message: string; tenant?: string }
+  | { requiresOtp?: false; token: string; documentToken: string; user: AuthUser };
 
 export const roleLabels: Record<UserRole, string> = {
   accountant: "Accountant",
@@ -124,7 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
-    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired);
+    const refreshSession = () => setUser(readStoredUser());
+    const handleStorage = (event: StorageEvent) => { if (!event.key || [AUTH_STORAGE_KEY, 'paydayops.auth.superadmin'].includes(event.key)) refreshSession(); };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('paydayops:session-changed', refreshSession);
+    return () => { window.removeEventListener(AUTH_REQUIRED_EVENT, handleAuthRequired); window.removeEventListener('storage', handleStorage); window.removeEventListener('paydayops:session-changed', refreshSession); };
   }, []);
 
   const setActiveRole = (role: UserRole) => {
@@ -142,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await apiPost<LoginResponse>(endpoint, { email, password, role: loginRole, latitude, longitude });
       
       if (response.requiresOtp) {
+        if (response.tenant) sessionStorage.setItem('paydayops.auth.pendingTenant', response.tenant);
         return {
           requiresOtp: true,
           tempToken: response.tempToken,
@@ -151,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const nextUser = response.user;
+      sessionStorage.removeItem('paydayops.auth.pendingTenant');
       if (role === "product-admin") {
         nextUser.role = "product-admin";
       }
@@ -161,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const sessionPayload = {
         token: response.token,
+        documentToken: response.documentToken,
         user: nextUser,
       };
 
@@ -168,11 +177,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("paydayops.auth.superadmin", JSON.stringify(sessionPayload));
       }
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
+      window.dispatchEvent(new Event("paydayops:session-changed"));
       setUser(nextUser);
       return { requiresOtp: false, user: nextUser };
     },
     verifyOtp: async ({ tempToken, otp }) => {
-      const response = await apiPost<{ token: string; user: AuthUser }>("/auth/verify-otp", { tempToken, otp });
+      const response = await apiPost<{ token: string; documentToken: string; user: AuthUser }>("/auth/verify-otp", { tempToken, otp });
+      sessionStorage.removeItem('paydayops.auth.pendingTenant');
       const nextUser = response.user;
 
       localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -181,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const sessionPayload = {
         token: response.token,
+        documentToken: response.documentToken,
         user: nextUser,
       };
 
@@ -188,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("paydayops.auth.superadmin", JSON.stringify(sessionPayload));
       }
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
+      window.dispatchEvent(new Event("paydayops:session-changed"));
       setUser(nextUser);
       return nextUser;
     },
@@ -195,6 +208,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiPost("/auth/resend-otp", { tempToken });
     },
     logout: () => {
+      void apiPost("/auth/logout", {}).catch(() => {});
+      sessionStorage.clear();
+      window.dispatchEvent(new Event("paydayops:session-changed"));
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem("paydayops.auth.superadmin");
       localStorage.removeItem("paydayops.activeRole");
@@ -206,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveRole,
   }), [user, activeRole]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}><Fragment key={getAuthToken()}>{children}</Fragment></AuthContext.Provider>;
 }
 
 export function useAuth() {

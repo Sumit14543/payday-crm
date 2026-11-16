@@ -1,3 +1,5 @@
+const { moneyInput } = require('../utils/financialInput');
+const { booleanInput } = require('../utils/adminScope');
 const collectionModel = require('../models/collectionModel');
 const leadStatusModel = require('../models/leadStatusModel');
 const repaymentModel = require('../models/repaymentModel');
@@ -118,8 +120,9 @@ async function updatePtpStatus(req, res) {
 
 async function createPayment(req, res) {
   const collectionCase = await getCaseOr404(req.params.caseId);
-  const amount = Number(req.body.amount || 0);
-  const closeFully = Boolean(req.body.closeFully === 'true' || req.body.closeFully === true || req.body.markAsClosed === 'true' || req.body.markAsClosed === true);
+  const amount = moneyInput(req.body.amount);
+  const closeFully = booleanInput(req.body.closeFully ?? false) || booleanInput(req.body.markAsClosed ?? false);
+  if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ success: false, message: 'Repayment amount cannot be negative or non-finite.' });
   let reference = String(req.body.reference || req.body.transactionId || '').trim();
   if (!reference) {
     reference = 'REF-' + Date.now().toString(36).toUpperCase();

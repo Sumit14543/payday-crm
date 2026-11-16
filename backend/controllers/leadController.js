@@ -1,3 +1,4 @@
+const { assertLeadAccess, assertGenericStatus, canReadLead } = require('../utils/leadAccess');
 const activityModel = require('../models/activityModel');
 const auditModel = require('../models/auditModel');
 const leadModel = require('../models/leadModel');
@@ -7,30 +8,9 @@ const authkeyWhatsAppService = require('../services/authkeyWhatsAppService');
 const { notFound, requireFields, success } = require('../utils/http');
 
 function isSupportUser(user) {
-  if (!user) return false;
-  const email = String(user.email || '').toLowerCase();
-  const name = String(user.name || '').toLowerCase();
-  return email.startsWith('support@') || email.includes('support') || name.includes('support');
+  return ['support@waqtmoney.in', 'support@waqtfinance.com'].includes(String(user?.email || '').toLowerCase());
 }
-
-function verifyLeadAssignedToTelecaller(req, lead) {
-  if (!req.user || req.user.role !== 'telecaller' || isSupportUser(req.user)) return;
-  const assignedTo = String(lead?.assignedTo || '').trim();
-  if (!assignedTo) return;
-
-  const assignedLower = assignedTo.toLowerCase();
-  if (['unassigned', 'intake queue', 'none', '', 'null', 'undefined', 'credit manager', 'credit-manager'].includes(assignedLower) || assignedLower.includes('shruti')) {
-    return;
-  }
-
-  const isAssigned = telecallerModel.isLeadAssignedToTelecaller(assignedTo, req.user);
-  if (!isAssigned) {
-    const error = new Error(`This lead is assigned to ${assignedTo}. You cannot perform actions on leads assigned to another telecaller.`);
-    error.statusCode = 403;
-    error.publicMessage = `This lead is assigned to ${assignedTo}. You cannot perform actions on leads assigned to another telecaller.`;
-    throw error;
-  }
-}
+function verifyLeadAssignedToTelecaller(req, lead) { assertLeadAccess(req.user, lead); }
 
 async function listLeads(req, res) {
   const query = { ...req.query };
@@ -43,7 +23,7 @@ async function listLeads(req, res) {
   const leads = await leadModel.findAll(query);
   return res.status(200).json({
     success: true,
-    data: leads,
+    data: leads.map(lead => canReadLead(req.user, lead) ? lead : ({ id: lead.id, name: lead.name, status: lead.status, source: lead.source, phone: String(lead.phone || '').replace(/.(?=.{4})/g, '*') })),
     pagination: {
       page: leads.page || 1,
       limit: leads.limit || (leads.length || 50),
@@ -85,6 +65,7 @@ async function getLead(req, res) {
     `, params);
   }
 
+  assertLeadAccess(req.user, lead);
   lead.pastLoans = pastLoans;
 
   await auditModel.create(req, {
@@ -98,6 +79,7 @@ async function getLead(req, res) {
 
 async function createLead(req, res) {
   requireFields(req.body || {}, ['name', 'phone', 'loanAmount']);
+  assertGenericStatus({ status: 'New' }, req.body.status);
   const lead = await leadModel.create(req.body);
   await activityModel.createForLead(lead, {
     type: 'status',
@@ -136,6 +118,7 @@ async function updateLeadStatus(req, res) {
   const previousLead = await leadModel.findById(req.params.id);
   if (!previousLead) return notFound(res, 'Lead not found');
   verifyLeadAssignedToTelecaller(req, previousLead);
+  assertGenericStatus(previousLead, req.body.status);
 
   const lead = await leadModel.updateStatus(req.params.id, req.body.status);
   if (!lead) return notFound(res, 'Lead not found');
@@ -196,6 +179,7 @@ async function updateLeadOperations(req, res) {
   const previousLead = await leadModel.findById(req.params.id);
   if (!previousLead) return notFound(res, 'Lead not found');
   verifyLeadAssignedToTelecaller(req, previousLead);
+  assertGenericStatus(previousLead, req.body.status);
 
   const lead = await leadModel.updateOperations(req.params.id, body);
   if (!lead) return notFound(res, 'Lead not found');
@@ -691,6 +675,7 @@ async function getReloansReport(req, res) {
   }
 
   // Group applications by customer (PAN || phone || email || id)
+  rawApplications = rawApplications.filter(application => canReadLead(req.user, application));
   const custApps = new Map();
   for (const app of rawApplications) {
     const pan = String(app.panNumber || '').trim().toUpperCase();

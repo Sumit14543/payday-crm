@@ -197,10 +197,10 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
           la2.id DESC
         LIMIT 1
       )
-    WHERE ${clauses.map((clause) => `(${clause})`).join(' OR ')}
+    WHERE (${clauses.map((clause) => `(${clause})`).join(' OR ')}) ${normalizedSourceSystem ? 'AND la.source_system = ?' : ''}
     ORDER BY loan.created_at DESC
     LIMIT 1
-  `, params);
+  `, normalizedSourceSystem ? [...params, normalizedSourceSystem] : params);
 
   return mapContext(rows[0]);
 }

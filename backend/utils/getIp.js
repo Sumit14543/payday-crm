@@ -7,48 +7,9 @@ function isPrivateIp(ip) {
 }
 
 function getClientIp(req) {
-  if (!req) return '';
-
-  const candidates = [];
-
-  // 1. Cloudflare IP header
-  const cfIp = req.headers?.['cf-connecting-ip'] || (typeof req.get === 'function' ? req.get('cf-connecting-ip') : '');
-  if (cfIp) candidates.push(cfIp);
-
-  // 2. X-Real-IP header
-  const realIp = req.headers?.['x-real-ip'] || (typeof req.get === 'function' ? req.get('x-real-ip') : '');
-  if (realIp) candidates.push(realIp);
-
-  // 3. X-Forwarded-For header (comma separated list)
-  const xForwardedFor = req.headers?.['x-forwarded-for'] || (typeof req.get === 'function' ? req.get('x-forwarded-for') : '');
-  if (xForwardedFor) {
-    const ips = String(xForwardedFor).split(',').map(s => s.trim());
-    candidates.push(...ips);
-  }
-
-  // 4. Express req.ip & remote address
-  if (req.ip) candidates.push(req.ip);
-  if (req.connection?.remoteAddress) candidates.push(req.connection.remoteAddress);
-  if (req.socket?.remoteAddress) candidates.push(req.socket.remoteAddress);
-
-  // Pick the first NON-PRIVATE (public) IP address
-  for (let candidate of candidates) {
-    if (!candidate) continue;
-    let clean = String(candidate).trim();
-    if (clean.startsWith('::ffff:')) {
-      clean = clean.substring(7);
-    }
-    if (!isPrivateIp(clean)) {
-      return clean;
-    }
-  }
-
-  // Fallback to first candidate if all are internal
-  let fallback = candidates[0] || req.ip || '';
-  if (typeof fallback === 'string' && fallback.startsWith('::ffff:')) {
-    fallback = fallback.substring(7);
-  }
-  return String(fallback || '').trim();
+  // Express applies the configured proxy allowlist, walking from the socket.
+  // Browser-supplied identity/location headers cannot become audit evidence.
+  return String(req?.ip || req?.socket?.remoteAddress || '').replace(/^::ffff:/, '').trim();
 }
 
 module.exports = { getClientIp, isPrivateIp };

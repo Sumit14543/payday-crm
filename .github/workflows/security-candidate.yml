@@ -1,0 +1,53 @@
+name: Validate Isolated Security Candidate
+on:
+  push:
+    branches: ['security/preserve-flows-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-candidate
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install exact dependencies and verify compatibility
+        run: |
+          npm ci --prefix backend --ignore-scripts --no-audit --no-fund
+          npm ci --prefix frontend --no-audit --no-fund
+          node tests/run-security.cjs
+          npm run build --prefix frontend
+      - name: Upload candidate outside the live applications
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
+          REMOTE_USER: ${{ secrets.CPANEL_USER }}
+          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
+          SOURCE: backend/
+          TARGET: /home/waqtmoney/security-candidates/${{ github.sha }}/backend/
+          ARGS: '-rlDztvc'
+          EXCLUDE: '/node_modules/,/.env,/.env.*, /uploads/,/backups/,gcp-key*.json,*.log,*.err,*.pem,*.key'
+      - name: Verify deployed configuration and isolated MySQL login/transactions
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USER }}
+          key: ${{ secrets.CPANEL_SSH_KEY }}
+          port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 8m
+          script: |
+            set -eu
+            . /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
+            candidate=/home/waqtmoney/security-candidates/${{ github.sha }}/backend
+            chmod 700 /home/waqtmoney/security-candidates /home/waqtmoney/security-candidates/${{ github.sha }}
+            cd "$candidate"
+            npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+            CRM_ROOT=/home/waqtmoney/public_html/payday-api NODE_ENV=production PORT=8081 node scripts/securityPreflight.js
+            CRM_LIVE_ROOT=/home/waqtmoney/public_html/payday-api node scripts/securitySqlSelfTest.js

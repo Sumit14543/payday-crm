@@ -8,12 +8,12 @@ const { ensureOfficialEmailColumns } = require('../database/schema');
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
 const MAX_VERIFICATION_ATTEMPTS = 3;
-const OTP_HASH_SALT = process.env.OTP_HASH_SALT || 'crm_official_email_salt_2026';
+const OTP_HASH_SALT = process.env.OTP_HASH_SALT || process.env.AUTH_TOKEN_SECRET;
 
 function hashOtp(otp) {
   return crypto
-    .createHash('sha256')
-    .update(String(otp).trim() + OTP_HASH_SALT)
+    .createHmac('sha256', OTP_HASH_SALT)
+    .update(String(otp).trim())
     .digest('hex');
 }
 
@@ -70,6 +70,7 @@ async function sendOtp(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  if (lead) require('../utils/leadAccess').assertLeadAccess(req.user, lead);
   if (!lead) {
     return res.status(404).json({
       success: false,
@@ -232,6 +233,7 @@ async function verifyOtp(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  if (lead) require('../utils/leadAccess').assertLeadAccess(req.user, lead);
   if (!lead) {
     return res.status(404).json({
       success: false,
@@ -280,17 +282,14 @@ async function verifyOtp(req, res) {
     const remaining = otpRecord.max_attempts - newAttempts;
 
     if (newAttempts >= otpRecord.max_attempts) {
-      await query(`UPDATE official_email_otps SET attempts = ?, is_used = 1 WHERE id = ?`, [
-        newAttempts,
-        otpRecord.id,
-      ]);
+      await query(`UPDATE official_email_otps SET is_used = CASE WHEN attempts + 1 >= max_attempts THEN 1 ELSE is_used END, attempts = attempts + 1 WHERE id = ? AND is_used = 0 AND attempts < max_attempts`, [otpRecord.id]);
       return res.status(400).json({
         success: false,
         message: 'Invalid OTP. Maximum attempts exceeded. Please request a new OTP.',
       });
     }
 
-    await query(`UPDATE official_email_otps SET attempts = ? WHERE id = ?`, [newAttempts, otpRecord.id]);
+    await query(`UPDATE official_email_otps SET is_used = CASE WHEN attempts + 1 >= max_attempts THEN 1 ELSE is_used END, attempts = attempts + 1 WHERE id = ? AND is_used = 0 AND attempts < max_attempts`, [otpRecord.id]);
     return res.status(400).json({
       success: false,
       message: `Invalid OTP code. ${remaining} attempt(s) remaining.`,
@@ -308,7 +307,8 @@ async function verifyOtp(req, res) {
   }
 
   // Mark OTP as used
-  await query(`UPDATE official_email_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
+  const consumed = await query(`UPDATE official_email_otps SET is_used = 1 WHERE id = ? AND is_used = 0 AND attempts < max_attempts AND expires_at > NOW() AND otp_hash = ?`, [otpRecord.id, userOtpHash]);
+  if (consumed.affectedRows !== 1) return res.status(409).json({ success: false, message: 'This OTP is no longer valid. Request a fresh code.' });
 
   // Update lead official email verification status
   const verifiedAt = new Date();
@@ -404,6 +404,7 @@ async function updateOfficialEmail(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  if (lead) require('../utils/leadAccess').assertLeadAccess(req.user, lead);
   if (!lead) {
     return res.status(404).json({
       success: false,
@@ -460,6 +461,7 @@ async function checkDomainAnalysis(req, res) {
   if (!targetEmail && (applicationId || leadId || id)) {
     const targetId = applicationId || leadId || id;
     const lead = await resolveLead(targetId);
+  if (lead) require('../utils/leadAccess').assertLeadAccess(req.user, lead);
     if (lead) {
       targetEmail = lead.officeEmail || lead.officialEmail || lead.email;
     }

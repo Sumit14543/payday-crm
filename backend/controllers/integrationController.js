@@ -1,3 +1,4 @@
+const { moneyInput } = require('../utils/financialInput');
 const activityModel = require('../models/activityModel');
 const fs = require('fs');
 const integrationLogModel = require('../models/integrationLogModel');
@@ -251,7 +252,7 @@ function normalizeRepaymentPayload(body = {}, integration = {}) {
   const sourceApplicationId = String(body.sourceApplicationId || '').trim();
   const loanId = String(body.loanId || '').trim();
   const panNumber = String(body.panNumber || body.pan || '').trim().toUpperCase();
-  const amount = Number(body.amount);
+  const amount = moneyInput(body.amount);
   const method = String(body.method || body.paymentMethod || '').trim() || 'Online';
   const reference = String(body.reference || body.transactionId || body.gatewayPaymentId || '').trim();
   const status = String(body.status || '').trim().toLowerCase();
@@ -291,8 +292,11 @@ async function postRepayment(req, res) {
       repaymentPublicError('Loan repayment account not found for the provided source details.', 404);
     }
 
+    if (String(context.lead.sourceSystem || '').toLowerCase() !== payload.sourceSystem) repaymentPublicError('Repayment source does not match the loan.', 403);
     const existing = await repaymentModel.findByReference(payload.reference);
     if (existing) {
+      if (existing.loanId !== context.loan.id || Number(existing.amount) !== payload.amount) repaymentPublicError('This reference belongs to a different payment.', 409);
+      await repaymentModel.refreshLoanAfterRepayment(context);
       const summary = await repaymentModel.repaymentSummaryByLead(context.lead);
       responsePayload = {
         duplicate: true,

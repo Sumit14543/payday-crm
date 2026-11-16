@@ -127,7 +127,7 @@ function isDatabaseInitialized() {
 function query(sql, params = []) {
   // Retrieve request-specific pool from AsyncLocalStorage context
   const store = tenantLocalStorage.getStore();
-  const activePool = store && store.pool ? store.pool : defaultPool;
+  const activePool = store?.connection || store?.pool || defaultPool;
 
   if (!activePool) {
     return Promise.reject(new Error('Database pool has not been initialized'));
@@ -235,7 +235,70 @@ function formatDatabaseError(error) {
   return error && error.message ? error.message : String(error);
 }
 
+async function withTransaction(callback) {
+  const context = tenantLocalStorage.getStore() || {};
+  if (context.connection) return callback();
+  const pool = context.pool || defaultPool;
+  if (!pool) throw new Error('Database is unavailable.');
+  const connection = await new Promise((resolve, reject) => pool.getConnection((error, value) => error ? reject(error) : resolve(value)));
+  const action = method => new Promise((resolve, reject) => connection[method](error => error ? reject(error) : resolve()));
+  const execute = (sql, params) => new Promise((resolve, reject) => connection.query(sql, params, (error, rows) => error ? reject(error) : resolve(rows)));
+  const lock = 'crm-ledger:' + require('crypto').createHash('sha256').update(String(pool.config?.connectionConfig?.database || context.tenant?.slug || config.db.database)).digest('hex').slice(0, 48);
+  let locked = false, begun = false, committed = false;
+  let value;
+  const notifications = [];
+  try {
+    // Serialize this company's ledger mutations before any snapshot/read.
+    const rows = await execute('SELECT GET_LOCK(?, 10) AS acquired', [lock]);
+    if (Number(rows[0]?.acquired) !== 1) { const error = new Error('Another financial update is in progress. Please retry.'); error.statusCode = 409; error.publicMessage = error.message; throw error; }
+    locked = true;
+    await action('beginTransaction'); begun = true;
+    value = await tenantLocalStorage.run({ ...context, pool, connection, notifications }, callback);
+    await action('commit'); committed = true;
+  } catch (error) {
+    if (begun && !committed) await action('rollback').catch(() => {});
+    throw error;
+  } finally {
+    let reusable = true;
+    if (locked) {
+      try { await execute('SELECT RELEASE_LOCK(?)', [lock]); }
+      catch { reusable = false; connection.destroy(); }
+    }
+    if (reusable) connection.release();
+  }
+  // Never turn a committed ledger update into a failed HTTP response because
+  // an outbound notification failed, and never hold a DB connection for it.
+  await tenantLocalStorage.run(context, () => Promise.allSettled(notifications.map(task => Promise.resolve().then(task))));
+  return value;
+}
+
+function afterCommit(task) {
+  const queue = tenantLocalStorage.getStore()?.notifications;
+  if (!queue) return false;
+  queue.push(task);
+  return true;
+}
+async function withSavepoint(callback) {
+  const context = tenantLocalStorage.getStore();
+  if (!context?.connection) throw new Error('A transaction is required for a financial savepoint.');
+  const name = 'financial_' + require('crypto').randomBytes(8).toString('hex');
+  const notificationCount = context.notifications.length;
+  await query('SAVEPOINT ' + name);
+  try {
+    const value = await callback();
+    await query('RELEASE SAVEPOINT ' + name);
+    return value;
+  } catch (error) {
+    context.notifications.splice(notificationCount);
+    await query('ROLLBACK TO SAVEPOINT ' + name);
+    await query('RELEASE SAVEPOINT ' + name);
+    throw error;
+  }
+}
 module.exports = {
+  withSavepoint,
+  afterCommit,
+  withTransaction,
   connectDatabase,
   createDatabaseIfNeeded,
   formatDatabaseError,

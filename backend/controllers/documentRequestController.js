@@ -1,6 +1,8 @@
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
+const { validateFiles, removeFiles } = require('../utils/uploadContent');
+const asyncHandler = require('../utils/asyncHandler');
 const activityModel = require('../models/activityModel');
 const auditModel = require('../models/auditModel');
 const documentRequestModel = require('../models/documentRequestModel');
@@ -46,11 +48,12 @@ const ALLOWED_DOCUMENT_KEYS = new Set([
 const storage = multer.diskStorage({
   destination: (req, file, callback) => callback(null, uploadDir),
   filename: (req, file, callback) => {
+    const requests = req.documentRequests || [];
+    if (!requests.some(request => file.fieldname === 'document_' + request.id || file.fieldname === 'document_' + request.documentKey || (requests.length === 1 && file.fieldname === 'document'))) return callback(new Error('Unexpected document field.'), false);
     const extension = path.extname(file.originalname || '').toLowerCase();
-    const safeToken = String(req.params.token || 'document').replace(/[^a-z0-9]/gi, '');
     const safeField = String(file.fieldname || 'document').replace(/[^a-z0-9_-]/gi, '');
     const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
-    callback(null, `${safeToken}-${safeField}-${uniqueSuffix}${extension}`);
+    callback(null, `${safeField}-${uniqueSuffix}${extension}`);
   },
 });
 
@@ -74,7 +77,7 @@ const upload = multer({
     
     // Both extension and mimeType must match safe allowed formats
     const isExtensionAllowed = ALLOWED_EXTENSIONS.has(extension);
-    const isMimeAllowed = ALLOWED_MIME_TYPES.has(mimeType) || mimeType.startsWith('image/') || mimeType.startsWith('video/');
+    const isMimeAllowed = ALLOWED_MIME_TYPES.has(mimeType);
 
     if (isExtensionAllowed && isMimeAllowed) {
       callback(null, true);
@@ -87,8 +90,13 @@ const upload = multer({
 });
 
 function uploadMiddleware() {
-  return (req, res, next) => {
-    upload.any()(req, res, (error) => {
+  return asyncHandler(async (req, res, next) => {
+    const requests = await documentRequestModel.findGroupByToken(req.params.token);
+    if (!requests.length || isExpired(requests) || isCompleted(requests) || isCancelled(requests)) {
+      return res.status(410).json({ success: false, message: 'This document upload link is unavailable.' });
+    }
+    req.documentRequests = requests;
+    upload.any()(req, res, async (error) => {
       if (error) {
         const publicError = new Error(
           error.code === 'LIMIT_FILE_SIZE'
@@ -101,6 +109,8 @@ function uploadMiddleware() {
         publicError.publicMessage = publicError.message;
         return next(publicError);
       }
+      try { await validateFiles(Array.isArray(req.files) ? req.files : []); }
+      catch (contentError) { return next(contentError); }
 
       if (req.tenant) {
         const pool = getTenantPool(req.tenant);
@@ -109,7 +119,7 @@ function uploadMiddleware() {
 
       return next();
     });
-  };
+  });
 }
 
 async function getLeadOr404(res, leadId) {
@@ -280,6 +290,10 @@ function isCancelled(requests) {
 }
 
 async function buildPublicPayload(requests) {
+  if (isExpired(requests) || isCompleted(requests) || isCancelled(requests)) {
+    await removeFiles(Array.isArray(req.files) ? req.files : []);
+    return { expired: true, completed: isCompleted(requests), status: isCompleted(requests) ? 'uploaded' : 'expired', requests: [] };
+  }
   const firstRequest = requests[0];
   const lead = await leadModel.findById(firstRequest.applicationId || firstRequest.leadId);
   const completed = isCompleted(requests);

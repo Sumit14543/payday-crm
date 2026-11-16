@@ -4,84 +4,76 @@ const { tenantLocalStorage } = require('../config/db');
 const crmUserModel = require('../models/crmUserModel');
 
 const VALID_ROLES = new Set(['telecaller', 'credit-manager', 'accountant', 'collection', 'superadmin', 'product-admin']);
-const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'payday-loan-crm-dev-secret-change-me';
+const sessions = require('../services/authSessions');
+const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || (process.env.NODE_ENV === 'production' ? '' : crypto.randomBytes(48).toString('hex'));
+if (!process.env.AUTH_TOKEN_SECRET && process.env.NODE_ENV !== 'production') process.env.AUTH_TOKEN_SECRET = AUTH_TOKEN_SECRET;
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 const PASSWORD_ITERATIONS = 120000;
-const authConfigErrors = [];
-
-if (process.env.NODE_ENV === 'production' && AUTH_TOKEN_SECRET === 'payday-loan-crm-dev-secret-change-me') {
-  authConfigErrors.push('AUTH_TOKEN_SECRET must be configured for production.');
-}
-
 function getAuthConfigError() {
-  return authConfigErrors.length ? authConfigErrors.join(' ') : '';
+  return AUTH_TOKEN_SECRET.length < 32 || /change.?me|dev-secret/i.test(AUTH_TOKEN_SECRET) ? 'A strong AUTH_TOKEN_SECRET is required.' : '';
 }
-
 function assertAuthConfigured() {
   const message = getAuthConfigError();
-  if (!message) return;
-
-  const error = new Error(message);
-  error.statusCode = 503;
-  error.publicMessage = message;
-  throw error;
+  if (message) { const error = new Error(message); error.statusCode = 503; error.publicMessage = message; throw error; }
 }
-
-function base64UrlEncode(value) {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-function base64UrlDecode(value) {
-  return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-}
-
-function sign(value) {
-  return crypto
-    .createHmac('sha256', AUTH_TOKEN_SECRET)
-    .update(value)
-    .digest('base64url');
-}
-
-function createToken(user) {
+const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+const sign = value => crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(value).digest('base64url');
+function signClaims(user, audience, expiresAt) {
   assertAuthConfigured();
-
-  const header = base64UrlEncode({ alg: 'HS256', typ: 'JWT' });
-  const payload = base64UrlEncode({
-    email: user.email,
-    exp: Date.now() + TOKEN_TTL_MS,
-    name: user.name,
-    role: user.role,
-  });
-  const body = `${header}.${payload}`;
-  return `${body}.${sign(body)}`;
+  const body = encode({ alg: 'HS256', typ: 'JWT' }) + '.' + encode({ ...user, iss: 'payday-crm', aud: audience, iat: Date.now(), exp: expiresAt });
+  return body + '.' + sign(body);
 }
-
-function verifyToken(token) {
+function decodeClaims(token, audience) {
+  if (getAuthConfigError()) return null;
   try {
     const parts = String(token || '').split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3 || parts[2].length !== 43) return null;
+    const body = parts[0] + '.' + parts[1];
+    if (!crypto.timingSafeEqual(Buffer.from(parts[2]), Buffer.from(sign(body)))) return null;
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    if (header.alg !== 'HS256' || header.typ !== 'JWT' || claims.iss !== 'payday-crm' || claims.aud !== audience) return null;
+    if (!Number.isFinite(claims.exp) || claims.exp <= Date.now() || !Number.isFinite(claims.iat) || claims.iat > Date.now() + 30000) return null;
+    return claims;
+  } catch { return null; }
+}
+async function createToken(user) {
+  assertAuthConfigured();
+  const session = await sessions.createSession(user, TOKEN_TTL_MS);
+  const { expiresAt, ...claims } = session;
+  return signClaims(claims, 'crm-session', expiresAt);
+}
+function verifyToken(token, audience = 'crm-session') {
+  const claims = decodeClaims(token, audience);
+  if (!claims || !VALID_ROLES.has(claims.role) || !claims.id || !/^[a-f0-9]{64}$/.test(claims.sessionId || '') || !claims.tenant) return null;
+  return claims;
+}
+function createDocumentTicket(token) {
+  const claims = verifyToken(token);
+  if (!claims) throw new Error('A valid session is required.');
+  return signClaims(claims, 'crm-documents', claims.exp);
+}
+function createDocumentCapability(filePath, ttlMs = TOKEN_TTL_MS) {
+  const path = String(filePath || '').split('?')[0];
+  if (!path.startsWith('/uploads/') || path.includes('..')) throw new Error('Invalid document path.');
+  return signClaims({ path, tenant: sessions.tenantSlug() }, 'crm-document-file', Date.now() + ttlMs);
+}
 
-    const [header, payload, signature] = parts;
-    const body = `${header}.${payload}`;
-    const expectedSignature = sign(body);
-    const actual = Buffer.from(signature);
-    const expected = Buffer.from(expectedSignature);
-    if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
-      return null;
-    }
-
-    const claims = base64UrlDecode(payload);
-    if (!claims.exp || Date.now() > Number(claims.exp)) return null;
-    if (!VALID_ROLES.has(claims.role)) return null;
-
-    return {
-      email: claims.email || '',
-      name: claims.name || '',
-      role: claims.role,
-    };
-  } catch {
-    return null;
-  }
+function createProviderCallbackToken(provider, context) {
+  return signClaims({ ...context, tenant: sessions.tenantSlug(), nonce: crypto.randomBytes(24).toString('hex') }, 'provider-callback:' + provider, Date.now() + 24 * 60 * 60 * 1000);
+}
+function verifyProviderCallbackToken(token, provider) { return decodeClaims(token, 'provider-callback:' + provider); }
+function createCustomerActionToken(applicationId, provider, ttlMs = 24 * 60 * 60 * 1000) {
+  assertAuthConfigured();
+  const expires = (Date.now() + ttlMs).toString(36);
+  return expires + '.' + sign(JSON.stringify(['customer-emandate', sessions.tenantSlug(), String(applicationId), provider, expires]));
+}
+function verifyCustomerActionToken(token, applicationId, provider) {
+  if (getAuthConfigError()) return false;
+  const parts = String(token || '').split('.');
+  if (parts.length !== 2 || !/^[a-z0-9]+$/.test(parts[0]) || !/^[A-Za-z0-9_-]{43}$/.test(parts[1]) || parseInt(parts[0], 36) <= Date.now()) return false;
+  const expected = sign(JSON.stringify(['customer-emandate', sessions.tenantSlug(), String(applicationId), provider, parts[0]]));
+  return crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expected));
 }
 
 function verifyPassword(password, user) {
@@ -126,7 +118,7 @@ async function authenticateUser({ email, password, role }) {
   }
 
   try {
-    await crmUserModel.markLogin(foundUser.id);
+    await crmUserModel.markLogin(foundUser.id, foundUser.isMasterSuperadmin);
   } catch (e) {}
 
   return {
@@ -134,6 +126,7 @@ async function authenticateUser({ email, password, role }) {
     email: foundUser.email,
     name: foundUser.name,
     role: foundUser.role,
+    isMasterSuperadmin: Boolean(foundUser.isMasterSuperadmin),
   };
 }
 
@@ -142,19 +135,22 @@ function listPublicUsers() {
 }
 
 function authOptional(req, res, next) {
+  if (req.authParsed) return next();
+  req.authParsed = true;
   const authorization = String(req.get('authorization') || '');
-  const [scheme, headerToken] = authorization.split(' ');
-  const rawQueryToken = req.query && typeof req.query.token === 'string' ? req.query.token : '';
-  const queryToken = rawQueryToken.replace(/^Bearer\s+/i, '').trim();
-  const token = (scheme === 'Bearer' && headerToken) ? headerToken : queryToken;
-
-  if (token) {
-    const user = verifyToken(token);
-    if (user) {
-      req.user = user;
+  const [scheme, token] = authorization.split(' ');
+  if (scheme === 'Bearer' && token) req.user = verifyToken(token) || undefined;
+  const path = req.path || '';
+  if (!req.user && ['GET', 'HEAD'].includes(req.method) && (path.startsWith('/uploads/') || path === '/api/files/download')) {
+    const queryToken = typeof req.query?.token === 'string' ? req.query.token : '';
+    const ticket = verifyToken(queryToken, 'crm-documents');
+    if (ticket) req.user = { ...ticket, documentOnly: true };
+    else {
+      const capability = decodeClaims(queryToken, 'crm-document-file');
+      const requested = path === '/api/files/download' ? req.query?.path : path;
+      if (capability && capability.path === requested && capability.tenant === req.tenant?.slug) req.documentCapability = capability;
     }
   }
-
   next();
 }
 
@@ -180,7 +176,10 @@ function requireRole(roles) {
       });
     }
 
-    if (req.user.role === 'superadmin' || req.user.role === 'product-admin' || allowedRoles.has(req.user.role)) {
+    const platformOnly = roles.length === 1 && roles[0] === 'superadmin';
+    const platformAdmin = req.user.role === 'superadmin' && req.user.isMasterSuperadmin === true;
+    const companyAdmin = ['superadmin', 'product-admin'].includes(req.user.role);
+    if (platformAdmin || (!platformOnly && (companyAdmin || allowedRoles.has(req.user.role)))) {
       return next();
     }
 
@@ -200,4 +199,10 @@ module.exports = {
   requireAuth,
   requireRole,
   verifyToken,
+  createDocumentTicket,
+  createDocumentCapability,
+  createProviderCallbackToken,
+  verifyProviderCallbackToken,
+  createCustomerActionToken,
+  verifyCustomerActionToken,
 };

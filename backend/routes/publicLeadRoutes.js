@@ -4,6 +4,6 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-router.post('/test-leads', asyncHandler(publicLeadController.createTestingLead));
+if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_TEST_ACCOUNTS === 'true') router.post('/test-leads', require('../middleware/rateLimiter').publicLeadLimiter, asyncHandler(publicLeadController.createTestingLead));
 
 module.exports = router;

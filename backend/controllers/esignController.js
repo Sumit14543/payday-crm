@@ -112,6 +112,7 @@ async function getLatestLeadEsign(req, res) {
 }
 
 async function createLeadEsign(req, res) {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ success: false, message: 'Use the verified loan agreement eSign flow.' });
   const lead = await getLeadOr404(res, req.params.id);
   if (!lead) return null;
 
@@ -161,9 +162,11 @@ async function createLeadEsign(req, res) {
 }
 
 async function getPublicEsign(req, res) {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ success: false, message: 'Use the verified loan agreement eSign flow.' });
   const request = await esignModel.findByToken(req.params.token);
   if (!request) return notFound(res, 'eSign request not found');
 
+  if (isExpired(request)) return res.status(410).json({ success: false, message: 'This eSign link has expired.' });
   const lead = await leadModel.findById(request.applicationId || request.leadId);
   const camSheet = lead ? await camSheetModel.findLatestByLead(lead) : null;
 
@@ -179,6 +182,7 @@ async function getPublicEsign(req, res) {
 }
 
 async function signPublicEsign(req, res) {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ success: false, message: 'Use the verified loan agreement eSign flow.' });
   requireFields(req.body || {}, ['otp']);
 
   const request = await esignModel.findByToken(req.params.token);

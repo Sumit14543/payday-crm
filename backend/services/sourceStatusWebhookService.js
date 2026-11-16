@@ -1,3 +1,4 @@
+const { afterCommit } = require('../config/db');
 const crypto = require('crypto');
 const { config } = require('../config/env');
 const integrationLogModel = require('../models/integrationLogModel');
@@ -114,6 +115,7 @@ async function postWebhook(url, sourceSystem, payload) {
 }
 
 async function dispatchLeadStatusEvent(lead, event) {
+  if (afterCommit(() => dispatchLeadStatusEvent(lead, event))) return { deferred: true };
   const sourceSystem = normalizeSourceSystem(lead?.sourceSystem);
   const url = sourceWebhookUrl(sourceSystem);
   if (!sourceSystem || !url || !event?.isCustomerVisible) return;
@@ -150,6 +152,7 @@ async function dispatchLeadStatusEvent(lead, event) {
 }
 
 async function dispatchRepaymentEvent(lead, repayment, summary) {
+  if (afterCommit(() => dispatchRepaymentEvent(lead, repayment, summary))) return { deferred: true };
   const sourceSystem = normalizeSourceSystem(lead?.sourceSystem);
   const url = sourceWebhookUrl(sourceSystem);
   if (!sourceSystem || !url) return;

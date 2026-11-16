@@ -201,7 +201,7 @@ function agreementSummary(sanction) {
 async function generateSanctionPdf(sanction) {
   await fs.promises.mkdir(sanctionsDir, { recursive: true });
   const logoPath = await resolveLogoPath();
-  const fileName = `${sanction.agreementNumber.replace(/[^a-z0-9_-]/gi, '_')}.pdf`;
+  const fileName = require('../utils/documentStorage').privateDocumentName(`${sanction.agreementNumber.replace(/[^a-z0-9_-]/gi, '_')}.pdf`);
   const absolutePath = path.join(sanctionsDir, fileName);
   const relativePath = `/uploads/sanctions/${fileName}`;
   const summary = agreementSummary(sanction);

@@ -111,7 +111,9 @@ async function createPaymentLink(payload = {}) {
     order_id: linkId,
     orderId: linkId,
   };
-  const notifyUrl = applyTemplate(settings.notifyUrl, templateValues);
+  const notify = new URL(applyTemplate(settings.notifyUrl, templateValues) || (process.env.PUBLIC_API_URL || 'https://payday-api.waqtmoney.com') + '/api/cashfree/webhook');
+  notify.searchParams.set('tenant', require('./authSessions').tenantSlug());
+  const notifyUrl = notify.toString();
   const returnUrl = applyTemplate(settings.returnUrl, templateValues);
   const customerPhone = normalizePhone(payload.customerPhone);
   const customerEmail = normalizeEmail(payload.customerEmail);

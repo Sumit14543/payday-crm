@@ -28,7 +28,7 @@ function isOriginAllowed(origin, configuredOrigins) {
       return true;
     }
     // Allow localhost for development
-    if (originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1') {
+    if (process.env.NODE_ENV !== 'production' && (originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1')) {
       return true;
     }
   } catch (e) {
@@ -37,7 +37,7 @@ function isOriginAllowed(origin, configuredOrigins) {
 
   for (const configured of configuredOrigins) {
     const confLower = configured.toLowerCase().trim();
-    if (confLower === '*' || confLower === originLower) {
+    if ((confLower === '*' && process.env.NODE_ENV !== 'production') || confLower === originLower) {
       return true;
     }
 
@@ -45,7 +45,7 @@ function isOriginAllowed(origin, configuredOrigins) {
       const confUrl = new URL(confLower.startsWith('http') ? confLower : `http://${confLower}`);
       const originUrl = new URL(originLower);
 
-      if (originUrl.hostname === confUrl.hostname) {
+      if (originUrl.origin === confUrl.origin) {
         return true;
       }
 
@@ -53,7 +53,7 @@ function isOriginAllowed(origin, configuredOrigins) {
       const confBase = getBaseDomain(confUrl.hostname);
       const originBase = getBaseDomain(originUrl.hostname);
 
-      if (confBase && confBase === originBase) {
+      if (process.env.NODE_ENV !== 'production' && confBase && confBase === originBase) {
         // Also ensure the ports match if the configured url has a port
         if (!confUrl.port || confUrl.port === originUrl.port) {
           return true;

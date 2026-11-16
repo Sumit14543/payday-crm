@@ -188,15 +188,6 @@ async function getStatus(req, res) {
     calculatedStatus = (session.status === 'ACTIVE' && !activeRefId) ? 'PENDING' : (session.status || 'PENDING');
   }
 
-  console.log('[AA Status Sync Debug]', {
-    leadId: lead.id,
-    trackingId: session.trackingId,
-    crifStatus,
-    activeRefId,
-    activeAnalysisId,
-    fipName,
-    calculatedStatus,
-  });
 
   // Update session status dynamically from CRIF Orchestrator response
   await accountAggregatorModel.updateSessionStatus({
@@ -454,27 +445,14 @@ async function getStatus(req, res) {
 }
 
 async function handleWebhook(req, res) {
-  const body = req.body || {};
-  console.log('[AA Webhook Received]', JSON.stringify(body));
-
-  const trackingId = body.trackingId || body.data?.trackingId;
-  if (trackingId) {
-    const session = await accountAggregatorModel.findSessionByTrackingId(trackingId);
-    if (session) {
-      const newStatus = body.status || body.consentStatus || 'ACTIVE';
-      await accountAggregatorModel.updateSessionStatus({
-        trackingId: session.trackingId,
-        status: newStatus,
-        consentId: body.consentId || session.consentId,
-        referenceId: isUUID(body.referenceId) ? body.referenceId : session.referenceId,
-        analysisId: isUUID(body.analysisId) ? body.analysisId : session.analysisId,
-        fipName: body.fipName || session.fipName,
-      });
-    }
-  }
-
-  return success(res, { received: true }, 'Webhook processed successfully.');
+  const trackingId = req.body?.trackingId || req.body?.data?.trackingId;
+  if (!trackingId) return success(res, { received: true });
+  const session = await accountAggregatorModel.findSessionByTrackingId(trackingId);
+  if (!session) return success(res, { received: true });
+  // Treat the event as a notification only. Status comes from the authenticated provider.
+  return verifyCallback({ ...req, query: { trackingId: session.trackingId } }, res);
 }
+
 
 async function sendWhatsAppLink(req, res) {
   const leadId = req.params.id;
@@ -520,7 +498,6 @@ async function reset(req, res) {
 
 async function verifyCallback(req, res) {
   const query = req.query || {};
-  console.log('[AA Callback Query Received]', JSON.stringify(query));
 
   const trackingId = query.trackingId || query.tracking_id || query.trackingid;
   const digitalFlowRequestId = query.digitalFlowRequestId || query.requestId || query.digitalflowrequestid;
@@ -538,32 +515,32 @@ async function verifyCallback(req, res) {
   try {
     crifStatus = await crifService.getDigitalFlowStatus({
       trackingId: session.trackingId,
-      digitalFlowRequestId: digitalFlowRequestId || session.digitalFlowRequestId || session.digital_flow_request_id,
+      digitalFlowRequestId: session.digitalFlowRequestId || session.digital_flow_request_id,
     });
   } catch (err) {
-    console.error('[AA Callback Sync Error]', err.message);
+    return res.status(503).json({ success: false, message: 'Account Aggregator verification unavailable. Retry later.' });
   }
+
+  if (!crifStatus?.consentDetails && !crifStatus?.consentAnalyticsDetails) return res.status(503).json({ success: false, message: 'Provider consent verification is not available yet.' });
 
   const consentObj = Array.isArray(crifStatus.consentDetails) ? (crifStatus.consentDetails[0] || {}) : (crifStatus.consentDetails || {});
   const analyticsObj = Array.isArray(crifStatus.consentAnalyticsDetails) ? (crifStatus.consentAnalyticsDetails[0] || {}) : (crifStatus.consentAnalyticsDetails || {});
 
-  const rawRefId = analyticsObj.referenceId || consentObj.referenceId || query.referenceId || session.referenceId;
-  const rawAnalysisId = analyticsObj.analysisId || consentObj.analysisId || query.analysisId || session.analysisId;
+  const rawRefId = analyticsObj.referenceId || consentObj.referenceId || session.referenceId;
+  const rawAnalysisId = analyticsObj.analysisId || consentObj.analysisId || session.analysisId;
 
   const activeRefId = isUUID(rawRefId) ? rawRefId : null;
   const activeAnalysisId = isUUID(rawAnalysisId) ? rawAnalysisId : null;
   const consentStatus = String(consentObj.status || '').toUpperCase();
   const analyticsStatus = String(analyticsObj.status || '').toUpperCase();
-  const queryStatus = String(query.status || '').toUpperCase();
+
 
   let calculatedStatus = 'PENDING';
   if (['APPROVED', 'CONSENT_APPROVED', 'SUCCESS', 'READY', 'COMPLETED', 'ACTIVE'].includes(analyticsStatus) ||
-      ['APPROVED', 'CONSENT_APPROVED', 'SUCCESS', 'READY', 'COMPLETED', 'ACTIVE'].includes(consentStatus) ||
-      ['APPROVED', 'CONSENT_APPROVED', 'SUCCESS', 'READY', 'COMPLETED', 'ACTIVE'].includes(queryStatus)) {
+      ['APPROVED', 'CONSENT_APPROVED', 'SUCCESS', 'READY', 'COMPLETED', 'ACTIVE'].includes(consentStatus)) {
     calculatedStatus = 'ACTIVE';
   } else if (['REJECTED', 'EXPIRED', 'FAILED', 'REVOKED'].includes(analyticsStatus) ||
-             ['REJECTED', 'EXPIRED', 'FAILED', 'REVOKED'].includes(consentStatus) ||
-             ['REJECTED', 'EXPIRED', 'FAILED', 'REVOKED'].includes(queryStatus)) {
+             ['REJECTED', 'EXPIRED', 'FAILED', 'REVOKED'].includes(consentStatus)) {
     calculatedStatus = 'REJECTED';
   } else if (activeRefId) {
     calculatedStatus = 'ACTIVE';
@@ -574,7 +551,7 @@ async function verifyCallback(req, res) {
   await accountAggregatorModel.updateSessionStatus({
     trackingId: session.trackingId,
     status: calculatedStatus,
-    consentId: consentObj.consentId || query.consentId || session.consentId,
+    consentId: consentObj.consentId || session.consentId,
     referenceId: activeRefId,
     analysisId: activeAnalysisId,
     fipName: consentObj.fipName || session.fipName,
@@ -628,7 +605,6 @@ async function verifyCallback(req, res) {
   return success(res, {
     verified: true,
     status: calculatedStatus,
-    referenceId: activeRefId,
   }, 'Callback verified and status synced with CRIF.');
 }
 

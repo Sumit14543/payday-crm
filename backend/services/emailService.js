@@ -1,3 +1,4 @@
+const { smtpTls } = require('../utils/smtpTls');
 const nodemailer = require('nodemailer');
 const { config } = require('../config/env');
 const { tenantLocalStorage } = require('../config/db');
@@ -44,14 +45,13 @@ function createTransporter(smtpConfig) {
     host: smtpConfig.host,
     port: port,
     secure: secure,
+    requireTLS: !secure,
     family: 4,
     auth: {
       user: smtpConfig.username,
       pass: smtpConfig.password,
     },
-    tls: {
-      rejectUnauthorized: false,
-    },
+    tls: smtpTls(smtpConfig.host),
   });
 }
 

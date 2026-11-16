@@ -3,6 +3,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const sharp = require('sharp');
 const { uploadPath } = require('../config/uploads');
+const { privateDocumentName } = require('../utils/documentStorage');
 const { BRAND } = require('./sanctionLetterService');
 const { getActiveBrand } = require('../config/db');
 const { formatSanctionDate } = require('../utils/sanctionDates');
@@ -212,7 +213,7 @@ async function generateLoanAgreementPdf({ lead, sanction, agreement }) {
   await fs.promises.mkdir(agreementsDir, { recursive: true });
   const logoPath = await resolveLogoPath();
   const borrowerSegment = safeFileName(sanction.borrower || lead.name || 'borrower');
-  const fileName = `${safeFileName(sanction.agreementNumber)}-${borrowerSegment}-loan-agreement.pdf`;
+  const fileName = privateDocumentName(`${safeFileName(sanction.agreementNumber)}-${borrowerSegment}-loan-agreement.pdf`);
   const absolutePath = path.join(agreementsDir, fileName);
   const relativePath = `/uploads/agreements/${fileName}`;
   const signerBox = { page: 1, llx: 350, lly: 92, urx: 520, ury: 150 };

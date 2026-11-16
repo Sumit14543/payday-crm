@@ -3,9 +3,9 @@ const { getClientIp } = require('../utils/getIp');
 
 function actorFromRequest(req) {
   return {
-    email: req.user?.email || req.body?.email || '',
-    name: req.user?.name || req.body?.user || req.body?.actor || '',
-    role: req.user?.role || req.body?.role || '',
+    email: req.user?.email || '',
+    name: req.user?.name || '',
+    role: req.user?.role || '',
   };
 }
 
@@ -16,7 +16,7 @@ async function create(req, payload = {}) {
 
     const clientLoc = req?.headers?.['x-client-location'] || (typeof req?.get === 'function' ? req.get('x-client-location') : '') || '';
     const clientCity = req?.headers?.['x-client-city'] || (typeof req?.get === 'function' ? req.get('x-client-city') : '') || '';
-    const clientIp = req?.headers?.['x-client-ip'] || (typeof req?.get === 'function' ? req.get('x-client-ip') : '') || getClientIp(req);
+    const clientIp = getClientIp(req);
 
     const metadata = payload.metadata ? (typeof payload.metadata === 'object' ? { ...payload.metadata } : { raw: payload.metadata }) : {};
     if (clientLoc && !metadata.location && !metadata.formattedAddress) metadata.location = clientLoc;

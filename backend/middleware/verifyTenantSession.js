@@ -1,51 +1,10 @@
-const crmUserModel = require('../models/crmUserModel');
-
-// Memory cache for user session verification: key -> { timestamp, user }
-const sessionCache = new Map();
-const SESSION_CACHE_TTL_MS = 60 * 1000; // 60 seconds
-
-function getSessionCacheKey(tenantSlug, email, role) {
-  return `${tenantSlug || 'default'}:${String(email || '').trim().toLowerCase()}:${role}`;
-}
-
+const sessions = require('../services/authSessions');
 async function verifyTenantSession(req, res, next) {
-  // Static uploads only require valid token signature; skip strict single-tenant db lookup
-  const reqPath = req.path || '';
-  if (reqPath.startsWith('/uploads')) {
-    return next();
-  }
-  // If user is authenticated and is not a superadmin,
-  // verify they exist and are active in the currently resolved tenant database.
-  if (req.user && req.user.role !== 'superadmin' && req.user.role !== 'product-admin') {
-    const tenantSlug = req.tenant ? req.tenant.slug : 'default';
-    const cacheKey = getSessionCacheKey(tenantSlug, req.user.email, req.user.role);
-    const now = Date.now();
-
-    const cached = sessionCache.get(cacheKey);
-    if (cached && (now - cached.timestamp < SESSION_CACHE_TTL_MS)) {
-      if (!cached.user) {
-        req.user = null;
-      }
-    } else {
-      try {
-        const activeUser = await crmUserModel.findActiveByEmailAndRole(req.user.email, req.user.role);
-        sessionCache.set(cacheKey, { timestamp: now, user: activeUser });
-        if (!activeUser) {
-          req.user = null;
-        }
-      } catch (err) {
-        console.error('❌ Error verifying tenant user session:', err);
-        req.user = null;
-      }
-    }
+  if (req.user) {
+    try { req.user = await sessions.verifySession(req.user); }
+    catch (error) { req.user = null; return next(error); }
   }
   next();
 }
-
-function clearSessionCache() {
-  sessionCache.clear();
-}
-
 module.exports = verifyTenantSession;
-module.exports.clearSessionCache = clearSessionCache;
-
+module.exports.clearSessionCache = () => {};

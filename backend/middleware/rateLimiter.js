@@ -1,4 +1,17 @@
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { createHash } = require('crypto');
+const otpVerifyLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, max: 10,
+  keyGenerator: req => ipKeyGenerator(req.ip) + ':' + createHash('sha256').update(String(req.body?.tempToken || '')).digest('hex'),
+  standardHeaders: true, legacyHeaders: false,
+  handler: createRateLimitHandler('Too many OTP verification attempts. Please log in again.', 300),
+});
+const customerCheckoutLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, max: 10,
+  keyGenerator: req => ipKeyGenerator(req.ip) + ':' + createHash('sha256').update(String(req.body?.challengeToken || req.body?.applicationId || '')).digest('hex'),
+  standardHeaders: true, legacyHeaders: false,
+  handler: createRateLimitHandler('Too many checkout verification requests. Please retry later.', 300),
+});
 
 /**
  * Standard JSON response for rate limit violations
@@ -94,6 +107,8 @@ const webhookLimiter = rateLimit({
 });
 
 module.exports = {
+  customerCheckoutLimiter,
+  otpVerifyLimiter,
   apiLimiter,
   authLimiter,
   otpResendLimiter,

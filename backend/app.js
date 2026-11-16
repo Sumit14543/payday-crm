@@ -15,20 +15,16 @@ const { DEFAULT_UPLOADS_ROOT, UPLOADS_ROOT } = require('./config/uploads');
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', true);
+app.set('trust proxy', require('./config/trustedProxies'));
 
 app.use(securityHeaders);
 app.use(cors);
 
 
-app.post(
-  '/api/cashfree/webhook',
-  webhookLimiter,
-  express.raw({ type: 'application/json', limit: '2mb' }),
-  asyncHandler(cashfreeWebhookController.receiveCashfreeWebhook)
-);
+app.use('/api/cashfree/webhook', express.raw({ type: 'application/json', limit: '2mb' }));
 
-app.use(express.json({ limit: '20mb' }));
+app.use(['/api/webhooks/billdesk-emandate', '/api/webhooks/razorpay-emandate'], express.text({ type: ['application/jose', 'text/plain'], limit: '2mb' }));
+app.use(express.json({ limit: '20mb', verify: (req, res, bytes) => { if (['/api/webhooks/cashfree-emandate', '/api/webhooks/razorpay-emandate'].includes(req.path)) req.rawBody = bytes; } }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 const tenantMiddleware = require('./middleware/tenantMiddleware');
@@ -36,6 +32,7 @@ const verifyTenantSession = require('./middleware/verifyTenantSession');
 app.use(tenantMiddleware);
 app.use(authOptional);
 app.use(asyncHandler(verifyTenantSession));
+app.post('/api/cashfree/webhook', webhookLimiter, asyncHandler(require('./utils/transactionalHandler')(cashfreeWebhookController.receiveCashfreeWebhook)));
 
 // Apply general API rate limiting to all /api routes (differentiates authenticated users vs anonymous)
 app.use('/api', apiLimiter);
@@ -44,6 +41,7 @@ const tallyRoutes = require('./routes/tallyRoutes');
 app.use('/api/tally', tallyRoutes);
 app.use(logger);
 app.use('/uploads', (req, res, next) => {
+  req.documentPath = '/uploads' + req.path;
   const normalizedPath = String(req.path || '').toLowerCase().replace(/\\/g, '/');
 
   // Block directory traversal attempts immediately
@@ -56,15 +54,20 @@ app.use('/uploads', (req, res, next) => {
 
   // Only public branding assets (logos) can be accessed without authentication
   const isPublicBrandAsset = normalizedPath.startsWith('/brand/') || normalizedPath === '/brand';
-  if (isPublicBrandAsset || req.user) return next();
+  if (isPublicBrandAsset || req.user || req.documentCapability) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    return next();
+  }
 
   return res.status(401).json({
     success: false,
     message: 'Authentication is required to access this document.',
   });
 });
+app.use('/uploads', asyncHandler(require('./middleware/documentAccess')));
 const staticUploadOptions = {
-  maxAge: '1d',
+  maxAge: 0,
+  setHeaders: res => res.setHeader('Cache-Control', 'private, no-store'),
   etag: true,
   lastModified: true,
 };

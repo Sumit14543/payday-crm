@@ -1,3 +1,4 @@
+const { tenantForAdmin, booleanInput } = require('../utils/adminScope');
 const crypto = require('crypto');
 const fs = require('fs');
 const { queryMaster, getTenantPool } = require('../config/db');
@@ -116,6 +117,7 @@ async function login(req, res) {
       if (rows && rows[0]) {
         admin = rows[0];
         admin.role = 'superadmin';
+        admin.isMasterSuperadmin = true;
       }
     } catch (e) {}
 
@@ -140,6 +142,7 @@ async function login(req, res) {
         if (matchMaster) {
           admin = masterRows[0];
           admin.role = 'superadmin';
+        admin.isMasterSuperadmin = true;
         }
       }
     } catch (e) {}
@@ -217,18 +220,7 @@ async function login(req, res) {
   const crmUserModel = require('../models/crmUserModel');
   const emailService = require('../services/emailService');
 
-  const host = String(req.headers?.host || req.headers?.origin || '').toLowerCase();
-  const isTestEnv = (
-    process.env.NODE_ENV !== 'production' ||
-    host.includes('testing') ||
-    host.includes('localhost') ||
-    host.includes('127.0.0.1') ||
-    String(process.env.PORT || '') === '8083' ||
-    String(process.env.PUBLIC_APP_URL || '').includes('testing')
-  );
-
-  const isTestAccount = isTestEnv && email.startsWith('test.');
-  const otpCode = isTestAccount ? '123456' : crypto.randomInt(100000, 1000000).toString();
+  const otpCode = crypto.randomInt(100000, 1000000).toString();
   const tempToken = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -237,7 +229,7 @@ async function login(req, res) {
     email: admin.email,
     name: admin.name,
     role: userRole,
-    isMasterSuperadmin: !isProductAdmin,
+    isMasterSuperadmin: Boolean(admin.isMasterSuperadmin),
   });
 
   try {
@@ -246,31 +238,23 @@ async function login(req, res) {
       otpCode,
       userName: admin.name,
     });
-    console.log(`[OTP] Admin Login OTP sent to ${admin.email}: ${otpCode}`);
   } catch (mailErr) {
-    if (isTestAccount) {
-      console.warn('[OTP Warning] Test account OTP email failed, but test OTP 123456 is active:', mailErr.message);
-    } else {
-      console.error(`[OTP Error] Failed to send OTP email to ${admin.email}:`, mailErr.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send security OTP email. Please try again.',
-      });
-    }
+    await crmUserModel.clearLoginOtp(admin.id, tempToken);
+    return res.status(503).json({ success: false, message: 'Failed to send security OTP email. Please try again.' });
   }
 
   return success(res, {
     requiresOtp: true,
+    tenant: req.tenant?.slug || 'waqtfinance',
     tempToken,
     email: admin.email,
-    message: isTestAccount
-      ? 'OTP code generated. For testing, enter the code sent to your email or test OTP 123456.'
-      : `An OTP security code has been sent to your email (${admin.email}). Please enter it to complete login.`,
+    message: `An OTP security code has been sent to your email (${admin.email}). Please enter it to complete login.`,
   }, 'Security OTP code sent to administrative email.');
 }
 
 async function getTenants(req, res) {
-  const tenants = await queryMaster('SELECT id, name, slug, db_name, status, created_at FROM tenants ORDER BY id DESC');
+  const scope = tenantForAdmin(req);
+  const tenants = await queryMaster('SELECT id, name, slug, db_name, status, created_at FROM tenants' + (scope === 'all' ? '' : ' WHERE slug = ?') + ' ORDER BY id DESC', scope === 'all' ? [] : [scope]);
   return success(res, tenants);
 }
 
@@ -361,7 +345,7 @@ const TENANT_STATS_CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL
 
 async function getTenantStats(req, res) {
   const forceRefresh = String(req.query?.refresh || '').trim().toLowerCase() === 'true';
-  if (!forceRefresh && tenantStatsCache.data && (Date.now() - tenantStatsCache.timestamp < TENANT_STATS_CACHE_TTL_MS)) {
+  if (req.user.isMasterSuperadmin && !forceRefresh && tenantStatsCache.data && (Date.now() - tenantStatsCache.timestamp < TENANT_STATS_CACHE_TTL_MS)) {
     return success(res, tenantStatsCache.data);
   }
 
@@ -369,6 +353,8 @@ async function getTenantStats(req, res) {
   const tenants = await queryMaster(
     'SELECT id, name, slug, db_name, status, created_at FROM tenants ORDER BY id DESC'
   );
+  const ownTenant = tenantForAdmin(req);
+  if (ownTenant !== 'all') tenants.splice(0, tenants.length, ...tenants.filter(tenant => tenant.slug === ownTenant));
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -549,7 +535,7 @@ async function getTenantStats(req, res) {
     })
   );
 
-  tenantStatsCache = {
+  if (req.user.isMasterSuperadmin) tenantStatsCache = {
     timestamp: Date.now(),
     data: results,
   };
@@ -558,7 +544,7 @@ async function getTenantStats(req, res) {
 }
 
 async function getTenantUsers(req, res) {
-  const tenantSlug = String(req.query.tenantSlug || 'all').trim();
+  const tenantSlug = tenantForAdmin(req, String(req.query.tenantSlug || 'all').trim());
 
   try {
     const tenantsList = await queryMaster(
@@ -606,7 +592,12 @@ async function getTenantUsers(req, res) {
 
 async function createTenantUser(req, res) {
   requireFields(req.body || {}, ['tenantSlug', 'email', 'name', 'role', 'password']);
-  const { tenantSlug, email, name, role, password } = req.body;
+  const tenantSlug = tenantForAdmin(req, req.body.tenantSlug);
+  const { email, name, role, password } = req.body;
+  // crm_users roles are company-scoped. Platform identities live separately
+  // in superadmins and cannot be provisioned through this endpoint.
+  if (!['telecaller', 'credit-manager', 'accountant', 'collection', 'product-admin', 'superadmin'].includes(role)) return res.status(403).json({ success: false, message: 'This role cannot be provisioned by your account.' });
+  if (String(password).length < 12) return res.status(400).json({ success: false, message: 'Use a password of at least 12 characters.' });
 
   const rows = await queryMaster(
     'SELECT id, name, slug, db_name, status FROM tenants WHERE slug = ? LIMIT 1',
@@ -648,7 +639,10 @@ async function createTenantUser(req, res) {
 async function updateTenantUser(req, res) {
   const userId = req.params.id;
   requireFields(req.body || {}, ['tenantSlug']);
-  const { tenantSlug, is_active, password } = req.body;
+  const tenantSlug = tenantForAdmin(req, req.body.tenantSlug);
+  const { is_active, password } = req.body;
+  const activeValue = is_active === undefined ? undefined : booleanInput(is_active);
+  if (password && String(password).length < 12) return res.status(400).json({ success: false, message: 'Use a password of at least 12 characters.' });
 
   const rows = await queryMaster(
     'SELECT id, name, slug, db_name, status FROM tenants WHERE slug = ? LIMIT 1',
@@ -670,6 +664,8 @@ async function updateTenantUser(req, res) {
         pool.query(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)))
       );
 
+    const targets = await query('SELECT id, role FROM crm_users WHERE id = ? LIMIT 1', [userId]);
+    if (!targets[0]) return res.status(404).json({ success: false, message: 'User not found.' });
     if (password) {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = crypto.pbkdf2Sync(String(password), salt, PASSWORD_ITERATIONS, 32, 'sha256').toString('hex');
@@ -682,10 +678,14 @@ async function updateTenantUser(req, res) {
     if (is_active !== undefined) {
       await query(
         'UPDATE crm_users SET is_active = ? WHERE id = ?',
-        [is_active ? 1 : 0, userId]
+        [activeValue ? 1 : 0, userId]
       );
     }
 
+    if (password || activeValue === false) {
+      try { await query('UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = ?', [userId]); }
+      catch (error) { if (error.code !== 'ER_NO_SUCH_TABLE') throw error; }
+    }
     return success(res, null, 'User updated successfully.');
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to update user in tenant database.' });
@@ -697,6 +697,8 @@ async function getSuperadminLogs(req, res) {
   const tenants = await queryMaster(
     'SELECT id, name, slug, db_name, status FROM tenants WHERE status = "active"'
   );
+  const ownTenant = tenantForAdmin(req);
+  if (ownTenant !== 'all') tenants.splice(0, tenants.length, ...tenants.filter(tenant => tenant.slug === ownTenant));
 
   const allLogs = [];
 
@@ -748,6 +750,8 @@ async function getSuperadminDetails(req, res) {
   const tenants = await queryMaster(
     'SELECT id, name, slug, db_name, status FROM tenants ORDER BY id DESC'
   );
+  const ownTenant = tenantForAdmin(req);
+  if (ownTenant !== 'all') tenants.splice(0, tenants.length, ...tenants.filter(tenant => tenant.slug === ownTenant));
 
   const results = [];
 
@@ -865,10 +869,7 @@ async function getSuperadminDetails(req, res) {
 }
 
 async function getTenantTelecallers(req, res) {
-  let tenantSlug = String(req.query.tenantSlug || 'all').trim();
-  if (req.tenant) {
-    tenantSlug = req.tenant.slug;
-  }
+  const tenantSlug = tenantForAdmin(req, String(req.query.tenantSlug || 'all').trim());
 
   try {
     const tenantsList = await queryMaster(
@@ -920,9 +921,7 @@ async function getTenantTelecallers(req, res) {
 async function toggleTelecallerDuty(req, res) {
   requireFields(req.body || {}, ['tenantSlug', 'userId', 'onDuty']);
   let { tenantSlug, userId, onDuty } = req.body;
-  if (req.tenant) {
-    tenantSlug = req.tenant.slug;
-  }
+  tenantSlug = tenantForAdmin(req, tenantSlug);
 
   const rows = await queryMaster(
     'SELECT id, name, slug, db_name, status FROM tenants WHERE slug = ? LIMIT 1',
@@ -946,7 +945,7 @@ async function toggleTelecallerDuty(req, res) {
         pool.query(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)))
       );
 
-    await query('UPDATE crm_users SET on_duty = ? WHERE id = ?', [onDuty ? 1 : 0, userId]);
+    await query('UPDATE crm_users SET on_duty = ? WHERE id = ?', [booleanInput(onDuty) ? 1 : 0, userId]);
     return success(res, null, 'Duty status updated successfully.');
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to update duty status.' });
@@ -963,9 +962,7 @@ async function updateTelecallerProducts(req, res) {
     throw error;
   }
   let { tenantSlug, userId, products } = body;
-  if (req.tenant) {
-    tenantSlug = req.tenant.slug;
-  }
+  tenantSlug = tenantForAdmin(req, tenantSlug);
 
   const rows = await queryMaster(
     'SELECT id, name, slug, db_name, status FROM tenants WHERE slug = ? LIMIT 1',

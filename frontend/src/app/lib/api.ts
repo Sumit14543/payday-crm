@@ -3,6 +3,13 @@ import { getCachedLocation } from "./location";
 const API_BASE_URL = resolveApiBaseUrl();
 const AUTH_STORAGE_KEY = "paydayops.auth.user";
 const AUTH_REQUIRED_EVENT = "paydayops:auth-required";
+const responseIdentities = new WeakMap<Response, string>();
+async function apiFetch(input: RequestInfo | URL, options?: RequestInit): Promise<Response> {
+  const identity = getAuthToken();
+  const result = await fetch(input, options);
+  responseIdentities.set(result, identity);
+  return result;
+}
 
 function resolveApiBaseUrl() {
   const configuredUrl = import.meta.env.VITE_API_URL || "/api";
@@ -54,6 +61,22 @@ export function resolveBackendUploadBaseUrl() {
   return backendBaseUrl ? `${backendBaseUrl}/uploads` : "/uploads";
 }
 
+export function getDocumentToken(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = localStorage.getItem('paydayops.auth.superadmin') || localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw).documentToken || '' : '';
+  } catch { return ''; }
+}
+function isTrustedDocumentUrl(value: string) {
+  if (!/^https?:\/\//i.test(value)) return value.startsWith('/') && !value.startsWith('//');
+  try {
+    const target = new URL(value);
+    const bases = [API_BASE_URL, resolveBackendUploadBaseUrl(), window.location.origin || ('https://' + window.location.host)];
+    return bases.some(base => target.origin === new URL(base, window.location.origin || ('https://' + window.location.host)).origin);
+  } catch { return false; }
+}
+
 export function resolveBackendUploadUrl(path: string, options?: { authenticated?: boolean }) {
   const rawPath = String(path || "").trim();
   if (!rawPath) return "";
@@ -74,10 +97,15 @@ export function resolveBackendUploadUrl(path: string, options?: { authenticated?
 
   if (url.includes("token=")) return url;
 
-  const token = getAuthToken();
+  if (!isTrustedDocumentUrl(url)) return url;
+  const token = getDocumentToken();
   if (!token) return url;
 
-  const tenantSlug = typeof window !== "undefined" ? window.location.hostname.split(".")[0] : "";
+  let tenantSlug = typeof window !== "undefined" ? window.location.hostname.split(".")[0] : "";
+  try {
+    const stored = JSON.parse(localStorage.getItem('paydayops.auth.superadmin') || localStorage.getItem(AUTH_STORAGE_KEY) || '{}');
+    if (stored.user?.tenant && stored.user.tenant !== 'platform') tenantSlug = stored.user.tenant;
+  } catch { /* Use the current company hostname until login completes. */ }
   const separator = url.includes("?") ? "&" : "?";
   const tenantParam = tenantSlug && !url.includes("tenant=") ? `&tenant=${encodeURIComponent(tenantSlug)}` : "";
   return `${url}${separator}token=${encodeURIComponent(token)}${tenantParam}`;
@@ -143,11 +171,14 @@ async function readWithDeadline<T>(read: (signal: AbortSignal) => Promise<T>, si
 }
 
 export async function apiGet<T>(path: string, signal?: AbortSignal, options?: ReadOptions): Promise<T> {
+  const identity = getAuthToken();
   const separator = path.includes("?") ? "&" : "?";
   const url = `${API_BASE_URL}${path}${separator}_t=${Date.now()}`;
   return readWithDeadline(async requestSignal => {
-    const response = await fetch(url, { headers: authHeaders(path), signal: requestSignal });
-    return readApiResponse<T>(response, path);
+    const response = await apiFetch(url, { headers: authHeaders(path), signal: requestSignal });
+    const result = await readApiResponse<T>(response, path);
+    if (getAuthToken() !== identity) throw new Error('Session changed while loading data. Please reload.');
+    return result;
   }, signal, options);
 }
 
@@ -218,7 +249,7 @@ export async function apiGetAll<T extends unknown[]>(path: string, signal?: Abor
 }
 
 export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: { ...authHeaders(path), "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -228,7 +259,7 @@ export async function apiPost<T>(path: string, body: unknown, signal?: AbortSign
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     method: "PATCH",
     headers: { ...authHeaders(path), "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -237,16 +268,33 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     method: "DELETE",
     headers: authHeaders(path),
   });
   return readApiResponse<T>(response, path);
 }
 
+async function safeDocumentBlob(blob: Blob): Promise<Blob> {
+  const head = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+  const ascii = (from: number, to: number) => String.fromCharCode(...head.slice(from, to));
+  let type = '';
+  if (ascii(0, 5) === '%PDF-') type = 'application/pdf';
+  else if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) type = 'image/jpeg';
+  else if (ascii(1, 4) === 'PNG' && head[0] === 0x89 && head[4] === 0x0d && head[5] === 0x0a) type = 'image/png';
+  else if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') type = 'image/webp';
+  else if (head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3) type = 'video/webm';
+  else if (ascii(4, 8) === 'ftyp') type = ascii(8, 12) === 'qt  ' ? 'video/quicktime' : ascii(8, 10) === '3g' ? 'video/3gpp' : 'video/mp4';
+  if (!type) throw new Error('This response is not a supported PDF, image or video document.');
+  return blob.slice(0, blob.size, type);
+}
+
 export async function apiGetBlob(path: string): Promise<Blob> {
+  const identity = getAuthToken();
   const requestUrl = resolveBlobUrl(path);
-  const response = await fetch(requestUrl, { headers: authHeaders(path) });
+  if (/^(?:javascript|file|vbscript):/i.test(requestUrl) || requestUrl.startsWith('//')) throw new Error('Unsupported document URL.');
+  const trusted = isTrustedDocumentUrl(requestUrl);
+  const response = await apiFetch(requestUrl, trusted ? { headers: authHeaders(path), referrerPolicy: 'no-referrer' } : { credentials: 'omit', referrerPolicy: 'no-referrer' });
   if (!response.ok) {
     handleAuthenticationFailure(response, requestUrl);
     const text = await response.text();
@@ -261,17 +309,22 @@ export async function apiGetBlob(path: string): Promise<Blob> {
     throw new Error(`Unable to download document (${response.status})`);
   }
 
-  return response.blob();
+  const blob = await safeDocumentBlob(await response.blob());
+  if (getAuthToken() !== identity) throw new Error('Session changed while loading document. Please reload.');
+  return blob;
 }
 
 // Imported website documents must not receive CRM credentials. Local/GCS-mirror
 // uploads continue through the authenticated download endpoint.
 export async function apiGetDocumentBlob(path: string): Promise<Blob> {
+  const identity = getAuthToken();
   const value = String(path || '').trim();
   if (extractUploadPath(value) || !/^(https?:\/\/|data:image\/)/i.test(value)) return apiGetBlob(value);
-  const response = await fetch(value, { credentials: "omit", referrerPolicy: "no-referrer" });
+  const response = await apiFetch(value, { credentials: "omit", referrerPolicy: "no-referrer" });
   if (!response.ok) throw new Error(`Unable to load document (${response.status})`);
-  return response.blob();
+  const blob = await safeDocumentBlob(await response.blob());
+  if (getAuthToken() !== identity) throw new Error('Session changed while loading document. Please reload.');
+  return blob;
 }
 
 function resolveBlobUrl(path: string) {
@@ -327,7 +380,7 @@ function extractUploadPath(value: string) {
 }
 
 export async function apiPostForm<T>(path: string, body: FormData): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: authHeaders(path),
     body,
@@ -377,14 +430,16 @@ function authHeaders(path?: string): HeadersInit {
 
   try {
     const isSuperadminPath = path && path.startsWith("/superadmin");
+    const loginStep = /^\/(?:auth|superadmin)\/(?:login|verify-otp|resend-otp)(?:$|\?)/.test(path || '');
+    const otpStep = /^\/(?:auth|superadmin)\/(?:verify-otp|resend-otp)(?:$|\?)/.test(path || '');
     const storageKey = isSuperadminPath ? "paydayops.auth.superadmin" : AUTH_STORAGE_KEY;
-    let rawUser = localStorage.getItem(storageKey);
+    let rawUser = loginStep ? null : localStorage.getItem(storageKey);
 
-    if (!rawUser && !isSuperadminPath) {
+    if (!loginStep && !rawUser && !isSuperadminPath) {
       rawUser = localStorage.getItem("paydayops.auth.superadmin");
     }
 
-    if (!rawUser && isSuperadminPath) {
+    if (!loginStep && !rawUser && isSuperadminPath) {
       const mainUser = localStorage.getItem(AUTH_STORAGE_KEY);
       if (mainUser) {
         try {
@@ -398,10 +453,12 @@ function authHeaders(path?: string): HeadersInit {
       }
     }
 
-    const tenantSlug = typeof window !== 'undefined' ? window.location.hostname.split('.')[0] : '';
-    const headers: Record<string, string> = {
-      "X-Tenant-Slug": tenantSlug,
-    };
+    const hostSlug = window.location.hostname.split('.')[0];
+    const centralHost = ['payday', 'payday-api', 'testing', 'testing-api', 'localhost', '127'].includes(hostSlug);
+    const explicitTenant = path ? new URL(path, window.location.origin).searchParams.get('tenant') : '';
+    const pendingTenant = otpStep ? sessionStorage.getItem('paydayops.auth.pendingTenant') : '';
+    const tenantSlug = explicitTenant || pendingTenant || (loginStep && centralHost ? '' : hostSlug);
+    const headers: Record<string, string> = tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {};
 
     const loc = getCachedLocation();
     if (loc?.formattedLocation) {
@@ -415,7 +472,8 @@ function authHeaders(path?: string): HeadersInit {
 
     if (!rawUser) return headers;
 
-    const stored = JSON.parse(rawUser) as { token?: string; user?: { email?: string; name?: string; role?: string } };
+    const stored = JSON.parse(rawUser) as { token?: string; user?: { email?: string; name?: string; role?: string; tenant?: string } };
+    if (!explicitTenant && stored.user?.tenant && stored.user.tenant !== 'platform') headers['X-Tenant-Slug'] = stored.user.tenant;
     if (stored.token) {
       return {
         ...headers,
@@ -448,6 +506,8 @@ function authHeaders(path?: string): HeadersInit {
 
 async function readApiResponse<T>(response: Response, path: string): Promise<T> {
   const text = await response.text();
+  const identity = responseIdentities.get(response);
+  if (identity !== undefined && identity !== getAuthToken()) throw new Error('Session changed while the request was running. Refresh the record before retrying.');
   let payload: any = null;
 
   if (text) {
@@ -495,7 +555,10 @@ async function readApiResponse<T>(response: Response, path: string): Promise<T> 
 }
 
 function handleAuthenticationFailure(response: Response, path: string) {
-  if (response.status !== 401 || path === "/auth/login") return;
+  if (response.status !== 401 || /^\/(?:auth|superadmin)\/(?:login|verify-otp|resend-otp)(?:$|\?)/.test(path)) return;
+  const identity = responseIdentities.get(response);
+  if (identity !== undefined && identity !== getAuthToken()) return;
+  if (/^https?:\/\//i.test(path) && !isTrustedDocumentUrl(path)) return;
 
   try {
     localStorage.removeItem(AUTH_STORAGE_KEY);

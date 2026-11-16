@@ -340,6 +340,9 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
     return null;
   }
 
+  if (!sourceSystem) return null;
+  clauses.push('source_system = ?');
+  params.push(sourceSystem);
   const rows = await query(`
     SELECT
       id,

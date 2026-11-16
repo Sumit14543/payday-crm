@@ -1246,8 +1246,10 @@ async function migrate() {
   await ensureColumn('loan_applications', 'account_number', 'account_number VARCHAR(50) DEFAULT NULL');
   await ensureColumn('loan_applications', 'ifsc_code', 'ifsc_code VARCHAR(20) DEFAULT NULL');
   await ensureLoanApplicationStatusSupportsAll();
-  await repairActiveApplicationFlags();
-  await repairClosedLoanApplicationStatuses();
+  if (process.env.RUN_LEGACY_REPAIRS === 'true') {
+    await repairActiveApplicationFlags();
+    await repairClosedLoanApplicationStatuses();
+  }
   await ensureColumn('loan_applications', 'reference1_name', 'reference1_name VARCHAR(255) DEFAULT NULL');
   await ensureColumn('loan_applications', 'reference1_mobile', 'reference1_mobile VARCHAR(15) DEFAULT NULL');
   await ensureColumn('loan_applications', 'reference1_relation', 'reference1_relation VARCHAR(100) DEFAULT NULL');
@@ -1261,8 +1263,10 @@ async function migrate() {
   await ensureIndex('loan_applications', 'idx_loan_applications_source_status', 'INDEX idx_loan_applications_source_status (source_status)');
   await ensureIndex('loan_applications', 'idx_loan_applications_active_lookup', 'INDEX idx_loan_applications_active_lookup (is_active_application, mobile, email, pan_number, aadhaar_number)');
   await ensureIndex('loan_applications', 'uq_loan_applications_source_lead', 'UNIQUE KEY uq_loan_applications_source_lead (source_system, source_lead_id)');
-  await repairUnworkedImportedLeadStatuses();
-  await repairUnworkedImportedLeadStatusEvents();
+  if (process.env.RUN_LEGACY_REPAIRS === 'true') {
+    await repairUnworkedImportedLeadStatuses();
+    await repairUnworkedImportedLeadStatusEvents();
+  }
   await ensureIndex('lead_status_events', 'idx_lead_status_events_lead_id', 'INDEX idx_lead_status_events_lead_id (lead_id)');
   await ensureIndex('lead_status_events', 'idx_lead_status_events_application_id', 'INDEX idx_lead_status_events_application_id (application_id)');
   await ensureIndex('lead_status_events', 'idx_lead_status_events_occurred_at', 'INDEX idx_lead_status_events_occurred_at (occurred_at)');
@@ -1455,35 +1459,8 @@ async function ensureCrmUserRoleSupportsProductAdmin() {
 }
 
 async function ensureSupportUsers() {
-  await ensureCrmUserRoleSupportsProductAdmin();
-
-  const users = [
-    { email: 'support@waqtmoney.in', name: 'CRM Superadmin', role: 'superadmin' },
-    { email: 'support@waqtmoney.in', name: 'Waqt Support Telecaller', role: 'telecaller' },
-    { email: 'support@waqtfinance.com', name: 'Waqt Support Telecaller', role: 'telecaller' },
-    { email: 'support@waqtmoney.in', name: 'Waqt Support Admin', role: 'product-admin' },
-    { email: 'support@waqtfinance.com', name: 'Waqt Support Admin', role: 'product-admin' },
-    { email: 'telecaller@waqtfinance.com', name: 'Waqt Telecaller', role: 'telecaller' },
-  ];
-
-  const salt = '45fc08e36726dcad454fdc48a13b0c61';
-  const superadminHash = '71936293b3d61affbd8668ac51bb7314b4106683752c5a48f853b1e9f68bf09b';
-  const prodAdminHash = '3255594cedfa74fee7a407d7932300894291f2b89f03910b73f1fb73554fea5d';
-  const telecallerHash = 'df0f082a63d1ba7ee1d265f71b286a2dd4a7dea87d7124a4fcf46f85cc83e621';
-
-  for (const u of users) {
-    try {
-      await query(
-        `INSERT INTO crm_users (email, name, role, password_salt, password_hash, is_active, on_duty)
-         VALUES (?, ?, ?, ?, ?, 1, 1)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), password_salt = VALUES(password_salt), password_hash = VALUES(password_hash), is_active = 1, on_duty = 1`,
-        [u.email, u.name, u.role, salt, u.role === 'superadmin' ? superadminHash : (u.role === 'product-admin' ? prodAdminHash : telecallerHash)]
-      );
-    } catch (e) {
-      console.error('[SCHEMA] ensureSupportUsers failed for:', u.email, u.role, e.message);
-      throw e;
-    }
-  }
+  // Operational identities are provisioned explicitly; never restore credentials
+  // or reactivate disabled staff during an application restart/migration.
 }
 
 async function ensureOfficialEmailColumns() {

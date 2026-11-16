@@ -9,9 +9,9 @@ const http = require('http');
 function getBilldeskConfig() {
   const clientId = process.env.BILLDESK_CLIENT_ID || 'BDMERCID';
   const mercId = process.env.BILLDESK_MERC_ID || 'BDMERCID';
-  const encryptionKey = process.env.BILLDESK_ENCRYPTION_KEY || '12345678901234567890123456789012'; // 32 bytes AES key
+  const encryptionKey = process.env.BILLDESK_ENCRYPTION_KEY || ''; // 32 bytes AES key
   const encryptionKeyId = process.env.BILLDESK_ENCRYPTION_KEY_ID || 'bd_enc_key_1';
-  const signingKey = process.env.BILLDESK_SIGNING_KEY || '12345678901234567890123456789012';
+  const signingKey = process.env.BILLDESK_SIGNING_KEY || '';
   const signingKeyId = process.env.BILLDESK_SIGNING_KEY_ID || 'bd_sign_key_1';
   const env = (process.env.BILLDESK_ENV || 'sandbox').toLowerCase();
   
@@ -127,9 +127,9 @@ function verifyJWS(jwsString, options = {}) {
   const signatureInput = `${headerB64}.${payloadB64}`;
   const expectedHmac = crypto.createHmac('sha256', String(signingKey)).update(signatureInput).digest('base64url');
 
-  if (signatureB64 !== expectedHmac) {
-    console.warn('[BillDesk JOSE Warning] JWS Signature verification mismatch.');
-    // In production, throw error if strict signature verification is required
+  const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf8'));
+  if (!signingKey || header.alg !== 'HS256' || signatureB64.length !== expectedHmac.length || !crypto.timingSafeEqual(Buffer.from(signatureB64), Buffer.from(expectedHmac))) {
+    throw new Error('Invalid BillDesk signature.');
   }
 
   const jweString = Buffer.from(payloadB64, 'base64url').toString('utf8');

@@ -1,6 +1,7 @@
 function errorHandler(err, req, res, next) {
-  console.error(err);
-  if (err.upstreamResponse) {
+  if (process.env.NODE_ENV === 'production') console.error({ error: err.name || 'Error', code: /^[A-Z0-9_]+$/.test(err.code || '') ? err.code : undefined, status: err.statusCode || 500 });
+  else console.error(err);
+  if (process.env.NODE_ENV !== 'production' && err.upstreamResponse) {
     console.error('Upstream response:', {
       status: err.upstreamStatus,
       message: err.publicMessage,

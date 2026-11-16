@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { authenticateUser, createToken } = require('../middleware/auth');
+const { authenticateUser, createToken, createDocumentTicket, verifyToken } = require('../middleware/auth');
 const auditModel = require('../models/auditModel');
 const crmUserModel = require('../models/crmUserModel');
 const emailService = require('../services/emailService');
@@ -88,20 +88,7 @@ async function login(req, res) {
     throw error;
   }
 
-  const origin = String(req.headers?.origin || req.headers?.referer || '').toLowerCase();
-  const host = String(req.headers?.host || '').toLowerCase();
-  const isTestEnv = (
-    process.env.NODE_ENV !== 'production' ||
-    origin.includes('testing') ||
-    origin.includes('localhost') ||
-    origin.includes('127.0.0.1') ||
-    host.includes('testing') ||
-    host.includes('localhost') ||
-    host.includes('127.0.0.1') ||
-    String(process.env.PORT || '') === '8083' ||
-    String(process.env.PUBLIC_APP_URL || '').includes('testing') ||
-    String(process.env.CORS_ORIGIN || '').includes('testing')
-  );
+  const isTestEnv = process.env.NODE_ENV !== 'production' && process.env.ENABLE_TEST_ACCOUNTS === 'true';
 
   const isAuthorizedCreditEmail =
     emailClean === 'shrutisingh@waqtmoney.in' ||
@@ -164,10 +151,7 @@ async function login(req, res) {
   const isOtpRequired = userRoleClean === 'telecaller' || userRoleClean === 'collection' || userRoleClean === 'credit-manager' || userRoleClean === 'accountant' || userRoleClean === 'superadmin' || userRoleClean === 'product-admin' || userEmailClean.includes('himanshu');
 
   if (isOtpRequired) {
-    const isTestAccount = isTestEnv && (
-      userEmailClean.startsWith('test.')
-    );
-    const otpCode = isTestAccount ? '123456' : crypto.randomInt(100000, 1000000).toString();
+    const otpCode = crypto.randomInt(100000, 1000000).toString();
     const tempToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
@@ -179,26 +163,18 @@ async function login(req, res) {
         otpCode,
         userName: user.name,
       });
-      console.log(`[OTP] Login OTP sent to ${user.email}: ${otpCode}`);
     } catch (mailErr) {
-      if (isTestAccount) {
-        console.warn(`[OTP Warning] Test account OTP email failed, but test OTP 123456 is active:`, mailErr.message);
-      } else {
-        console.error(`[OTP Error] Failed to send OTP email to ${user.email}:`, mailErr.message);
-        const error = new Error('Failed to send OTP email. Please try again.');
-        error.statusCode = 500;
-        error.publicMessage = error.message;
-        throw error;
-      }
+      await crmUserModel.clearLoginOtp(user.id, tempToken);
+      const error = new Error('Failed to send OTP email. Please try again.');
+      error.statusCode = 503; error.publicMessage = error.message; throw error;
     }
 
     return success(res, {
       requiresOtp: true,
+      tenant: req.tenant?.slug || 'waqtfinance',
       tempToken,
       email: user.email,
-      message: isTestAccount
-        ? `OTP code generated. For testing, enter the code sent to your email or test OTP 123456.`
-        : `An OTP security code has been sent to your email (${user.email}). Please enter it to complete login.`,
+      message: `An OTP security code has been sent to your email (${user.email}). Please enter it to complete login.`,
     }, 'OTP code sent to email.');
   }
 
@@ -211,8 +187,10 @@ async function login(req, res) {
     },
   });
 
+  const token = await createToken(user);
+  user.tenant = verifyToken(token).tenant;
   return success(res, {
-    token: createToken(user),
+    token, documentToken: createDocumentTicket(token),
     user,
   }, 'Logged in successfully.');
 }
@@ -221,72 +199,15 @@ async function verifyTelecallerOtp(req, res) {
   requireFields(req.body || {}, ['tempToken', 'otp']);
   const { tempToken, otp } = req.body;
 
-  const foundUser = await crmUserModel.findUserByOtpToken(tempToken);
-  if (!foundUser) {
-    const error = new Error('Invalid or expired OTP session. Please try logging in again.');
-    error.statusCode = 401;
-    error.publicMessage = error.message;
-    throw error;
-  }
-
-  const now = new Date();
-  if (!foundUser.login_otp_expires_at || new Date(foundUser.login_otp_expires_at) < now) {
-    await crmUserModel.clearLoginOtp(foundUser.id, tempToken);
-    const error = new Error('OTP has expired. Please request a new OTP.');
-    error.statusCode = 401;
-    error.publicMessage = error.message;
-    throw error;
-  }
-
-  const host = String(req.headers?.host || req.headers?.origin || req.headers?.referer || '').toLowerCase();
-  const isTestEnv = process.env.NODE_ENV !== 'production' ||
-                    host.includes('testing') ||
-                    host.includes('localhost') ||
-                    host.includes('127.0.0.1') ||
-                    String(process.env.PORT || '') === '8083' ||
-                    String(process.env.PUBLIC_APP_URL || '').includes('testing');
-
-  const isTestAccount = isTestEnv && (
-    String(foundUser.email || '').toLowerCase().startsWith('test.')
-  );
-
-  const userOtpClean = String(otp || '').trim();
-  const storedOtpClean = String(foundUser.login_otp_code || '').trim();
-  const isMatchStored = userOtpClean.length === storedOtpClean.length &&
-                        crypto.timingSafeEqual(Buffer.from(userOtpClean), Buffer.from(storedOtpClean));
-  const isValidOtp = isMatchStored || (isTestAccount && userOtpClean === '123456');
-
-  const otpAttemptKey = `otp:${tempToken}`;
-  if (!isValidOtp) {
-    const currentOtpAttempts = (otpAttempts.get(otpAttemptKey) || 0) + 1;
-    otpAttempts.set(otpAttemptKey, currentOtpAttempts);
-
-    if (currentOtpAttempts >= 3) {
-      otpAttempts.delete(otpAttemptKey);
-      await crmUserModel.clearLoginOtp(foundUser.id, tempToken);
-      const error = new Error('Too many invalid OTP attempts. For your security, this OTP session has been terminated. Please log in again.');
-      error.statusCode = 429;
-      error.publicMessage = error.message;
-      throw error;
-    }
-
-    const remaining = 3 - currentOtpAttempts;
-    const error = new Error(`Invalid OTP code. Please check your email. (${remaining} attempt(s) remaining)`);
-    error.statusCode = 400;
-    error.publicMessage = error.message;
-    throw error;
-  }
-
-  // Clear OTP attempt counter and credentials
-  otpAttempts.delete(otpAttemptKey);
-  await crmUserModel.clearLoginOtp(foundUser.id, tempToken);
-  await crmUserModel.markLogin(foundUser.id);
+  const foundUser = await crmUserModel.consumeLoginOtp(tempToken, otp);
+  await crmUserModel.markLogin(foundUser.id, foundUser.isMasterSuperadmin);
 
   const user = {
     id: foundUser.id,
     email: foundUser.email,
     name: foundUser.name,
     role: foundUser.role,
+    isMasterSuperadmin: Boolean(foundUser.isMasterSuperadmin),
   };
 
   req.user = user;
@@ -295,8 +216,10 @@ async function verifyTelecallerOtp(req, res) {
     entityType: 'auth',
   });
 
+  const token = await createToken({ ...user, credentialVersion: foundUser.credentialVersion });
+  user.tenant = verifyToken(token).tenant;
   return success(res, {
-    token: createToken(user),
+    token, documentToken: createDocumentTicket(token),
     user,
   }, 'OTP verified and logged in successfully.');
 }
@@ -324,7 +247,6 @@ async function resendTelecallerOtp(req, res) {
       otpCode,
       userName: foundUser.name,
     });
-    console.log(`[OTP Resend] Telecaller OTP re-sent to ${foundUser.email}: ${otpCode}`);
   } catch (mailErr) {
     console.error(`[OTP Resend Error] Failed to resend OTP email:`, mailErr.message);
     const error = new Error('Failed to resend OTP email. Please try again.');
@@ -356,7 +278,13 @@ async function getBranding(req, res) {
   });
 }
 
+async function logout(req, res) {
+  await require('../services/authSessions').revokeSession(req.user);
+  return success(res, null, 'Logged out successfully.');
+}
+
 module.exports = {
+  logout,
   login,
   verifyTelecallerOtp,
   resendTelecallerOtp,

@@ -4,6 +4,7 @@ const https = require('https');
 const { query } = require('../config/db');
 const { ensureRazorpayEmandateColumns } = require('../database/schema');
 const leadModel = require('../models/leadModel');
+const { checkoutUrl, assertCheckoutAccess, assertStaffLead } = require('../utils/customerAction');
 const auditModel = require('../models/auditModel');
 const emailService = require('../services/emailService');
 const authkeyWhatsAppService = require('../services/authkeyWhatsAppService');
@@ -137,6 +138,7 @@ async function createEmandateLink(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  if (lead) assertStaffLead(req, lead);
   if (!lead) {
     return res.status(404).json({
       success: false,
@@ -191,7 +193,7 @@ async function createEmandateLink(req, res) {
     let subscriptionId = `cf_sub_${Date.now()}`;
     const requestHost = `${req.protocol}://${req.get('host')}`;
     const baseUrl = process.env.PUBLIC_APP_URL || requestHost || 'https://payday.waqtmoney.com';
-    let authUrl = `${baseUrl}/emandate/pay/${encodeURIComponent(lead.id)}?provider=cashfree`;
+    let authUrl = checkoutUrl(lead, 'cashfree');
 
     // Cashfree Subscriptions API for true eNACH / AutoPay
     try {
@@ -241,7 +243,7 @@ async function createEmandateLink(req, res) {
           } : {}),
         },
         subscription_meta: {
-          return_url: `${baseUrl}/emandate/pay/${encodeURIComponent(lead.id)}?provider=cashfree`,
+          return_url: checkoutUrl(lead, 'cashfree'),
           notification_channel: ['EMAIL', 'SMS'],
         },
       };
@@ -449,6 +451,9 @@ async function getPublicCashfreeDetails(req, res) {
   }
 
   const lead = await resolveLead(targetId);
+  assertCheckoutAccess(req, lead?.id || targetId, 'cashfree');
+  if (lead?.emandateProvider && lead.emandateProvider !== 'cashfree') return res.status(409).json({ success: false, message: 'Please use the current registration link provided by your lending team.' });
+  if (lead) assertStaffLead(req, lead);
   if (!lead) {
     return res.status(404).json({ success: false, message: 'Application record not found' });
   }
@@ -546,7 +551,7 @@ async function getPublicCashfreeDetails(req, res) {
           } : {}),
         },
         subscription_meta: {
-          return_url: `${baseUrl}/emandate/pay/${encodeURIComponent(lead.id)}?provider=cashfree`,
+          return_url: checkoutUrl(lead, 'cashfree'),
           notification_channel: ['EMAIL', 'SMS'],
         },
       };
@@ -556,7 +561,6 @@ async function getPublicCashfreeDetails(req, res) {
         return null;
       });
 
-      console.log(`[getPublicCashfreeDetails] POST /pg/subscriptions response for ${lead.id}:`, JSON.stringify(cfRes));
 
       if (cfRes && (cfRes.subscription_session_id || cfRes.subscription_id)) {
         subscriptionSessionId = cfRes.subscription_session_id || '';
@@ -672,6 +676,8 @@ async function handleCashfreeWebhook(req, res) {
     const timestamp = String(req.headers['x-webhook-timestamp'] || req.headers['x-cashfree-timestamp'] || '').trim();
     const { webhookSecret } = getCashfreeConfig();
 
+    if (!webhookSecret || !signature || !timestamp || !Buffer.isBuffer(req.rawBody)) return res.status(401).json({ status: 'ERROR', message: 'A signed Cashfree callback is required.' });
+    if (!/^\d{10,13}$/.test(timestamp)) return res.status(400).json({ status: 'ERROR', message: 'Invalid callback timestamp.' });
     if (webhookSecret && signature) {
       if (timestamp) {
         const numericTimestamp = Number(timestamp);
@@ -684,7 +690,7 @@ async function handleCashfreeWebhook(req, res) {
         }
       }
 
-      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+      const rawBody = req.rawBody.toString('utf8');
       const expectedSignature = crypto
         .createHmac('sha256', webhookSecret)
         .update(timestamp ? timestamp + rawBody : rawBody)
@@ -695,7 +701,7 @@ async function handleCashfreeWebhook(req, res) {
         .update(rawBody)
         .digest('hex');
 
-      const isValid = signature === expectedSignature || signature === expectedHex;
+      const isValid = signature.length === expectedSignature.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
       if (!isValid) {
         console.warn('[Cashfree Webhook Security] Rejected: Invalid HMAC Signature');
         return res.status(401).json({ status: 'ERROR', message: 'Invalid Cashfree Webhook Signature' });
@@ -733,14 +739,16 @@ async function handleCashfreeWebhook(req, res) {
 
     if (subId) {
       const cfSubDetails = await cashfreeRequest('GET', `/pg/subscriptions/${encodeURIComponent(subId)}`).catch(() => null);
-      const activeDetails = cfSubDetails || subOrOrder;
+      if (!cfSubDetails) return res.status(503).json({ status: 'ERROR', message: 'Provider verification unavailable. Retry later.' });
+      if (cfSubDetails.subscription_id !== subId) return res.status(422).json({ status: 'ERROR', message: 'Provider reference mismatch.' });
+      const activeDetails = cfSubDetails;
 
       const rows = await query(`
         SELECT application_id AS id, id AS rawId, mobile, phone, account_number AS accountNumber, bank_name AS bankName, emandate_status AS emandateStatus
         FROM loan_applications
-        WHERE emandate_id = ? OR application_id = ? OR CAST(id AS CHAR) = ? OR emandate_id LIKE ?
+        WHERE emandate_provider = 'cashfree' AND emandate_id = ?
         LIMIT 1
-      `, [subId, subId, subId, `%${subId}%`]);
+      `, [subId]);
 
       if (rows && rows.length > 0) {
         const lead = rows[0];
@@ -789,7 +797,7 @@ async function handleCashfreeWebhook(req, res) {
     return res.status(200).json({ status: 'OK' });
   } catch (err) {
     console.error('[Cashfree Webhook Error]:', err.message);
-    return res.status(200).json({ status: 'ERROR', message: err.message });
+    return res.status(503).json({ status: 'ERROR', message: 'Mandate verification could not be completed. Retry later.' });
   }
 }
 
@@ -797,6 +805,7 @@ async function checkCashfreeEmandateStatus(req, res) {
   try {
     const targetId = req.params.id || req.query.id;
     const lead = await resolveLead(targetId);
+  if (lead) assertStaffLead(req, lead);
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Application record not found' });
     }

@@ -49,6 +49,7 @@ export function SuperadminDashboard() {
       );
 
       if (res.requiresOtp) {
+        if (res.tenant) sessionStorage.setItem('paydayops.auth.pendingTenant', res.tenant);
         setTempToken(res.tempToken);
         setOtpMessage(res.message || "An OTP security code has been sent to your email.");
         setStep("otp");
@@ -58,6 +59,7 @@ export function SuperadminDashboard() {
       // Save in both superadmin and main auth storage
       localStorage.setItem(SUPERADMIN_STORAGE_KEY, JSON.stringify(res));
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(res));
+      window.dispatchEvent(new Event('paydayops:session-changed'));
       navigate("/", { replace: true });
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Invalid credentials.");
@@ -83,6 +85,7 @@ export function SuperadminDashboard() {
 
       localStorage.setItem(SUPERADMIN_STORAGE_KEY, JSON.stringify(res));
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(res));
+      window.dispatchEvent(new Event('paydayops:session-changed'));
       navigate("/", { replace: true });
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Failed to verify OTP.");

@@ -49,6 +49,9 @@ async function bootstrap() {
     }
     
     // 5. Run database due-date healer for existing affected loans
+    // Historical ledger repairs are explicit maintenance, never a side effect
+    // of restarting a security release.
+    if (process.env.RUN_LEGACY_REPAIRS === 'true') {
     try {
       const { getTenantPool } = require('../config/db');
       for (const tenant of tenants) {
@@ -357,190 +360,13 @@ async function bootstrap() {
           console.error(`[BOOTSTRAP] Tenant ${tenant.slug} loan repayment self-heal error:`, healErr);
         }
 
-        // Seed Himanshu Collection Agent account if missing or update credentials
-        try {
-          const himanshuEmail = 'himanshukumar@waqtfinance.com';
-          const himanshuName = 'Himanshu';
-          const himanshuRole = 'collection';
-          const salt = '45fc08e36726dcad454fdc48a13b0c61';
-          const hash = '16247bf3d93a6a8ef62144f46387eb3c999690637e65bc4c739c4708e9377795';
+        // Existing staff credentials, disabled states and product assignments
+        // are managed by authorized administrators, not startup seed code.
 
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1`,
-            [himanshuName, himanshuEmail, himanshuRole, salt, hash]
-          );
-          console.log(`[SEED] Ensured Himanshu Collection account in database (${himanshuEmail})`);
-        } catch (hErr) {
-          console.error('⚠️ Failed to seed Himanshu collection user:', hErr.message);
-        }
-
-        // Seed Kanhiya Kumar Collection Agent account if missing or update credentials
-        try {
-          const kanhiyaEmail = 'kanhiayakumar@waqtfinance.com';
-          const kanhiyaName = 'Kanhiya Kumar';
-          const kanhiyaRole = 'collection';
-          const kanhiyaSalt = 'cf0af1027e1f5b00788a041c6f8f62f7';
-          const kanhiyaHash = '50c74212a6ab4586fdcf9dd63ccc48522da5489af740844bc1d48136db8f200d';
-
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1`,
-            [kanhiyaName, kanhiyaEmail, kanhiyaRole, kanhiyaSalt, kanhiyaHash]
-          );
-          console.log(`[SEED] Ensured Kanhiya Kumar Collection account in database (${kanhiyaEmail})`);
-        } catch (kErr) {
-          console.error('⚠️ Failed to seed Kanhiya collection user:', kErr.message);
-        }
-
-        // Seed Durgesh Dhama Collection Agent account if missing or update credentials
-        try {
-          const dhamaEmail = 'durgeshdhama@waqtfinance.com';
-          const dhamaName = 'Durgesh Dhama';
-          const dhamaRole = 'collection';
-          const dhamaSalt = '58482613b1d10b9e3f61aa9d949ebd10';
-          const dhamaHash = 'b61a5861778021a9a36c14c100fb80c6db1e42428bbbed33d3958d792346eab9';
-
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1`,
-            [dhamaName, dhamaEmail, dhamaRole, dhamaSalt, dhamaHash]
-          );
-          console.log(`[SEED] Ensured Durgesh Dhama Collection account in database (${dhamaEmail})`);
-        } catch (dErr) {
-          console.error('⚠️ Failed to seed Durgesh Dhama collection user:', dErr.message);
-        }
-
-        // Seed Bharti Gautam Telecaller account if missing or update credentials
-        try {
-          const bhartiEmail = 'bhartigautam@waqtfinance.com';
-          const bhartiName = 'Bharti Gautam';
-          const bhartiRole = 'telecaller';
-          const bhartiSalt = 'df901231e79d0392c3d5dd45205f147b';
-          const bhartiHash = '15655ec1e4a68aa15126f2399839791f3d2816f2f1e0d8a2a27f0ec4957bb6ae';
-
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, on_duty, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1,
-               on_duty = 1`,
-            [bhartiName, bhartiEmail, bhartiRole, bhartiSalt, bhartiHash]
-          );
-
-          const bhartiRows = await runQuery(`SELECT id FROM crm_users WHERE email = ? LIMIT 1`, [bhartiEmail]);
-          if (bhartiRows && bhartiRows[0]) {
-            await runQuery(
-              `INSERT IGNORE INTO user_product_mappings (user_id, product_slug) VALUES (?, ?)`,
-              [bhartiRows[0].id, tenant.slug || 'waqtfinance']
-            );
-          }
-          console.log(`[SEED] Ensured Bharti Gautam Telecaller account in database (${bhartiEmail})`);
-        } catch (bErr) {
-          console.error('⚠️ Failed to seed Bharti Gautam telecaller user:', bErr.message);
-        }
-
-        // Ensure ONLY Shruti Singh is Credit Manager and purge any legacy credit accounts
-        try {
-          const shrutiEmail = 'shrutisingh@waqtmoney.in';
-          const shrutiName = 'Shruti Singh';
-          const shrutiRole = 'credit-manager';
-          const shrutiSalt = '45fc08e36726dcad454fdc48a13b0c61';
-          const shrutiHash = '2b4ddded9506d7c47afa921cfc5696cf54ec1cdd3932851da1a042f0dcd0c537';
-
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               role = VALUES(role),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1`,
-            [shrutiName, shrutiEmail, shrutiRole, shrutiSalt, shrutiHash]
-          );
-
-          await runQuery(`
-            DELETE FROM crm_users 
-            WHERE (role = 'credit-manager' AND email NOT IN ('shrutisingh@waqtmoney.in', 'test.credit@waqtmoney.in'))
-               OR email IN ('credit@waqtfinance.com', 'credit@geetpay.com', 'credit@loaninwallet.com', 'shruti@waqtmoney.in')
-          `);
-
-          // Seed test.credit@waqtmoney.in for testing environment
-          const testCreditEmail = 'test.credit@waqtmoney.in';
-          const testCreditName = 'Test Credit Manager';
-          const testCreditRole = 'credit-manager';
-          const testCreditSalt = '45fc08e36726dcad454fdc48a13b0c61';
-          const testCreditHash = 'fd48197a6617817987d647982073a67e087f35747808b9bb23b5fb4ee3253a68';
-
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               role = VALUES(role),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1`,
-            [testCreditName, testCreditEmail, testCreditRole, testCreditSalt, testCreditHash]
-          );
-          console.log(`[SEED] Ensured Shruti Singh and Test Credit Manager accounts in tenant ${tenant.slug}`);
-        } catch (sErr) {
-          console.error('⚠️ Failed to ensure Shruti credit user in bootstrap:', sErr.message);
-        }
-
-        // Seed Compliance Accounts user if missing or update credentials
-        try {
-          const complianceEmail = 'compliance@waqtfinance.com';
-          const complianceName = 'Compliance';
-          const complianceRole = 'accountant';
-          const complianceSalt = '4116952008a98847b49b39a113a2e5dc';
-          const complianceHash = '43cdf720249121cb8d3261082499fa2a1139edd22ec54549805d94596bcbedbe';
-
-          await runQuery(
-            `INSERT INTO crm_users (name, email, role, password_salt, password_hash, is_active, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               role = VALUES(role),
-               password_salt = VALUES(password_salt),
-               password_hash = VALUES(password_hash),
-               is_active = 1`,
-            [complianceName, complianceEmail, complianceRole, complianceSalt, complianceHash]
-          );
-
-          const compRows = await runQuery(`SELECT id FROM crm_users WHERE email = ? AND role = ? LIMIT 1`, [complianceEmail, complianceRole]);
-          if (compRows && compRows[0]) {
-            await runQuery(
-              `INSERT IGNORE INTO user_product_mappings (user_id, product_slug) VALUES (?, ?)`,
-              [compRows[0].id, tenant.slug || 'waqtfinance']
-            );
-          }
-          console.log(`[SEED] Ensured Compliance Accounts account in database (${complianceEmail})`);
-        } catch (cErr) {
-          console.error('⚠️ Failed to seed Compliance accountant user:', cErr.message);
-        }
       }
     } catch (healError) {
       console.error('⚠️ Failed to run database startup due-date healer:', healError);
+    }
     }
 
     console.log('[BOOTSTRAP] Database bootstrap completed successfully.');

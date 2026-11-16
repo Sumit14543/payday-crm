@@ -1,3 +1,4 @@
+import { safeCsvText } from "../lib/outputSafety";
 import { PartialDataNotice } from "../components/PartialDataNotice";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
@@ -403,7 +404,7 @@ const exportCsv = (rows: Array<Record<string, string | number>>, filename = "crm
   const body = rows.length ? rows : [{ message: "No data" }];
   const csv = [
     headers.join(","),
-    ...body.map((row) => headers.map((header) => `"${String(row[header] ?? "").replace(/"/g, '""')}"`).join(",")),
+    ...body.map((row) => headers.map((header) => `"${safeCsvText(row[header])}"`).join(",")),
   ].join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -584,7 +585,7 @@ const exportCibilCsv = (collectionsData: CollectionReportRow[], filename = "cibi
   });
 
   const csvContent = "\uFEFF" + [headerSegmentRow, headerColumnRow, ...dataRows]
-    .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .map((row) => row.map((cell) => `"${safeCsvText(cell)}"`).join(","))
     .join("\n");
 
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });

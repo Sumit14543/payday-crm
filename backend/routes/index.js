@@ -30,6 +30,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const {
   publicLeadLimiter,
   publicUploadLimiter,
+  customerCheckoutLimiter,
   trackingLimiter,
   webhookLimiter,
 } = require('../middleware/rateLimiter');
@@ -44,7 +45,9 @@ router.use(databaseReady);
 const cashfreeEmandateController = require('../controllers/cashfreeEmandateController');
 const cashfreeEmandateRoutes = require('./cashfreeEmandateRoutes');
 
-router.use('/public', publicLeadLimiter, publicLeadRoutes);
+router.use('/public', publicLeadRoutes);
+router.post('/public/emandate-access/request', customerCheckoutLimiter, asyncHandler(require('../controllers/customerCheckoutController').requestAccess));
+router.post('/public/emandate-access/verify', customerCheckoutLimiter, asyncHandler(require('../controllers/customerCheckoutController').verifyAccess));
 router.get('/public/emandate-details/:id', asyncHandler(billdeskEmandateController.getPublicEmandateDetails));
 router.get('/public/cashfree-emandate-details/:id', asyncHandler(cashfreeEmandateController.getPublicCashfreeDetails));
 router.post('/public/emandate-verify', asyncHandler(billdeskEmandateController.verifyPublicEmandate));
@@ -73,12 +76,12 @@ router.use('/account-aggregator', accountAggregatorRoutes);
 router.use('/credit/cashfree-emandate', requireAuth, cashfreeEmandateRoutes);
 router.use('/leads/cashfree-emandate', requireAuth, cashfreeEmandateRoutes);
 router.post('/webhooks/billdesk-emandate', webhookLimiter, asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
-router.post('/webhooks/razorpay-emandate', webhookLimiter, asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
+router.post('/webhooks/razorpay-emandate', webhookLimiter, asyncHandler(require('../controllers/razorpayEmandateController').handleWebhook));
 router.post('/webhooks/cashfree-emandate', webhookLimiter, asyncHandler(cashfreeEmandateController.handleCashfreeWebhook));
 router.use('/collections', requireAuth, collectionRoutes);
 router.use('/customers', requireRole(['credit-manager']), customerRoutes);
 router.use('/loans', requireAuth, loanRoutes);
-router.get('/files/download', requireAuth, asyncHandler(fileController.downloadUpload));
+router.get('/files/download', requireAuth, asyncHandler(require('../middleware/documentAccess')), asyncHandler(fileController.downloadUpload));
 router.get('/document-upload/:token', asyncHandler(documentRequestController.getPublicDocumentRequest));
 router.post(
   '/document-upload/:token',

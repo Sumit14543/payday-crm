@@ -17,7 +17,7 @@ async function getAccessToken(forceRefresh = false) {
   const apiPassword = config.crif.apiPassword || '';
 
   if (!apiUser || !apiPassword) {
-    console.log('[CRIF AA] API credentials missing, using sandbox mock token.');
+    if (process.env.NODE_ENV === 'production') { const error = new Error('Account Aggregator credentials are not configured.'); error.statusCode = 503; throw error; }
     return 'mock_crif_uat_token_12345';
   }
 
@@ -40,7 +40,7 @@ async function getAccessToken(forceRefresh = false) {
     }
 
     const data = await res.json();
-    console.log('[CRIF AA Token Response Raw]', JSON.stringify(data));
+
     const token = typeof data === 'string'
       ? data
       : (data.accessToken ||

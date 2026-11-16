@@ -1,3 +1,7 @@
+function safeCsvText(value) {
+  const text = String(value ?? '');
+  return (/^[\s]*[=+@-]/.test(text) ? "'" + text : text).replace(/"/g, '""');
+}
 const performanceModel = require('../models/performanceModel');
 const { success } = require('../utils/http');
 
@@ -30,11 +34,11 @@ async function exportPerformanceReport(req, res) {
   let csv = 'SECTION,ROLE,NAME,TOTAL_CALLS/REVIEWED,INTERESTED/APPROVED,TOTAL_ASSIGNED_LEADS,CONVERTED_OR_PROCEEDED_LEADS,CONVERSION/APPROVAL_RATE,AVG_SLA_MINS\n';
 
   telecallersData.telecallers.forEach((t) => {
-    csv += `Telecallers,Telecaller,"${t.actor}",${t.totalCalls},${t.interestedCalls},${t.totalAssignedLeads},${t.convertedLeads},${t.conversionRate}%,\n`;
+    csv += `Telecallers,Telecaller,"${safeCsvText(t.actor)}",${t.totalCalls},${t.interestedCalls},${t.totalAssignedLeads},${t.convertedLeads},${t.conversionRate}%,\n`;
   });
 
   creditData.creditManagers.forEach((c) => {
-    csv += `Credit Team,Credit Manager,"${c.managerName}",${c.totalReviewed},${c.approvedCount},${c.totalReviewed},${c.approvedCount},${c.approvalRate}%,${c.avgProcessingMins}\n`;
+    csv += `Credit Team,Credit Manager,"${safeCsvText(c.managerName)}",${c.totalReviewed},${c.approvedCount},${c.totalReviewed},${c.approvedCount},${c.approvalRate}%,${c.avgProcessingMins}\n`;
   });
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');

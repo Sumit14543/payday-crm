@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Lock, Building2, CreditCard, ExternalLink } from "lucide-react";
 
@@ -33,6 +33,14 @@ type EmandatePublicData = {
 
 export const PublicEmandateCheckout: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const checkoutQuery = new URLSearchParams(window.location.search);
+  const [accessToken, setAccessToken] = useState(checkoutQuery.get('access') || '');
+  const accessQuery = new URLSearchParams({ access: accessToken, tenant: checkoutQuery.get('tenant') || '' }).toString();
+  const [legacyPhone, setLegacyPhone] = useState('');
+  const [challengeToken, setChallengeToken] = useState('');
+  const [legacyOtp, setLegacyOtp] = useState('');
+  const [legacyNotice, setLegacyNotice] = useState('');
+  const [legacyError, setLegacyError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<EmandatePublicData | null>(null);
@@ -40,6 +48,7 @@ export const PublicEmandateCheckout: React.FC = () => {
   const [isCompleted, setIsCompleted] = useState(false);
   const [paymentId, setPaymentId] = useState<string>("");
   const [methodNotice, setMethodNotice] = useState<string | null>(null);
+  const detailsGeneration = useRef(0);
 
   useEffect(() => {
     // Load Cashfree SDK Script
@@ -48,14 +57,21 @@ export const PublicEmandateCheckout: React.FC = () => {
     cfScript.async = true;
     document.body.appendChild(cfScript);
 
-    fetchEmandateDetails();
-
     return () => {
       if (cfScript && document.body.contains(cfScript)) document.body.removeChild(cfScript);
     };
-  }, [id]);
+  }, []);
 
-  const fetchEmandateDetails = async () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    setData(null); setError(null); setMethodNotice(null); setIsCompleted(false);
+    void fetchEmandateDetails(controller.signal);
+    return () => { controller.abort(); detailsGeneration.current++; };
+  }, [id, accessToken]);
+
+  const fetchEmandateDetails = async (signal?: AbortSignal) => {
+    const generation = ++detailsGeneration.current;
+    if (!accessToken) { setLoading(false); return; }
     if (!id) {
       setError("Invalid application ID");
       setLoading(false);
@@ -63,9 +79,15 @@ export const PublicEmandateCheckout: React.FC = () => {
     }
 
     try {
-      const endpoint = `/api/public/cashfree-emandate-details/${encodeURIComponent(id)}`;
-      const response = await fetch(endpoint);
+      const endpoint = `/api/public/cashfree-emandate-details/${encodeURIComponent(id)}?${accessQuery}`;
+      setLoading(true);
+      const response = await fetch(endpoint, { signal, referrerPolicy: 'no-referrer' });
       const result: EmandatePublicData = await response.json();
+      if (signal?.aborted || generation !== detailsGeneration.current) return;
+      if (response.status === 401) {
+        const url = new URL(window.location.href); url.searchParams.delete('access'); window.history.replaceState(null, '', url);
+        setChallengeToken(''); setLegacyOtp(''); setLegacyNotice(''); setAccessToken(''); return;
+      }
 
       if (!response.ok || !result.success) {
         setError(result.message || "Failed to load eMandate registration details");
@@ -78,9 +100,9 @@ export const PublicEmandateCheckout: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setError("Unable to connect to server. Please check your internet connection.");
+      if (!signal?.aborted && generation === detailsGeneration.current) setError("Unable to connect to server. Please check your internet connection.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted && generation === detailsGeneration.current) setLoading(false);
     }
   };
 
@@ -101,15 +123,19 @@ export const PublicEmandateCheckout: React.FC = () => {
     setMethodNotice(null);
 
     let activeSessionId = data?.subscriptionSessionId || data?.paymentSessionId;
+    let subscriptionSession = Boolean(data?.subscriptionSessionId);
+    let gatewayEnv = data?.env;
     let targetUrl = data?.authUrl || data?.emandateAuthUrl;
 
     if ((!activeSessionId || !targetUrl) && id) {
       try {
-        const res = await fetch(`/api/public/cashfree-emandate-details/${encodeURIComponent(id)}`);
+        const res = await fetch(`/api/public/cashfree-emandate-details/${encodeURIComponent(id)}?${accessQuery}`, { referrerPolicy: 'no-referrer' });
         const result: EmandatePublicData = await res.json();
         if (result && result.success) {
           setData(result);
           activeSessionId = result.subscriptionSessionId || result.paymentSessionId || activeSessionId;
+          subscriptionSession = Boolean(result.subscriptionSessionId) || (!result.paymentSessionId && subscriptionSession);
+          gatewayEnv = result.env || gatewayEnv;
           targetUrl = result.authUrl || result.emandateAuthUrl || targetUrl;
         }
       } catch (fetchErr) {
@@ -118,7 +144,9 @@ export const PublicEmandateCheckout: React.FC = () => {
     }
 
     // 1. Direct redirect if explicit Cashfree external URL is available
-    if (targetUrl && (targetUrl.includes('cashfree.com') || targetUrl.includes('http')) && !targetUrl.includes('/emandate/pay/')) {
+    let providerRedirect = false;
+    try { const url = new URL(targetUrl || ''); providerRedirect = url.protocol === 'https:' && (url.hostname === 'cashfree.com' || url.hostname.endsWith('.cashfree.com')); } catch { /* Internal links continue through the SDK. */ }
+    if (targetUrl && providerRedirect && !targetUrl.includes('/emandate/pay/')) {
       window.location.href = targetUrl;
       return;
     }
@@ -127,10 +155,10 @@ export const PublicEmandateCheckout: React.FC = () => {
     const isSDKReady = await ensureCashfreeSDKLoaded();
     if (activeSessionId && isSDKReady && window.Cashfree) {
       try {
-        const cashfreeMode = (data?.env || "PROD") === "PROD" ? "production" : "sandbox";
+        const cashfreeMode = (gatewayEnv || "PROD") === "PROD" ? "production" : "sandbox";
         const cashfree = window.Cashfree({ mode: cashfreeMode });
 
-        if (activeSessionId.startsWith("sub_session_") || activeSessionId.includes("sub_")) {
+        if (subscriptionSession) {
           cashfree.checkout({
             subsSessionId: activeSessionId,
           });
@@ -156,6 +184,44 @@ export const PublicEmandateCheckout: React.FC = () => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount || 0);
   };
+
+  const verifyLegacyAccess = async () => {
+    setIsProcessing(true); setLegacyError('');
+    try {
+      const verifying = Boolean(challengeToken);
+      const route = verifying ? 'verify' : 'request';
+      const response = await fetch(`/api/public/emandate-access/${route}?tenant=${encodeURIComponent(checkoutQuery.get('tenant') || '')}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, referrerPolicy: 'no-referrer',
+        body: JSON.stringify(verifying ? { challengeToken, otp: legacyOtp } : { applicationId: id, phone: legacyPhone, provider: 'cashfree' }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.message || 'Unable to verify access. Please retry.');
+      const value = payload.data || payload;
+      if (verifying) {
+        const url = new URL(window.location.href); url.searchParams.set('access', value.access); url.searchParams.set('tenant', value.tenant);
+        window.history.replaceState(null, '', url); setLoading(true); setError(null); setAccessToken(value.access);
+      } else { setChallengeToken(value.challengeToken); setLegacyNotice(payload.message || 'Check your registered email for the access code.'); }
+    } catch (failure) { setLegacyError(failure instanceof Error ? failure.message : 'Unable to verify access. Please retry.'); }
+    finally { setIsProcessing(false); }
+  };
+
+  if (!accessToken) return (
+    <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <form onSubmit={event => { event.preventDefault(); void verifyLegacyAccess(); }} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <Lock className="h-10 w-10 text-sky-600 mb-4" />
+        <h1 className="text-xl font-bold text-slate-900">Verify your eMandate access</h1>
+        <p className="mt-2 text-sm text-slate-600">Use your registered mobile number to receive a code at your registered email. Then continue your registration or check its status.</p>
+        <label className="mt-5 block text-sm font-semibold text-slate-700" htmlFor="mandate-mobile">Registered mobile number</label>
+        <input id="mandate-mobile" type="tel" inputMode="tel" required disabled={Boolean(challengeToken)} value={legacyPhone} onChange={event => setLegacyPhone(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3" autoComplete="tel" />
+        {challengeToken && <><label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="mandate-code">Email verification code</label><input id="mandate-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={legacyOtp} onChange={event => setLegacyOtp(event.target.value.replace(/\D/g, ''))} className="mt-2 w-full rounded-lg border border-slate-300 p-3" /></>}
+        {legacyNotice && <p className="mt-3 text-sm text-slate-600" role="status">{legacyNotice}</p>}
+        {legacyError && <p className="mt-3 text-sm text-rose-600" role="alert">{legacyError}</p>}
+        <button type="submit" disabled={isProcessing} className="mt-5 w-full rounded-lg bg-sky-600 px-4 py-3 font-semibold text-white disabled:opacity-50">{isProcessing ? 'Please wait...' : challengeToken ? 'Verify and continue' : 'Send email code'}</button>
+        {challengeToken && <button type="button" onClick={() => { setChallengeToken(''); setLegacyOtp(''); setLegacyNotice(''); }} className="mt-3 w-full text-sm text-sky-700">Request another code or correct mobile number</button>}
+        <p className="mt-4 text-xs text-slate-500">If your registered email is unavailable, ask your lending team for a fresh secure registration link.</p>
+      </form>
+    </main>
+  );
 
   if (loading) {
     return (

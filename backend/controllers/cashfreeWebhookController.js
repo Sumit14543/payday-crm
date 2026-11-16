@@ -35,6 +35,7 @@ function verifySignature(req, rawBody) {
   if (!secret) publicError('Cashfree webhook secret is not configured.', 503);
   if (!signature || !timestamp) publicError('Cashfree webhook signature headers are required.', 400);
 
+  if (!/^\d{10,13}$/.test(timestamp)) publicError('Invalid Cashfree callback timestamp.');
   const numericTimestamp = Number(timestamp);
   if (Number.isFinite(numericTimestamp)) {
     const timestampMs = timestamp.length <= 10 ? numericTimestamp * 1000 : numericTimestamp;
@@ -147,9 +148,14 @@ async function recordSuccessfulRepayment(paymentLink, event, payload) {
   const context = await repaymentModel.findLoanContext({ loanId: paymentLink.loanId });
   if (!context) publicError('Loan repayment account not found for this Cashfree link.', 404);
 
-  const reference = event.reference || event.eventId || `cashfree:${event.linkId}`;
+  if (!event.reference || !Number.isFinite(event.amount) || event.amount <= 0 || event.amount > Number(paymentLink.amount)) publicError('Cashfree payment amount or reference does not match this link.');
+  const currency = String(deepValue(payload, ['data.payment.payment_currency', 'data.order.order_currency', 'data.link.link_currency', 'payment_currency']) || 'INR').toUpperCase();
+  if (currency !== 'INR') publicError('Unsupported payment currency.');
+  const reference = event.reference;
   const existing = await repaymentModel.findByReference(reference);
   if (existing) {
+    if (existing.loanId !== context.loan.id || Number(existing.amount) !== event.amount) publicError('Payment reference belongs to another receipt.', 409);
+    await repaymentModel.refreshLoanAfterRepayment(context);
     const updatedLink = await paymentLinkModel.updateStatus(paymentLink.id, {
       metadata: {
         ...(paymentLink.metadata || {}),
@@ -169,7 +175,7 @@ async function recordSuccessfulRepayment(paymentLink, event, payload) {
   }
 
   const repayment = await repaymentModel.createRepayment(context, {
-    amount: event.amount > 0 ? event.amount : paymentLink.amount,
+    amount: event.amount,
     method: 'Cashfree Payment Link',
     metadata: {
       gateway: 'cashfree',

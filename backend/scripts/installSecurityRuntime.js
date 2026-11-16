@@ -46,6 +46,7 @@ async function main() {
   const keyFile = path.join(root, 'auth-key-v2');
   try { fs.writeFileSync(keyFile, crypto.randomBytes(48).toString('base64url'), { flag: 'wx', mode: 0o600 }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
+  if (fs.readFileSync(keyFile, 'utf8').trim().length < 48) throw new Error('The private signing key file is invalid.');
   fs.chmodSync(keyFile, 0o600);
   console.log(JSON.stringify({ authKeyFileReady: true, relayTrustInstalled: Boolean(certificate), secretPrinted: false, emailSent: false }));
 }

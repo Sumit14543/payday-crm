@@ -43,6 +43,7 @@ async function main() {
   const report = { mode: process.env.NODE_ENV, authSecretConfigured: String(process.env.AUTH_TOKEN_SECRET || '').length >= 32, writesPerformed: false, emailSent: false };
   report.providers = Object.fromEntries(['CRIF_API_USER', 'CRIF_API_PASSWORD', 'BIFROST_API_TOKEN', 'CASHFREE_CLIENT_SECRET', 'CASHFREE_SECRET_KEY', 'BILLDESK_SIGNING_KEY', 'BILLDESK_ENCRYPTION_KEY', 'DIGIO_CLIENT_ID', 'DIGIO_CLIENT_SECRET'].map(key => [key, Boolean(process.env[key])]));
   report.relatedConfigurationNames = Object.keys(process.env).filter(key => /RAZORPAY|WEBHOOK.*SECRET|SMTP.*(TLS|CA|HOST|PORT)/i.test(key));
+  report.integrationKeyBindings = (config.integrations?.apiKeys || []).map(item => ({ sourceSystem: item.sourceSystem || null, bound: Boolean(item.sourceSystem) }));
   const connection = mysql.createConnection({ host: config.db.host, user: config.db.user, password: config.db.password, port: config.db.port, database: config.db.database, connectTimeout: 10000 });
   const query = (sql, params = []) => new Promise((resolve, reject) => connection.query(sql, params, (error, rows) => error ? reject(error) : resolve(rows)));
   try {
@@ -79,7 +80,8 @@ async function main() {
       const client = mysql.createConnection(settings);
       try {
         await new Promise((resolve, reject) => client.query('SELECT 1 AS ok', error => error ? reject(error) : resolve()));
-        report.companyDatabases.push({ company: tenant.slug, reachable: true, sharedDatabaseMapping: seen.has(mapping) });
+        const sourceCounts = await new Promise((resolve, reject) => client.query("SELECT COALESCE(source_system, '') AS source, COUNT(*) AS count FROM loan_applications GROUP BY source_system", (error, rows) => error ? reject(error) : resolve(rows)));
+        report.companyDatabases.push({ company: tenant.slug, reachable: true, sharedDatabaseMapping: seen.has(mapping), sourceCounts });
       } catch (error) { report.companyDatabases.push({ company: tenant.slug, reachable: false, code: error.code }); }
       finally { client.end(); }
       seen.add(mapping);
@@ -93,8 +95,13 @@ async function main() {
   if (report.testingConfiguration.present) {
     report.testingConfiguration.candidates.forEach(candidate => {
       const values = { ...testingBase, ...readValues(path.join(testingRoot, '.env.' + candidate.mode)) };
+      candidate.sameProductionMasterDatabase = (values.DB_MASTER_NAME || `${values.DB_PREFIX || ''}payday_crm_master`) === (process.env.DB_MASTER_NAME || `${process.env.DB_PREFIX || ''}payday_crm_master`);
       candidate.sameDocumentBucketAndPrefix = (values.GCS_BUCKET_NAME || 'waqt-finance-loan-documents-prod') === (process.env.GCS_BUCKET_NAME || 'waqt-finance-loan-documents-prod') && (values.GCS_PREFIX || 'waqtmoney-documents/test-uploads') === (process.env.GCS_PREFIX || 'waqtmoney-documents/test-uploads');
     });
+  }
+  if (report.testingConfiguration.present) {
+    const file = path.join(testingRoot, 'middleware/verifyTenantSession.js');
+    report.testingConfiguration.hasSessionHardening = fs.existsSync(file) && /verifySession\(/.test(fs.readFileSync(file, 'utf8'));
   }
   for (const kind of ['smtp', 'otp']) {
     const prefix = kind === 'otp' && process.env.TELECALLER_OTP_SMTP_HOST ? 'TELECALLER_OTP_' : '';

@@ -636,11 +636,14 @@ async function requestBifrostCibilReport(lead) {
     throw error;
   }
 
+  const callback = new URL(config.bifrost.callbackUrl || (process.env.PUBLIC_API_URL || 'https://payday-api.waqtmoney.com') + '/api/score-callback');
+  callback.searchParams.set('callbackToken', require('../middleware/auth').createProviderCallbackToken('cibil', { applicationId: lead.id, leadId: lead.rawId }));
+  callback.searchParams.set('tenant', require('./authSessions').tenantSlug());
   const requestBody = {
     Mobile_Number: mobile,
     PAN_Number: pan,
     Full_Name: fullName,
-    Callback_Url: config.bifrost.callbackUrl,
+    Callback_Url: callback.toString(),
     Concent_Text: BIFROST_CONSENT_TEXT,
     Concent: 'Y',
   };
@@ -687,7 +690,7 @@ async function requestBifrostCibilReport(lead) {
 
   return {
     providerUsed: 'bifrost',
-    requestBody: { ...requestBody, PAN_Number: pan },
+    requestBody: { ...requestBody, PAN_Number: pan, Callback_Url: '[redacted]' },
     payload,
     ...normalized,
   };
