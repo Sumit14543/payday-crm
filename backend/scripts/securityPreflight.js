@@ -57,16 +57,45 @@ async function main() {
     const recent = await query("SELECT COUNT(*) AS count FROM cibil_reports WHERE created_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND COALESCE(pdf_url, '') = ''");
     report.recentPendingCibil = Number(recent[0]?.count || 0);
     report.recentSignedAgreementsByProvider = await query("SELECT provider, COUNT(*) AS count, SUM(COALESCE(provider_document_id, '') <> '') AS withProviderId, SUM(COALESCE(signed_pdf_path, '') <> '') AS withSavedPdf FROM lead_loan_agreements WHERE status = 'signed' AND created_at > DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY provider").catch(error => ({ code: error.code }));
+    report.recentUnpaidAgreementCompatibility = await query(`SELECT COUNT(*) AS signedUnpaid,
+      SUM(a.sanction_id IS NULL) AS missingSanctionLink,
+      SUM(a.sanction_id <> s.id OR a.agreement_number <> s.agreement_number) AS changedSanction,
+      SUM(COALESCE(a.provider_document_id, '') = '' OR COALESCE(a.signed_pdf_path, '') = '') AS missingProviderEvidence
+      FROM lead_loan_agreements a
+      LEFT JOIN lead_sanctions s ON s.id = (SELECT s2.id FROM lead_sanctions s2 WHERE (NULLIF(a.application_id, '') IS NOT NULL AND s2.application_id = a.application_id) OR (NULLIF(a.lead_id, '') IS NOT NULL AND s2.lead_id = a.lead_id) ORDER BY s2.created_at DESC, s2.id DESC LIMIT 1)
+      WHERE a.status = 'signed' AND a.created_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+      AND NOT EXISTS (SELECT 1 FROM lead_accounting_payments p WHERE (NULLIF(a.application_id, '') IS NOT NULL AND p.application_id = a.application_id) OR (NULLIF(a.lead_id, '') IS NOT NULL AND p.lead_id = a.lead_id))`).catch(error => ({ code: error.code }));
+    report.recentLegacyInternalMandateLinks = await query("SELECT COUNT(*) AS count FROM loan_applications WHERE emandate_provider = 'cashfree' AND emandate_auth_url LIKE '%/emandate/pay/%' AND UPPER(COALESCE(emandate_status, 'PENDING')) NOT IN ('ACTIVE', 'REJECTED', 'REVOKED', 'CANCELLED', 'FAILED', 'EXPIRED') AND updated_at > DATE_SUB(NOW(), INTERVAL 7 DAY)").catch(error => ({ code: error.code }));
     const masterName = process.env.DB_MASTER_NAME || `${process.env.DB_PREFIX || ''}payday_crm_master`;
     if (!/^[a-zA-Z0-9_-]+$/.test(masterName)) throw new Error('Invalid master database identifier.');
     await query('SELECT COUNT(*) AS count FROM `' + masterName + '`.superadmins WHERE is_active = 1');
     report.database.masterReachable = true;
+    const tenants = await query('SELECT slug, db_host, db_user, db_password, db_name, db_port FROM `' + masterName + '`.tenants WHERE status = "active"');
+    report.companyDatabases = [];
+    const seen = new Set();
+    for (const tenant of tenants) {
+      const settings = { host: tenant.db_host || config.db.host, user: tenant.db_user || config.db.user, password: tenant.db_password || config.db.password, database: tenant.slug === 'waqtfinance' ? config.db.database : tenant.db_name, port: tenant.db_port || config.db.port, connectTimeout: 10000 };
+      const mapping = settings.host + ':' + settings.port + '/' + settings.database;
+      const client = mysql.createConnection(settings);
+      try {
+        await new Promise((resolve, reject) => client.query('SELECT 1 AS ok', error => error ? reject(error) : resolve()));
+        report.companyDatabases.push({ company: tenant.slug, reachable: true, sharedDatabaseMapping: seen.has(mapping) });
+      } catch (error) { report.companyDatabases.push({ company: tenant.slug, reachable: false, code: error.code }); }
+      finally { client.end(); }
+      seen.add(mapping);
+    }
   } catch (error) { report.database = { reachable: false, code: error.code || 'UNKNOWN' }; }
   finally { connection.end(); }
   const testingRoot = path.join(root, '../testing-api');
   function readValues(file) { const values = {}; if (fs.existsSync(file)) for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) { const match = line.match(/^\s*([A-Z_0-9]+)\s*=\s*(.*?)\s*$/); if (match) values[match[1]] = match[2].replace(/^["']|["']$/g, ''); } return values; }
   const testingBase = readValues(path.join(testingRoot, '.env'));
   report.testingConfiguration = { present: fs.existsSync(testingRoot), candidates: ['development', 'production'].map(mode => { const candidate = { ...testingBase, ...readValues(path.join(testingRoot, '.env.' + mode)) }; return { mode, sameProductionDatabase: Boolean(candidate.DB_NAME && candidate.DB_NAME === config.db.database), sameSigningKey: Boolean(candidate.AUTH_TOKEN_SECRET && candidate.AUTH_TOKEN_SECRET === process.env.AUTH_TOKEN_SECRET) }; }) };
+  if (report.testingConfiguration.present) {
+    report.testingConfiguration.candidates.forEach(candidate => {
+      const values = { ...testingBase, ...readValues(path.join(testingRoot, '.env.' + candidate.mode)) };
+      candidate.sameDocumentBucketAndPrefix = (values.GCS_BUCKET_NAME || 'waqt-finance-loan-documents-prod') === (process.env.GCS_BUCKET_NAME || 'waqt-finance-loan-documents-prod') && (values.GCS_PREFIX || 'waqtmoney-documents/test-uploads') === (process.env.GCS_PREFIX || 'waqtmoney-documents/test-uploads');
+    });
+  }
   for (const kind of ['smtp', 'otp']) {
     const prefix = kind === 'otp' && process.env.TELECALLER_OTP_SMTP_HOST ? 'TELECALLER_OTP_' : '';
     const host = process.env[prefix + 'SMTP_HOST'] || config.smtp.host;
