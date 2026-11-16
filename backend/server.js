@@ -68,7 +68,7 @@ async function start() {
     .then(() => {
       isInitialized = true;
       console.log('Database bootstrap completed successfully.');
-      startBackgroundSyncScheduler();
+      if (process.env.CRM_MANAGED_RELEASE !== 'true') startBackgroundSyncScheduler();
     })
     .catch((error) => {
       console.error('Failed to bootstrap backend:', formatDatabaseError(error));

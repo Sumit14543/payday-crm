@@ -4,6 +4,12 @@ const crypto = require('node:crypto');
 const { load, response, http } = require('./helpers/security-vm.cjs');
 const secret = 'synthetic-webhook-secret-never-a-real-credential';
 const env = { NODE_ENV: 'production', RAZORPAY_WEBHOOK_SECRET: secret, RAZORPAY_KEY_ID: 'synthetic-id', RAZORPAY_KEY_SECRET: secret };
+test('the existing legacy website key keeps working only within its explicitly configured company/source', () => {
+  const { config } = load('backend/config/env.js', { fs: { existsSync: () => false } }, { process: { env: { NODE_ENV: 'production', CORS_ORIGIN: 'https://synthetic.invalid', INTEGRATION_API_KEYS: 'SYN-LEGACY-KEY', INTEGRATION_LEGACY_SOURCE: 'waqtmoney' } } });
+  const middleware = load('backend/middleware/integrationAuth.js', { '../config/env': { config } });
+  const run = (tenant, source) => { const res=response();let passed=false;middleware.requireIntegrationApiKey({ tenant:{slug:tenant},body:{sourceSystem:source},query:{},get:header=>header==='x-integration-api-key'?'SYN-LEGACY-KEY':'' },res,()=>{passed=true});return {passed,res}; };
+  assert.equal(run('waqtfinance','waqtmoney').passed,true);assert.equal(run('geetpay','waqtmoney').res.statusCode,403);assert.equal(run('waqtfinance','geetpay').res.statusCode,403);
+});
 function cashfreeFixture(provider = { subscription_id: 'sub_SYN', subscription_status: 'ACTIVE' }) {
   const changes = [], requests = [];
   const { EventEmitter } = require('node:events');
@@ -75,6 +81,7 @@ function digioFixture(status) {
   let signed = 0, downloads = 0;
   const agreement = { id: 1, providerDocumentId: 'DID-SYN', provider: 'digio', applicationId: 'APP-SYN', status: 'sent', agreementNumber: 'AG-SYN', signerName: 'Private Borrower', signedPdfPath: '' };
   const controller = load('backend/controllers/loanAgreementController.js', {
+    '../utils/digioEvidence': { issueEvidence: () => ({ synthetic: true }) },
     '../utils/documentStorage': { privateDocumentName: name => 'synthetic-scope-' + name },
     fs: { existsSync: () => false, mkdirSync() {}, promises: { mkdir: async () => {}, writeFile: async () => {} }, writeFileSync() {} },
     '../models/activityModel': { createForLead: async () => {} }, '../models/auditModel': { create: async () => {} },

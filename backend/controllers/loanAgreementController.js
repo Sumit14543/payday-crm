@@ -280,6 +280,7 @@ async function refreshLoanAgreementStatus(req, res) {
       signedPdfPath,
       metadata: {
         ...nextMetadata,
+        digioVerification: require('../utils/digioEvidence').issueEvidence({ ...agreement, signedPdfPath }, providerStatus),
         ...(signedPdfError ? { signedPdfFetchError: signedPdfError } : {}),
       },
     });
@@ -395,6 +396,7 @@ async function downloadSignedLoanAgreement(req, res) {
       ...(agreement.metadata || {}),
       latestProviderStatus: providerStatus.rawResponse,
       signedPdfDownloadedAt: new Date().toISOString(),
+      digioVerification: require('../utils/digioEvidence').issueEvidence({ ...agreement, signedPdfPath }, providerStatus),
     },
   });
 
@@ -491,6 +493,8 @@ async function receiveDigioWebhook(req, res) {
       signedAt: payload.signedAt,
       signedPdfPath,
       metadata: {
+        ...(agreement.metadata || {}),
+        digioVerification: require('../utils/digioEvidence').issueEvidence({ ...agreement, signedPdfPath }, verified),
         webhook: payload.raw,
         ...(signedPdfError ? { signedPdfFetchError: signedPdfError } : {}),
       },

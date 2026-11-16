@@ -17,19 +17,23 @@ async function main() {
   const candidate = path.resolve(__dirname, '..'), live = path.resolve(process.env.CRM_LIVE_ROOT || '/home/waqtmoney/public_html/payday-api');
   assert.notEqual(candidate, live);
   const production = values(live, 'production'), testing = values(path.join(live, '../testing-api'), 'development');
+  step = 'confirm distinct database names';
   assert.ok(testing.DB_NAME && production.DB_NAME && testing.DB_NAME !== production.DB_NAME);
   const mysql = require(path.join(candidate, 'node_modules/mysql'));
   const master = production.DB_MASTER_NAME || `${production.DB_PREFIX || ''}payday_crm_master`;
   assert.match(master, /^[a-zA-Z0-9_-]+$/);
   const readOnly = mysql.createConnection({ host: production.DB_HOST || 'localhost', port: Number(production.DB_PORT || 3306), user: production.DB_USER, password: production.DB_PASSWORD ?? production.DB_PASS, database: production.DB_NAME });
+  step = 'read active production database mappings';
   try {
     const companies = await new Promise((resolve, reject) => readOnly.query('SELECT db_name FROM `' + master + '`.tenants WHERE status = "active"', (error, rows) => error ? reject(error) : resolve(rows)));
     assert.ok(!companies.some(company => company.db_name === testing.DB_NAME), 'Testing database maps to a production company');
   } finally { readOnly.end(); }
   for (const key of ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_NAME', 'DB_PASSWORD', 'DB_PASS']) process.env[key] = testing[key] || '';
   process.env.DB_PASSWORD = testing.DB_PASSWORD ?? testing.DB_PASS ?? '';
+  process.env.CORS_ORIGIN = 'https://synthetic-security-test.invalid';
   process.env.NODE_ENV = 'production'; process.env.DB_AUTO_CREATE = 'false'; delete process.env.PORT;
   const db = require(path.join(candidate, 'config/db'));
+  step = 'initialize isolated pool';
   db.queryMaster = async () => { const error = new Error('Master access blocked in synthetic test'); error.code = 'MASTER_ACCESS_BLOCKED'; throw error; };
   const tenant = { slug: 'security-probe', db_name: testing.DB_NAME };
   const pool = db.getTenantPool(tenant);
@@ -84,4 +88,4 @@ async function main() {
   }
   console.log(JSON.stringify({ securitySqlSelfTest: 'passed', checks, productionFinancialWrites: false, emailsSent: false, providerCalls: false, syntheticRowsRemoved: true }, null, 2));
 }
-main().catch(error => { console.error(JSON.stringify({ securitySqlSelfTest: 'failed', step, code: error.code || error.name })); process.exitCode = 1; });
+main().catch(error => { console.error(JSON.stringify({ securitySqlSelfTest: 'failed', step, code: error.code || error.name, location: String(error.stack || '').split('\n').slice(1, 4) })); process.exitCode = 1; });

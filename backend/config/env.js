@@ -65,7 +65,7 @@ function readIntegrationApiKeys(value) {
       if (separatorIndex === -1) {
         return {
           key: trimmed,
-          sourceSystem: '',
+          sourceSystem: String(process.env.INTEGRATION_LEGACY_SOURCE || '').trim().toLowerCase(),
         };
       }
 
