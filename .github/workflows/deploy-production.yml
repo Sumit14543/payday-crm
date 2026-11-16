@@ -1,177 +1,38 @@
-name: Deploy Production
+name: Production Release Control
 
+# The live app is deployed privately with staged health checks. Do not copy an
+# older public main-branch build over it. Source publication is a separate step.
 on:
-  push:
-    branches:
-      - main
-    # Backup-only changes have a separate deployment. They must not start the
-    # application or its existing database initialization/migration code.
-    paths-ignore:
-      - backend/scripts/securityPreflight.js
-      - .github/workflows/security-preflight.yml
-      - backend/scripts/installSecurityRuntime.js
-      - .github/workflows/security-runtime.yml
-      - backend/services/databaseBackup.js
-      - backend/services/databaseBackupNotifications.js
-      - backend/scripts/backupDatabaseToGcs.js
-      - backend/scripts/installGcsBackupCron.js
-      - backend/config/gcsBackupDefaults.json
-      - backend/docs/gcs-database-backups.md
-      - tests/gcs-backup.cjs
-      - .github/workflows/deploy-database-backup.yml
-      - .github/workflows/deploy-production.yml
-      - .github/workflows/audit-gcs-documents.yml
-      - .github/workflows/deploy-gcs-document-sync.yml
-      - backend/services/gcsDocumentSync.js
-      - backend/scripts/syncDocumentsToGcs.js
-      - backend/scripts/installGcsDocumentSyncCron.js
-      - backend/docs/gcs-document-sync.md
-      - tests/gcs-document-sync.cjs
   workflow_dispatch:
-
+    inputs:
+      action:
+        description: Inspect release or restore previous app (keeps current customer data)
+        required: true
+        type: choice
+        options: [status, rollback]
+        default: status
+permissions:
+  contents: read
+concurrency:
+  group: production-private-release-control
+  cancel-in-progress: false
 jobs:
-  deploy:
+  control:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build Frontend
-        working-directory: frontend
-        env:
-          VITE_API_URL: "https://payday-api.waqtmoney.com/api"
-          VITE_DOCUMENT_BASE_URL: "https://payday-api.waqtmoney.com/uploads"
-          VITE_FORCE_DIRECT_API: "true"
-          VITE_SUPPORT_PHONE: "+919217086608"
-          VITE_SUPPORT_WHATSAPP: "919217086608"
-        run: |
-          npm ci
-          npm run build
-
-      - name: Deploy Frontend to Production
-        uses: easingthemes/ssh-deploy@v5.1.0
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
-          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
-          REMOTE_USER: ${{ secrets.CPANEL_USER }}
-          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
-          SOURCE: "frontend/dist/"
-          TARGET: "/home/waqtmoney/public_html/payday/"
-          ARGS: "-rlgoDzvc --delete"
-
-      - name: List local backend database directory files
-        run: ls -la backend/database/
-
-      - name: Clean stale backend files on server
+      - name: Inspect or roll back the privately managed release
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.CPANEL_HOST }}
           username: ${{ secrets.CPANEL_USER }}
           key: ${{ secrets.CPANEL_SSH_KEY }}
           port: ${{ secrets.CPANEL_PORT }}
+          command_timeout: 4m
           script: |
-            cd /home/waqtmoney/public_html/payday-api
-            rm -f app.js server.js database/bootstrap.js database/schema.js database/masterSchema.js
-
-      - name: Deploy Backend to Production API
-        uses: easingthemes/ssh-deploy@v5.1.0
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
-          REMOTE_HOST: ${{ secrets.CPANEL_HOST }}
-          REMOTE_USER: ${{ secrets.CPANEL_USER }}
-          REMOTE_PORT: ${{ secrets.CPANEL_PORT }}
-          SOURCE: "backend/"
-          TARGET: "/home/waqtmoney/public_html/payday-api/"
-          ARGS: "-rlDztvc"
-          EXCLUDE: >
-            /node_modules/,
-            /.env,
-            /.env.*,
-            /uploads/,
-            /backups/,
-            /deploy-doc/,
-            /scratch/,
-            gcp-key*.json,
-            *.key,
-            *.pem,
-            *.zip,
-            *.log,
-            *.err,
-            superadmin_debug.log,
-            dev*.log,
-            backend-smoke.*
-
-      - name: Normalize Backend Permissions & Restart App
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.CPANEL_HOST }}
-          username: ${{ secrets.CPANEL_USER }}
-          key: ${{ secrets.CPANEL_SSH_KEY }}
-          port: ${{ secrets.CPANEL_PORT }}
-          script: |
-            set -e
-
-            if [ -f /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate ]; then
-              source /home/waqtmoney/nodevenv/public_html/payday-api/24/bin/activate
-            fi
-
-            node -v
-            npm -v
-
-            cd /home/waqtmoney/public_html/payday-api
-
-            pwd
-            ls -la
-
-            echo "Fixing cPanel-safe permissions..."
-            chmod 711 /home/waqtmoney || true
-            chmod 755 /home/waqtmoney/public_html /home/waqtmoney/public_html/payday-api || true
-            find . -type d -not -path '*/node_modules*' -exec chmod 755 {} \; || true
-            find . -type f -not -path '*/node_modules*' -exec chmod 644 {} \; || true
-            chmod 644 app.js server.js package.json || true
-            [ ! -f .env ] || chmod 600 .env || true
-            [ ! -f gcp-key.json ] || chmod 600 gcp-key*.json || true
-            [ ! -f .htaccess ] || chmod 644 .htaccess || true
-
-            if [ ! -d node_modules ] || [ -L node_modules ]; then
-              echo "node_modules is missing. Running npm install..."
-              npm install --production || true
-            fi
-
-            echo "Restarting background Node app on port 8081..."
-            chmod 777 uploads 2>/dev/null || chmod 775 uploads 2>/dev/null || true
-            chmod -R 777 uploads 2>/dev/null || true
-            fuser -k 8081/tcp || npx --yes kill-port 8081 || true
-            mkdir -p tmp
-            touch tmp/restart.txt || true
-            [ ! -f index.js ] || touch index.js || true
-            [ ! -f app.js ] || touch app.js || true
-            [ ! -f passenger_wsgi.py ] || touch passenger_wsgi.py || true
-            PORT=8081 nohup node index.js </dev/null > node_production.log 2>&1 &
-            disown
-            sleep 5
-            echo "=== Node Production Log ==="
-            cat node_production.log || true
-            curl -I http://127.0.0.1:8081/api/health || true
-
-            echo "Checking and keeping testing backend active on port 8083..."
-            if ! (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -q ":8083 "; then
-              echo "Testing backend on port 8083 was not running. Starting it now..."
-              if [ -d /home/waqtmoney/public_html/testing-api ]; then
-                cd /home/waqtmoney/public_html/testing-api
-                chmod 777 uploads 2>/dev/null || true
-                PORT=8083 nohup node index.js </dev/null > node_testing.log 2>&1 &
-                disown
-                cd /home/waqtmoney/public_html/payday-api
-              fi
-            else
-              echo "Testing backend on port 8083 is already active."
-            fi
+            set -eu
+            case '${{ inputs.action }}' in
+              status|rollback) ;;
+              *) exit 2 ;;
+            esac
+            /opt/alt/alt-nodejs24/root/usr/bin/node /home/waqtmoney/payday-releases/manageRelease.js '${{ inputs.action }}'
