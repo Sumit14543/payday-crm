@@ -8,6 +8,8 @@ const files = [
   'security-workflow-contracts', 'sanction-acceptance-flow', 'sanction-dates', 'accounting-dates',
   'accountant-kpi-regression', 'revenue-ledger',
   'security-release-rollback',
+  'security-sanction-decisions', 'security-tally',
+  'security-dependency-compatibility',
 ];
 const result = spawnSync(process.execPath, ['--test', '--test-isolation=none', ...files.map(file => path.join(__dirname, file + '.cjs'))], { stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
 if (result.error) throw result.error;

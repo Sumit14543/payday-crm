@@ -413,7 +413,13 @@ async function uploadSanctionAcceptanceProof(req, res) {
       userAgent: userAgent,
     }, leadId);
 
-    await leadModel.updateStatus(leadId, 'Approved');
+    if (updatedSanction.customerDecision !== 'accepted') {
+    const error = new Error('A different sanction decision is already recorded. Please refresh the application.');
+    error.statusCode = 409;
+    error.publicMessage = error.message;
+    throw error;
+  }
+  await leadModel.updateStatus(leadId, 'Approved');
 
     await activityModel.createForLead(lead, {
       type: 'sanction_accepted',
@@ -457,209 +463,7 @@ async function uploadSanctionAcceptanceProof(req, res) {
 }
 
 async function handleCustomerSanctionDecision(req, res) {
-  const token = req.params.token || req.query.token;
-  const action = String(req.query.action || req.body?.action || '').toLowerCase();
-
-  if (!token) {
-    return res.status(400).send(`
-      <!DOCTYPE html>
-      <html>
-        <head><title>Response Recorded</title></head>
-        <body style="font-family:sans-serif;text-align:center;padding-top:40px;color:#555;">
-          <p style="font-size:14px;">Invalid response link.</p>
-        </body>
-      </html>
-    `);
-  }
-
-  const sanction = await sanctionModel.findByDecisionToken(token);
-  if (!sanction) {
-    return res.status(404).send(`
-      <!DOCTYPE html>
-      <html>
-        <head><title>Response Recorded</title></head>
-        <body style="font-family:sans-serif;text-align:center;padding-top:40px;color:#555;">
-          <p style="font-size:14px;">Record not found.</p>
-        </body>
-      </html>
-    `);
-  }
-
-  const leadId = sanction.leadId || sanction.applicationId;
-  const isSanctionAlreadyDecided = sanction.customerDecision && sanction.customerDecision !== 'pending';
-
-  // If this specific sanction is already decided, block action & return already recorded response!
-  if (isSanctionAlreadyDecided) {
-    const isAlreadyAccepted = sanction.customerDecision === 'accepted';
-    if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      return res.json({
-        success: true,
-        alreadyDecided: true,
-        customerDecision: sanction.customerDecision,
-        leadId,
-        borrower: sanction.borrower,
-        agreementNumber: sanction.agreementNumber,
-        principalAmount: sanction.principalAmount,
-      });
-    }
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>Response Already Recorded</title>
-        </head>
-        <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;text-align:center;padding:50px 20px;color:#0f172a;background:#f8fafc;">
-          <div style="max-width:440px;margin:0 auto;background:#fff;padding:32px 24px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #e2e8f0;">
-            <div style="font-size:42px;margin-bottom:12px;color:${isAlreadyAccepted ? '#059669' : '#dc2626'};">${isAlreadyAccepted ? '✓' : '✕'}</div>
-            <h2 style="font-size:18px;font-weight:bold;margin:0 0 8px 0;color:${isAlreadyAccepted ? '#047857' : '#b91c1c'};">Response Already Recorded</h2>
-            <p style="font-size:13px;color:#475569;margin:0 0 16px 0;line-height:1.5;">
-              You have already <strong>${isAlreadyAccepted ? 'ACCEPTED' : 'REJECTED'}</strong> Loan Sanction Letter <strong>${sanction.agreementNumber}</strong>.
-            </p>
-            <p style="font-size:11px;color:#94a3b8;margin:0;">No further action is required. You may close this tab.</p>
-          </div>
-        </body>
-      </html>
-    `);
-  }
-
-  const isAccept = action === 'accept' || action === 'accepted';
-  const isReject = action === 'reject' || action === 'rejected';
-
-  // If no action or unrecognized action, do NOT reject! Return confirmation page or JSON details
-  if (!isAccept && !isReject) {
-    if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      return res.json({
-        success: true,
-        pendingDecision: true,
-        customerDecision: 'pending',
-        leadId,
-        borrower: sanction.borrower,
-        agreementNumber: sanction.agreementNumber,
-        principalAmount: sanction.principalAmount,
-        disbursedAmount: sanction.disbursedAmount,
-        repaymentAmount: sanction.repaymentAmount,
-        dueDate: sanction.dueDate,
-      });
-    }
-
-    const hostUrl = `${req.protocol}://${req.get('host')}`;
-    const acceptLink = `${hostUrl}/sanction-decision/${encodeURIComponent(token)}?action=accept`;
-    const rejectLink = `${hostUrl}/sanction-decision/${encodeURIComponent(token)}?action=reject`;
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Confirm Loan Sanction - Waqt Finance</title>
-        </head>
-        <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;text-align:center;padding:40px 16px;color:#0f172a;background:#f8fafc;margin:0;">
-          <div style="max-width:440px;margin:0 auto;background:#fff;padding:32px 24px;border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #e2e8f0;text-align:left;">
-            <div style="text-align:center;margin-bottom:20px;">
-              <h2 style="font-size:20px;font-weight:800;color:#0f172a;margin:0 0 6px 0;">Loan Sanction Letter</h2>
-              <p style="font-size:13px;color:#64748b;margin:0;">Waqt Finance Private Limited</p>
-            </div>
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;font-size:13px;line-height:1.7;">
-              <div><strong style="color:#475569;">Borrower:</strong> <span style="font-weight:700;color:#0f172a;">${sanction.borrower || 'Customer'}</span></div>
-              <div><strong style="color:#475569;">Agreement No:</strong> <span style="font-weight:700;color:#0f172a;">${sanction.agreementNumber}</span></div>
-              <div><strong style="color:#475569;">Sanction Amount:</strong> <span style="font-weight:800;color:#059669;font-size:15px;">₹${Number(sanction.principalAmount || 0).toLocaleString('en-IN')}</span></div>
-              <div><strong style="color:#475569;">Net Disbursed:</strong> ₹${Number(sanction.disbursedAmount || 0).toLocaleString('en-IN')}</div>
-              <div><strong style="color:#475569;">Repayment Amount:</strong> ₹${Number(sanction.repaymentAmount || 0).toLocaleString('en-IN')}</div>
-            </div>
-            <p style="font-size:13px;color:#334155;text-align:center;margin:0 0 16px 0;font-weight:600;">Please confirm your decision below:</p>
-            <div style="display:flex;gap:12px;margin-bottom:12px;">
-              <a href="${acceptLink}" style="flex:1;text-align:center;background:#059669;color:#fff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 16px;border-radius:10px;display:block;">
-                ✓ Accept Sanction
-              </a>
-              <a href="${rejectLink}" style="flex:1;text-align:center;background:#dc2626;color:#fff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 16px;border-radius:10px;display:block;">
-                ✕ Reject
-              </a>
-            </div>
-            <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0;">Your decision will be recorded directly into the loan management system.</p>
-          </div>
-        </body>
-      </html>
-    `);
-  }
-
-  const newDecision = isAccept ? 'accepted' : 'rejected';
-  const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').toString().split(',')[0].trim();
-  const userAgent = req.get('user-agent') || '';
-
-  // Update sanction customer decision in DB
-  const updatedSanction = await sanctionModel.updateCustomerDecision(sanction.id, {
-    decision: newDecision,
-    notes: req.body?.notes || (isAccept ? 'Accepted via direct customer link click' : 'Rejected via direct customer link click'),
-    ip: clientIp,
-    userAgent: userAgent,
-  }, leadId);
-
-  // Update lead/application status in DB
-  const lead = await leadModel.findById(leadId);
-
-  if (lead) {
-    const nextStatus = isAccept ? 'Approved' : 'Rejected';
-    await leadModel.updateStatus(leadId, nextStatus);
-
-    await activityModel.createForLead(lead, {
-      type: isAccept ? 'sanction_accepted' : 'sanction_rejected',
-      description: isAccept
-        ? `Borrower ACCEPTED Loan Sanction Letter of ₹${Number(sanction.principalAmount || 0).toLocaleString('en-IN')} (IP: ${clientIp})`
-        : `Borrower REJECTED Loan Sanction Letter (IP: ${clientIp})`,
-      user: sanction.borrower || lead.name || 'Borrower',
-      metadata: {
-        sanctionId: sanction.id,
-        agreementNumber: sanction.agreementNumber,
-        customerDecision: newDecision,
-        ip: clientIp,
-        userAgent: userAgent,
-        decidedAt: new Date().toISOString(),
-      },
-    });
-  }
-
-  // Send Revert Confirmation Email to Customer (WITHOUT generating or attaching PDF)
-  try {
-    await sanctionLetterService.sendSanctionDecisionConfirmationEmail(updatedSanction, lead || {});
-  } catch (emailErr) {
-    console.error('Failed sending sanction decision confirmation email:', emailErr.message);
-  }
-
-  if (req.headers.accept && req.headers.accept.includes('application/json')) {
-    return res.json({
-      success: true,
-      customerDecision: newDecision,
-      leadId,
-      borrower: sanction.borrower,
-      agreementNumber: sanction.agreementNumber,
-      principalAmount: sanction.principalAmount,
-    });
-  }
-
-  // Return minimal plain response without any public customer UI card
-  return res.send(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Response Recorded</title>
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              try { window.close(); } catch(e) {}
-            }, 600);
-          };
-        </script>
-      </head>
-      <body style="font-family:sans-serif;text-align:center;padding-top:50px;color:#333;background:#fff;">
-        <p style="font-size:14px;font-weight:600;margin:0;">Response recorded successfully.</p>
-        <p style="font-size:12px;color:#888;margin-top:6px;">You may close this tab.</p>
-      </body>
-    </html>
-  `);
+  return require('./customerSanctionDecisionController').handle(req, res);
 }
 
 async function rejectPostSanction(req, res) {
@@ -816,6 +620,12 @@ async function markSanctionAcceptedByStaff(req, res) {
     userAgent: userAgent,
   }, leadId);
 
+  if (updatedSanction.customerDecision !== 'accepted') {
+    const error = new Error('A different sanction decision is already recorded. Please refresh the application.');
+    error.statusCode = 409;
+    error.publicMessage = error.message;
+    throw error;
+  }
   await leadModel.updateStatus(leadId, 'Approved');
 
   await activityModel.createForLead(lead, {

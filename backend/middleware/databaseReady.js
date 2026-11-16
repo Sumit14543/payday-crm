@@ -8,7 +8,9 @@ async function databaseReady(req, res, next) {
     const { formatDatabaseError } = require('../config/db');
     return res.status(503).json({
       success: false,
-      message: formatDatabaseError(error),
+      message: process.env.NODE_ENV === 'production'
+        ? 'Service temporarily unavailable. Please try again shortly.'
+        : formatDatabaseError(error),
     });
   }
 }

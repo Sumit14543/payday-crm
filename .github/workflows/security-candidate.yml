@@ -21,6 +21,10 @@ jobs:
           npm ci --prefix frontend --no-audit --no-fund
       - name: Verify security and existing financial flows
         run: node tests/run-security.cjs
+      - name: Audit locked dependencies
+        run: |
+          npm audit --prefix backend --include=dev --audit-level=low
+          npm audit --prefix frontend --include=dev --audit-level=low
       - name: Build frontend
         working-directory: frontend
         env:
@@ -28,3 +32,5 @@ jobs:
           VITE_DOCUMENT_BASE_URL: https://payday-api.waqtmoney.com/uploads
           VITE_FORCE_DIRECT_API: 'true'
         run: npm run build
+      - name: Verify sanction confirmation in a local browser fixture
+        run: node tests/sanction-decision-browser.cjs

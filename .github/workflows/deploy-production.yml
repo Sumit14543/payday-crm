@@ -45,6 +45,10 @@ jobs:
           npm ci --prefix frontend --no-audit --no-fund
       - name: Verify security and existing business flows
         run: node tests/run-security.cjs
+      - name: Audit locked backend and frontend dependencies
+        run: |
+          npm audit --prefix backend --include=dev --audit-level=low
+          npm audit --prefix frontend --include=dev --audit-level=low
       - name: Build production frontend
         working-directory: frontend
         env:
@@ -54,7 +58,10 @@ jobs:
           VITE_SUPPORT_PHONE: '+919217086608'
           VITE_SUPPORT_WHATSAPP: '919217086608'
         run: npm run build
-      - name: Prepare release without secrets, uploads or installed modules
+      - name: Verify sanction confirmation in a local browser fixture
+        # Browser verification uses local fixtures and does not contact production.
+        run: node tests/sanction-decision-browser.cjs
+      - name: Prepare verified release package
         run: |
           mkdir -p deploy-package/backend deploy-package/frontend
           rsync -a --exclude='/node_modules/' --exclude='/.env*' --exclude='/uploads/' --exclude='/backups/' --exclude='/scratch/' --exclude='/tmp/' --exclude='gcp-key*.json' --exclude='*.log' --exclude='*.err' --exclude='*.key' --exclude='*.pem' backend/ deploy-package/backend/

@@ -15,6 +15,7 @@ function expectedHashes(file) {
 function businessCode(name, code) {
   // Only these reviewed guards differ; everything after validation (including
   // interest, allocation, balances, settlement and response contracts) is hashed.
+  if (['uploadSanctionAcceptanceProof', 'markSanctionAcceptedByStaff'].includes(name)) code = code.replace("if(updatedSanction.customerDecision!=='accepted'){const error=new Error('A different sanction decision is already recorded. Please refresh the application.');error.statusCode=409;error.publicMessage=error.message;throw error;}", '');
   if (name === 'findLoanContext') code = code
     .replace("WHERE (${clauses.map(clause=>`(${clause})`).join(' OR ')}) ${normalizedSourceSystem?'AND la.source_system = ?':''}", "WHERE ${clauses.map(clause=>`(${clause})`).join(' OR ')}")
     .replace('normalizedSourceSystem?[...params,normalizedSourceSystem]:params', 'params');
@@ -49,7 +50,17 @@ for (const file of ['backend/models/loanModel.js', 'backend/models/repaymentMode
 for (const file of ['backend/controllers/telecallerController.js', 'backend/controllers/sanctionController.js']) {
   test(`${file}: credit decisions, sanction calculations and accounting disbursement preserve the initial business contract`, () => {
     const after = functions(path.join(root, file));
-    for (const [name, hash] of Object.entries(expectedHashes(file))) if (name !== 'buildPublicFileUrl') assert.equal(crypto.createHash('sha256').update(businessCode(name, after[name])).digest('hex'), hash, name);
+    for (const [name, hash] of Object.entries(expectedHashes(file))) {
+      if (name === 'buildPublicFileUrl') continue;
+      if (name === 'handleCustomerSanctionDecision') {
+        // Decision recording deliberately requires POST confirmation now. Its
+        // behavior is covered by security-sanction-decisions.cjs, while all
+        // unrelated credit calculations and financial contracts stay hashed.
+        assert.equal(after[name], "async function handleCustomerSanctionDecision(req,res){return require('./customerSanctionDecisionController').handle(req,res);}");
+        continue;
+      }
+      assert.equal(crypto.createHash('sha256').update(businessCode(name, after[name])).digest('hex'), hash, name);
+    }
   });
 }
 test('operational restarts cannot install known credentials, reactivate disabled accounts or purge staff', () => {

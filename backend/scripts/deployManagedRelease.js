@@ -19,5 +19,8 @@ for(const name of ['manageRelease.js','releaseLauncher.js']) {
   fs.copyFileSync(path.join(__dirname,name),temporary);fs.chmodSync(temporary,0o700);fs.renameSync(temporary,target);
 }
 cp.execFileSync(process.execPath,[path.join(__dirname,'securitySqlSelfTest.js')],{stdio:'inherit',env:{...process.env,CRM_LIVE_ROOT:'/home/waqtmoney/public_html/payday-api'}});
+cp.execFileSync(process.execPath,[path.join(__dirname,'securitySanctionSqlSelfTest.js')],{stdio:'inherit'});
+cp.execFileSync(process.execPath,[path.join(__dirname,'securityRuntimeCompatibility.js')],{stdio:'inherit'});
 cp.execFileSync(process.execPath,[path.join(__dirname,'verifyPendingDigio.js')],{stdio:'inherit',env:{...process.env,CRM_CANDIDATE_ROOT:backend}});
+require('./hardenLegacyLogs')();
 cp.execFileSync(process.execPath,[path.join(base,'manageRelease.js'),'deploy',id],{stdio:'inherit'});

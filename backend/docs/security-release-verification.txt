@@ -1,0 +1,55 @@
+Security fixes — 16 November 2026
+
+Customer sanction decisions
+- Existing emailed URLs still open. GET only previews; Accept/Reject requires POST.
+- Decision, lead status and activity commit together under the existing company
+  transaction lock. Only the persisted winning decision is returned.
+- Repeated requests do not send another confirmation or reverse the decision.
+- Superseded/nonlatest sanctions and tokens replaced by resend are rejected.
+- Confirmation mail runs after commit. A mail outage does not undo acceptance.
+- Browser/network failures show an error/retry, never a false recorded response.
+- Existing formulas, financial payloads and calculation functions remain covered
+  by the existing business compatibility tests. The reviewed decision guard is
+  the only normalized addition in staff acceptance/proof function comparisons.
+
+Other changes
+- Updated affected backend/frontend packages and aligned react-router packages.
+- Added full dependency audits to deployment/PR verification. Any npm advisory
+  severity now blocks a new deployment; rollback does not depend on that gate.
+- Production database-readiness and Tally failures use generic public messages.
+- Tally keys are bound to a company. Existing TALLY_API_KEY defaults to
+  waqtfinance; TALLY_TENANT configures another owner. TALLY_COMPANY_KEYS can hold
+  a private JSON array of {tenant,key} entries for separate company credentials.
+- Query credentials remain compatible with deprecation headers until accounting
+  clients are verified to send X-Tally-Api-Key. Set TALLY_ALLOW_QUERY_KEY=false
+  only after that migration is confirmed; this remains an operational item.
+- Deployment restricts legacy log and central credential files to owner-only
+  permissions, without reading/deleting log contents or changing key values.
+
+Verification
+  node tests/run-security.cjs
+  npm audit --prefix backend --include=dev --audit-level=low
+  npm audit --prefix frontend --include=dev --audit-level=low
+  npm run build --prefix frontend
+  node tests/sanction-decision-browser.cjs
+
+The private deployment preflight also verifies SMTP TLS/auth (no messages),
+native PNG processing and real concurrent decisions/rollback in random tables
+inside a verified distinct testing DB. Probe tables are removed afterward.
+Production customer decisions/payments are not used as test fixtures.
+
+Remaining owner operations
+- Rotate/revoke historical provider keys in the provider dashboards, validate
+  replacement API authentication/callbacks, and then verify old keys are revoked.
+- Owner-level review of GCS public access/IAM is still required; runtime identity
+  cannot inspect those policies. Do not change object visibility until registered
+  document downloads and any existing direct links have been checked.
+- Verify the actual Tally connector's credential transport, migrate URL keys to
+  headers and then disable URL-key compatibility. Bounded access-log samples
+  with no Tally requests do not prove which mode the connector uses.
+
+One-command application rollback from the repository root:
+  .\rollback-production.cmd
+This restores the previous app/assets/dependencies and retains current data.
+These checks reduce known risks; they are not proof of zero unknown flaws or
+a guarantee that attacks or regressions are impossible.

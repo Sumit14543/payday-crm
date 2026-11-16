@@ -235,24 +235,7 @@ function formatDateForTally(dateInput) {
  */
 async function getTallyVouchers(req, res) {
   try {
-    // 1. API Key Authentication Check
-    const apiKey =
-      req.headers['x-api-key'] ||
-      req.headers['x-tally-api-key'] ||
-      (req.headers['authorization'] ? req.headers['authorization'].replace('Bearer ', '').trim() : null) ||
-      req.query.api_key ||
-      req.query.apiKey;
-
-    const validKey = process.env.TALLY_API_KEY;
-
-    if (!validKey || apiKey !== validKey) {
-      return res.status(401).json({
-        status: false,
-        count: 0,
-        data: [],
-        message: 'Unauthorized: Invalid or missing API Key for Tally integration.',
-      });
-    }
+    if (require('../middleware/tallyAuth').authorize(req, res) !== true) return res;
 
     const { startDate, endDate, voucherType = 'all' } = req.query;
 
@@ -873,7 +856,7 @@ async function getTallyVouchers(req, res) {
       status: false,
       count: 0,
       data: [],
-      message: "Failed to fetch Tally vouchers: " + error.message
+      message: process.env.NODE_ENV === 'production' ? 'Unable to load Tally vouchers. Please try again.' : "Failed to fetch Tally vouchers: " + error.message
     });
   }
 }

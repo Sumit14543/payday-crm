@@ -1,125 +1,102 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 type SanctionDetails = {
-  borrower?: string;
-  agreementNumber?: string;
-  principalAmount?: number;
-  disbursedAmount?: number;
-  repaymentAmount?: number;
-  dueDate?: string;
+  borrower?: string; agreementNumber?: string; principalAmount?: number;
+  disbursedAmount?: number; repaymentAmount?: number; dueDate?: string;
 };
 
 export function SanctionDecision() {
   const { token } = useParams<{ token: string }>();
   const [searchParams] = useSearchParams();
-  const rawAction = (searchParams.get("action") || "").toLowerCase();
-  const [title, setTitle] = useState("Recording Response...");
-  const [statusMessage, setStatusMessage] = useState("Please wait while we log your decision into Waqt Finance CRM...");
+  const tenant = searchParams.get("tenant") || "";
+  const [title, setTitle] = useState("Loading Sanction...");
+  const [statusMessage, setStatusMessage] = useState("Please wait while we check your sanction response.");
   const [isAlreadyDecided, setIsAlreadyDecided] = useState(false);
-  const [customerDecision, setCustomerDecision] = useState<string>("");
-  const [agreementNumber, setAgreementNumber] = useState<string>("");
+  const [customerDecision, setCustomerDecision] = useState("");
   const [isDone, setIsDone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // For interactive prompt when link is clicked without action query param
   const [promptDetails, setPromptDetails] = useState<SanctionDetails | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [reloadCount, setReloadCount] = useState(0);
+  const busy = useRef(false);
+  const generation = useRef(0);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiUrl = '/api/sanction-decision/' + encodeURIComponent(token || '') + (tenant ? '?tenant=' + encodeURIComponent(tenant) : '');
+
+  function recorded(data: any, already: boolean) {
+    const accepted = data.customerDecision === "accepted";
+    setErrorMessage("");
+    setCustomerDecision(data.customerDecision.toUpperCase());
+    setIsAlreadyDecided(already);
+    setTitle(already ? "Response Already Recorded" : accepted ? "Decision Recorded Successfully" : "Loan Sanction Rejected");
+    setStatusMessage('Your decision [' + data.customerDecision.toUpperCase() + '] for Sanction Letter ' + (data.agreementNumber || '') + ' is recorded.' + (data.confirmationEmailSent ? ' A confirmation email has been sent to your inbox.' : ''));
+    setPromptDetails(null);
+    setIsDone(true);
+  }
 
   const executeDecision = async (decisionAction: string) => {
-    if (!token || isSubmitting) return;
+    if (!token || busy.current) return;
+    busy.current = true;
     setIsSubmitting(true);
+    setErrorMessage("");
+    const current = generation.current;
     try {
-      const res = await fetch(`/api/sanction-decision/${encodeURIComponent(token)}?action=${encodeURIComponent(decisionAction)}`, {
-        headers: { Accept: "application/json" },
+      const res = await fetch(apiUrl, {
+        method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ action: decisionAction }),
       });
       const data = await res.json().catch(() => null);
-      if (data && data.success) {
-        setCustomerDecision((data.customerDecision || decisionAction).toUpperCase());
-        setAgreementNumber(data.agreementNumber || "");
-
-        if (data.alreadyDecided) {
-          setIsAlreadyDecided(true);
-          setTitle("Response Already Recorded");
-          setStatusMessage(
-            `You have already ${(data.customerDecision || "ACCEPTED").toUpperCase()} Loan Sanction Letter ${data.agreementNumber || ""}. Your response is permanently recorded and cannot be changed.`
-          );
-        } else {
-          setIsAlreadyDecided(false);
-          const isAccepted = (data.customerDecision || decisionAction) === "accepted" || (data.customerDecision || decisionAction) === "accept";
-          setTitle(isAccepted ? "Decision Recorded Successfully" : "Loan Sanction Rejected");
-          setStatusMessage(
-            isAccepted
-              ? `Thank you! Your decision [ACCEPTED] for Sanction Letter ${data.agreementNumber || ""} has been recorded. A confirmation email has been sent to your inbox.`
-              : `Your decision [REJECTED] for Sanction Letter ${data.agreementNumber || ""} has been recorded.`
-          );
-        }
-      } else {
-        setTitle("Response Recorded");
-        setStatusMessage("Your sanction letter response has been logged into the system.");
+      if (current !== generation.current) return;
+      if (!res.ok || !data?.success || !["accepted", "rejected"].includes(data.customerDecision)) {
+        throw new Error(data?.message || 'We could not confirm your response. Check status before trying again.');
       }
-    } catch (err) {
-      console.error("Sanction decision error log:", err);
-      setTitle("Response Logged");
-      setStatusMessage("Response logged. You may close this tab.");
+      recorded(data, Boolean(data.alreadyDecided));
+      closeTimer.current = setTimeout(() => { try { window.close(); } catch {} }, 5000);
+    } catch (error) {
+      if (current !== generation.current) return;
+      const message = error instanceof Error ? error.message : 'We could not confirm your response. Please check status.';
+      setTitle("Response Not Confirmed");
+      setStatusMessage(message);
+      setErrorMessage(message);
+      setIsDone(false);
     } finally {
-      setPromptDetails(null);
-      setIsDone(true);
-      setTimeout(() => {
-        try {
-          window.close();
-        } catch (e) {}
-      }, 5000);
+      if (current === generation.current) { busy.current = false; setIsSubmitting(false); }
     }
   };
 
   useEffect(() => {
+    const current = ++generation.current;
+    const abort = new AbortController();
+    busy.current = false;
+    setIsSubmitting(false);
+    setIsDone(false);
+    setErrorMessage("");
+    setPromptDetails(null);
+    setTitle("Loading Sanction...");
+    setStatusMessage("Please wait while we check your sanction response.");
     async function init() {
-      if (!token) return;
-
-      const cleanAction = rawAction.trim();
-      if (cleanAction === "accept" || cleanAction === "accepted" || cleanAction === "reject" || cleanAction === "rejected") {
-        await executeDecision(cleanAction);
-        return;
-      }
-
-      // No explicit action provided: check current sanction status from API
       try {
-        const res = await fetch(`/api/sanction-decision/${encodeURIComponent(token)}`, {
-          headers: { Accept: "application/json" },
-        });
+        if (!token) throw new Error('Invalid sanction link. Please contact your loan officer.');
+        // Old ?action= links remain usable, but always require a deliberate click.
+        const res = await fetch(apiUrl, { headers: { Accept: "application/json" }, signal: abort.signal });
         const data = await res.json().catch(() => null);
-        if (data && data.alreadyDecided) {
-          setIsAlreadyDecided(true);
-          setCustomerDecision((data.customerDecision || "accepted").toUpperCase());
-          setAgreementNumber(data.agreementNumber || "");
-          setTitle("Response Already Recorded");
-          setStatusMessage(
-            `You have already ${(data.customerDecision || "ACCEPTED").toUpperCase()} Loan Sanction Letter ${data.agreementNumber || ""}. Your response is permanently recorded and cannot be changed.`
-          );
-          setIsDone(true);
-        } else if (data && data.pendingDecision) {
-          setPromptDetails({
-            borrower: data.borrower,
-            agreementNumber: data.agreementNumber,
-            principalAmount: data.principalAmount,
-            disbursedAmount: data.disbursedAmount,
-            repaymentAmount: data.repaymentAmount,
-            dueDate: data.dueDate,
-          });
-        } else {
-          setTitle("Response Recorded");
-          setStatusMessage("Sanction record accessed.");
-          setIsDone(true);
-        }
-      } catch {
-        setTitle("Response Recorded");
-        setStatusMessage("You may close this tab.");
-        setIsDone(true);
+        if (current !== generation.current) return;
+        if (!res.ok || !data?.success) throw new Error(data?.message || 'Unable to load sanction. Please try again.');
+        if (["accepted", "rejected"].includes(data.customerDecision)) recorded(data, true);
+        else if (data.pendingDecision && data.customerDecision === "pending") {
+          setPromptDetails(data);
+          setTitle("Confirm Loan Sanction");
+        } else throw new Error('Unable to confirm the sanction status. Please try again.');
+      } catch (error) {
+        if (current !== generation.current || abort.signal.aborted) return;
+        const message = error instanceof Error ? error.message : 'Unable to load sanction. Please try again.';
+        setTitle("Unable to Confirm Sanction"); setStatusMessage(message); setErrorMessage(message); setIsDone(false);
       }
     }
-
     init();
-  }, [token, rawAction]);
+    return () => { generation.current++; abort.abort(); if (closeTimer.current) clearTimeout(closeTimer.current); };
+  }, [token, tenant, reloadCount]);
 
   // Render interactive prompt card if customer clicked link without action query parameter
   if (promptDetails) {
@@ -171,6 +148,7 @@ export function SanctionDecision() {
             Please confirm your decision below to record your response into Waqt Finance CRM:
           </p>
 
+          {errorMessage && <p role="alert" className="mb-4 text-xs text-rose-700">{errorMessage}</p>}
           <div className="flex gap-3">
             <button
               type="button"
@@ -202,7 +180,7 @@ export function SanctionDecision() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans text-slate-800 text-center">
       <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
         <div className={`text-4xl mb-4 font-bold ${isAlreadyDecided ? "text-amber-500" : customerDecision === "REJECTED" ? "text-rose-600" : "text-emerald-600"}`}>
-          {isAlreadyDecided ? "🔒" : customerDecision === "REJECTED" ? "✕" : "✓"}
+          {errorMessage ? "!" : isAlreadyDecided ? "🔒" : customerDecision === "REJECTED" ? "✕" : isDone ? "✓" : "…"}
         </div>
         <h1 className={`text-lg font-bold mb-2 ${isAlreadyDecided ? "text-amber-800" : customerDecision === "REJECTED" ? "text-rose-900" : "text-slate-900"}`}>{title}</h1>
         <p className="text-xs text-slate-600 leading-relaxed mb-4">{statusMessage}</p>
@@ -214,6 +192,7 @@ export function SanctionDecision() {
           </div>
         )}
 
+        {errorMessage && <button type="button" onClick={() => setReloadCount(value => value + 1)} className="mb-4 rounded-lg bg-slate-800 px-4 py-2 text-sm text-white">Check status / Retry</button>}
         {isDone && <p className="text-[11px] text-slate-400">You may close this browser tab now.</p>}
       </div>
     </div>

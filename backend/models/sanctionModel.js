@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 const { databaseDateOnly } = require('../utils/sanctionDates');
 
 function toNumber(value, fallback = 0) {
@@ -236,19 +236,28 @@ async function findAnyDecidedByLeadId(leadId) {
   return mapSanction(rows[0]);
 }
 
-async function updateCustomerDecision(id, { decision, notes = '', ip = '', userAgent = '' }, leadId = null) {
-  const normDecision = decision === 'accept' || decision === 'accepted' ? 'accepted' : 'rejected';
-  
-  // Guard 1: If this sanction is already decided, return existing record
-  const existingRows = await query('SELECT customer_decision FROM lead_sanctions WHERE id = ? LIMIT 1', [id]);
-  if (existingRows.length && existingRows[0].customer_decision && existingRows[0].customer_decision !== 'pending') {
-    const rows = await query('SELECT * FROM lead_sanctions WHERE id = ? LIMIT 1', [id]);
-    return mapSanction(rows[0]);
-  }
-
-
-
-  await query(`
+async function updateCustomerDecision(id, { decision, notes = '', ip = '', userAgent = '', expectedToken }, leadId = null) {
+  const normDecision = ['accept', 'accepted'].includes(decision) ? 'accepted'
+    : ['reject', 'rejected'].includes(decision) ? 'rejected' : '';
+  if (!normDecision) throw Object.assign(new Error('Invalid sanction decision.'), { statusCode: 400, publicMessage: 'Invalid sanction decision.' });
+  return withTransaction(async () => {
+    const rows = await query('SELECT * FROM lead_sanctions WHERE id = ? LIMIT 1 FOR UPDATE', [id]);
+    const existing = rows[0];
+    if (!existing) return null;
+    const stale = () => Object.assign(new Error('This sanction link has been replaced. Please use the latest link.'), {
+      statusCode: 409, publicMessage: 'This sanction link has been replaced. Please use the latest link.',
+    });
+    if (existing.status === 'superseded' || existing.superseded_by_sanction_id
+      || (expectedToken !== undefined && existing.decision_token !== expectedToken)) throw stale();
+    const identifiers = [['lead_id', existing.lead_id], ['application_id', existing.application_id]]
+      .filter(([, value]) => value !== undefined && value !== null && String(value) !== '');
+    if (!identifiers.length) throw stale();
+    const latest = await query(`SELECT id FROM lead_sanctions WHERE ${identifiers.map(([column]) => column + ' = ?').join(' OR ')} ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE`, identifiers.map(([, value]) => value));
+    if (String(latest[0]?.id) !== String(existing.id)) throw stale();
+    if (existing.customer_decision && existing.customer_decision !== 'pending') {
+      return { ...mapSanction(existing), decisionChanged: false };
+    }
+    const result = await query(`
     UPDATE lead_sanctions
     SET customer_decision = ?,
         customer_decision_at = CURRENT_TIMESTAMP,
@@ -257,10 +266,12 @@ async function updateCustomerDecision(id, { decision, notes = '', ip = '', userA
         customer_decision_user_agent = COALESCE(NULLIF(?, ''), customer_decision_user_agent),
         status = CASE WHEN ? = 'accepted' THEN 'accepted' ELSE 'rejected' END
     WHERE id = ? AND (customer_decision IS NULL OR customer_decision = 'pending')
+      AND status <> 'superseded' AND superseded_by_sanction_id IS NULL
   `, [normDecision, notes, ip, userAgent, normDecision, id]);
-
-  const rows = await query('SELECT * FROM lead_sanctions WHERE id = ? LIMIT 1', [id]);
-  return mapSanction(rows[0]);
+    if (result.affectedRows !== 1) throw stale();
+    const saved = await query('SELECT * FROM lead_sanctions WHERE id = ? LIMIT 1', [id]);
+    return { ...mapSanction(saved[0]), decisionChanged: true };
+  });
 }
 
 async function resetCustomerDecision(id) {
