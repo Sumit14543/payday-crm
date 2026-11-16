@@ -5,6 +5,8 @@ const { config } = require(path.join(root, 'config/env'));
 const mysql = require(path.join(root, 'node_modules/mysql'));
 const nodemailer = require(path.join(root, 'node_modules/nodemailer'));
 const tls = require('tls');
+const fs = require('fs');
+const os = require('os');
 async function relayCertificate(host, port) {
   if (!['localhost', '127.0.0.1', '::1'].includes(host)) return null;
   let socket;
@@ -47,12 +49,24 @@ async function main() {
     const grants = await query('SHOW GRANTS FOR CURRENT_USER');
     const grantText = grants.flatMap(row => Object.values(row)).join(' ');
     report.database = { reachable: true, schemaPermission: /ALL PRIVILEGES|\bCREATE\b/i.test(grantText) };
+    const locks = await query("SELECT GET_LOCK('crm-security-preflight-only', 0) AS acquired");
+    report.database.namedLocksAvailable = Number(locks[0]?.acquired) === 1;
+    await query("SELECT RELEASE_LOCK('crm-security-preflight-only')");
     report.activeStaffByRole = await query('SELECT role, COUNT(*) AS count FROM crm_users WHERE is_active = 1 GROUP BY role');
     report.mandatesByProvider = await query("SELECT emandate_provider AS provider, COUNT(*) AS count FROM loan_applications WHERE COALESCE(emandate_provider, '') <> '' GROUP BY emandate_provider").catch(() => []);
     const recent = await query("SELECT COUNT(*) AS count FROM cibil_reports WHERE created_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND COALESCE(pdf_url, '') = ''");
     report.recentPendingCibil = Number(recent[0]?.count || 0);
+    report.recentSignedAgreementsByProvider = await query("SELECT provider, COUNT(*) AS count, SUM(COALESCE(provider_document_id, '') <> '') AS withProviderId, SUM(COALESCE(signed_pdf_path, '') <> '') AS withSavedPdf FROM lead_loan_agreements WHERE status = 'signed' AND created_at > DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY provider").catch(error => ({ code: error.code }));
+    const masterName = process.env.DB_MASTER_NAME || `${process.env.DB_PREFIX || ''}payday_crm_master`;
+    if (!/^[a-zA-Z0-9_-]+$/.test(masterName)) throw new Error('Invalid master database identifier.');
+    await query('SELECT COUNT(*) AS count FROM `' + masterName + '`.superadmins WHERE is_active = 1');
+    report.database.masterReachable = true;
   } catch (error) { report.database = { reachable: false, code: error.code || 'UNKNOWN' }; }
   finally { connection.end(); }
+  const testingRoot = path.join(root, '../testing-api');
+  function readValues(file) { const values = {}; if (fs.existsSync(file)) for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) { const match = line.match(/^\s*([A-Z_0-9]+)\s*=\s*(.*?)\s*$/); if (match) values[match[1]] = match[2].replace(/^["']|["']$/g, ''); } return values; }
+  const testingBase = readValues(path.join(testingRoot, '.env'));
+  report.testingConfiguration = { present: fs.existsSync(testingRoot), candidates: ['development', 'production'].map(mode => { const candidate = { ...testingBase, ...readValues(path.join(testingRoot, '.env.' + mode)) }; return { mode, sameProductionDatabase: Boolean(candidate.DB_NAME && candidate.DB_NAME === config.db.database), sameSigningKey: Boolean(candidate.AUTH_TOKEN_SECRET && candidate.AUTH_TOKEN_SECRET === process.env.AUTH_TOKEN_SECRET) }; }) };
   for (const kind of ['smtp', 'otp']) {
     const prefix = kind === 'otp' && process.env.TELECALLER_OTP_SMTP_HOST ? 'TELECALLER_OTP_' : '';
     const host = process.env[prefix + 'SMTP_HOST'] || config.smtp.host;
@@ -60,11 +74,12 @@ async function main() {
     const user = process.env[prefix + 'SMTP_USERNAME'] || config.smtp.username;
     const pass = process.env[prefix + 'SMTP_PASSWORD'] || config.smtp.password;
     if (!host || !user || !pass) { report[kind] = { configured: false }; continue; }
-    const transport = nodemailer.createTransport({ host, port, secure: port === 465, requireTLS: port !== 465, auth: { user, pass }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 10000, tls: { rejectUnauthorized: true } });
+    const transport = nodemailer.createTransport({ host, port, secure: port === 465, requireTLS: port !== 465, auth: { user, pass }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 10000, tls: (() => { const file = path.join(os.homedir(), '.config/payday-crm/smtp-relay-ca.pem'); if (!fs.existsSync(file)) return { rejectUnauthorized: true }; const ca = fs.readFileSync(file); const name = new (require('crypto').X509Certificate)(ca).subject.split('\n').find(line => line.startsWith('CN='))?.slice(3); return { rejectUnauthorized: true, ca, servername: name }; })() });
     try { await transport.verify(); report[kind] = { configured: true, certificateAndAuthVerified: true, loopbackRelay: ['localhost', '127.0.0.1', '::1'].includes(host) }; }
     catch (error) { report[kind] = { configured: true, certificateAndAuthVerified: false, code: error.code || 'TLS_FAILURE', port, loopbackRelay: ['localhost', '127.0.0.1', '::1'].includes(host), certificate: await relayCertificate(host, port) }; }
     finally { transport.close(); }
   }
   console.log(JSON.stringify(report, null, 2));
+  if (process.env.SECURITY_RUNTIME_REQUIRED === 'true' && (!report.database?.reachable || !report.database?.masterReachable || !report.database?.namedLocksAvailable || !report.smtp?.certificateAndAuthVerified || !report.otp?.certificateAndAuthVerified)) process.exitCode = 1;
 }
 main().catch(error => { console.error(JSON.stringify({ preflightFailed: true, code: error.code || error.name })); process.exitCode = 1; });

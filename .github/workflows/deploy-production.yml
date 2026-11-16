@@ -9,6 +9,8 @@ on:
     paths-ignore:
       - backend/scripts/securityPreflight.js
       - .github/workflows/security-preflight.yml
+      - backend/scripts/installSecurityRuntime.js
+      - .github/workflows/security-runtime.yml
       - backend/services/databaseBackup.js
       - backend/services/databaseBackupNotifications.js
       - backend/scripts/backupDatabaseToGcs.js
