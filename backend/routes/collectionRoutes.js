@@ -55,6 +55,7 @@ router.get('/reports', requireRole(['collection']), asyncHandler(collectionContr
 router.get('/:caseId/activity', requireRole(['collection']), asyncHandler(collectionController.getActivity));
 router.get('/:caseId/bank-statements', requireRole(['collection']), asyncHandler(collectionController.getBankStatements));
 router.get('/:caseId/documents', requireRole(['collection']), asyncHandler(collectionController.getDocuments));
+router.get('/:caseId/account-aggregator-statements', requireRole(['collection']), asyncHandler(collectionController.getAccountAggregatorStatements));
 router.post('/:caseId/call-log', requireRole(['collection']), asyncHandler(collectionController.createCallLog));
 router.post('/:caseId/followups', requireRole(['collection']), asyncHandler(collectionController.createFollowup));
 router.post('/:caseId/payment', requireRole(['collection']), paymentUploadMiddleware(), asyncHandler(collectionController.createPayment));

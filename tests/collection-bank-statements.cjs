@@ -21,6 +21,7 @@ function fixture({ collectionCase = { id: 'CASE-A', loanId: 'LOAN-A-R1' }, reque
   const controller = load('backend/controllers/collectionController.js', {
     '../models/collectionModel': { findCaseById: async id => { calls.push(['case', id]); return collectionCase; } },
     '../models/repaymentModel': {},
+    '../models/accountAggregatorModel': {},
     '../models/documentRequestModel': {
       findBankStatementsForLoan: async loanId => { calls.push(['documents', loanId]); return requests; },
       findCollectionDocumentsForLoan: async loanId => { calls.push(['documents', loanId]); return requests; },

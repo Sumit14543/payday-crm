@@ -274,6 +274,34 @@ async function resetSession(applicationId, secondaryId) {
   await query(`DELETE FROM lead_account_aggregator_analytics WHERE (${whereClause}) AND (raw_analytics_json IS NULL OR raw_analytics_json NOT LIKE '%transaction%' OR raw_analytics_json LIKE '%"transactions":[]%')`, params);
 }
 
+async function findStatementsForLoan(loanId) {
+  const id = String(loanId || '').trim();
+  if (!id) return [];
+  const rows = await query(`
+    SELECT analytics.id, analytics.raw_analytics_json AS rawAnalyticsJson,
+      analytics.created_at AS createdAt,
+      (SELECT session.fip_name FROM lead_account_aggregator_sessions session
+        WHERE session.tracking_id = analytics.tracking_id ORDER BY session.id DESC LIMIT 1) AS fipName
+    FROM lead_account_aggregator_analytics analytics
+    WHERE EXISTS (
+      SELECT 1 FROM loan_applications application
+      WHERE (analytics.application_id = application.application_id
+        OR analytics.application_id = CAST(application.id AS CHAR))
+        AND (EXISTS (
+          SELECT 1 FROM loan_repayment_schedule schedule WHERE schedule.loan_id = ?
+            AND ((NULLIF(schedule.application_id, '') IS NOT NULL AND schedule.application_id = application.application_id)
+              OR (NULLIF(schedule.lead_id, '') IS NOT NULL AND schedule.lead_id = CAST(application.id AS CHAR)))
+        ) OR EXISTS (
+          SELECT 1 FROM lead_accounting_payments payment WHERE payment.loan_id = ?
+            AND ((NULLIF(payment.application_id, '') IS NOT NULL AND payment.application_id = application.application_id)
+              OR (NULLIF(payment.lead_id, '') IS NOT NULL AND payment.lead_id = CAST(application.id AS CHAR)))
+        ))
+    )
+    ORDER BY analytics.id DESC
+  `, [id, id]);
+  return require('../services/accountAggregatorStatements').statementsFromRows(rows);
+}
+
 module.exports = {
   createSession,
   findLatestSessionByApplicationId,
@@ -282,4 +310,5 @@ module.exports = {
   saveAnalytics,
   findLatestAnalyticsByApplicationId,
   resetSession,
+  findStatementsForLoan,
 };

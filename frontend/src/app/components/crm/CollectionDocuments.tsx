@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Building2, Camera, CreditCard, Download, Eye, FileText, Loader2, RefreshCw } from "lucide-react";
 import { apiGet, apiGetDocumentBlob } from "../../lib/api";
+import { CollectionAaStatements } from "./CollectionAaStatements";
 
 type CollectionDocument = {
   id: number | string;
@@ -103,6 +104,7 @@ export function CollectionDocuments({ caseId }: { caseId: string }) {
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
+      <CollectionAaStatements key={caseId} caseId={caseId} refresh={refresh} />
       {error && <p role="alert" className="mb-3 text-xs text-red-600 dark:text-red-400">{error}</p>}
       {loading ? <p role="status" className="flex items-center gap-2 py-3 text-xs text-slate-500 dark:text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading customer documents...</p> : (
         <div className="space-y-5">

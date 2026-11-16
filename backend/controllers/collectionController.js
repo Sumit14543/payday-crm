@@ -2,6 +2,7 @@ const collectionModel = require('../models/collectionModel');
 const leadStatusModel = require('../models/leadStatusModel');
 const repaymentModel = require('../models/repaymentModel');
 const documentRequestModel = require('../models/documentRequestModel');
+const accountAggregatorModel = require('../models/accountAggregatorModel');
 const sourceStatusWebhookService = require('../services/sourceStatusWebhookService');
 const { invalidateCollectionsCache } = require('./referenceController');
 const { syncUploadedFile } = require('../config/uploads');
@@ -65,6 +66,13 @@ async function getDocuments(req, res) {
       mimeType: document.mimeType, fileSize: document.fileSize,
       uploadedAt: document.uploadedAt || document.createdAt,
     })));
+}
+
+async function getAccountAggregatorStatements(req, res) {
+  const collectionCase = await getCaseOr404(req.params.caseId);
+  const statements = await accountAggregatorModel.findStatementsForLoan(collectionCase.loanId);
+  res.setHeader('Cache-Control', 'private, no-store');
+  return success(res, statements);
 }
 
 async function createCallLog(req, res) {
@@ -280,6 +288,7 @@ module.exports = {
   getActivity,
   getBankStatements,
   getDocuments,
+  getAccountAggregatorStatements,
   getReports,
   getSummary,
   reopenCase,
