@@ -158,3 +158,17 @@ test('production database readiness failure never returns internal formatter det
   const res = response(); await middleware({}, res, () => assert.fail('not ready'));
   assert.equal(res.statusCode, 503); assert.ok(!JSON.stringify(res.body).includes('SYN-'));
 });
+
+test('production SMTP failure never exposes host/user/password diagnostics in response or log', async () => {
+  const logs = [];
+  const mailer = load('backend/services/emailService.js', {
+    '../utils/smtpTls': { smtpTls: () => ({ rejectUnauthorized: true }) },
+    nodemailer: { createTransport: () => ({ sendMail: async () => { throw Object.assign(new Error('535 SYN-INTERNAL-HOST SYN-INTERNAL-USER SYN-INTERNAL-PASS'), { code: 'EAUTH' }); } }) },
+    '../config/env': { config: { smtp: { host: 'synthetic.invalid', port: 587, username: 'synthetic', password: 'synthetic', fromEmail: 'synthetic@example.invalid' } } },
+    '../config/db': { tenantLocalStorage: { getStore: () => null } },
+  }, { process: { env: { NODE_ENV: 'production' } }, console: { error: (...args) => logs.push(args) } });
+  await assert.rejects(mailer.sendMail({ to: 'borrower@example.invalid', subject: 'Synthetic', text: 'Synthetic' }), error => {
+    assert.equal(error.statusCode, 502); assert.ok(!error.publicMessage.includes('SYN-INTERNAL')); return true;
+  });
+  assert.ok(!JSON.stringify(logs).includes('SYN-INTERNAL'));
+});

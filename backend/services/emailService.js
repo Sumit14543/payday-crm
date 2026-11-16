@@ -58,7 +58,7 @@ function createTransporter(smtpConfig) {
 async function sendMail(options = {}) {
   const { tenantSlug, ...mailOptions } = options;
   const smtpConfig = getSmtpConfig();
-  console.log('[SMTP] Sending email strictly using config from .env:', {
+  if (process.env.NODE_ENV !== 'production') console.log('[SMTP] Sending email strictly using config from .env:', {
     host: smtpConfig.host,
     port: smtpConfig.port,
     secure: smtpConfig.secure,
@@ -82,6 +82,13 @@ async function sendMail(options = {}) {
       ...mailOptions,
     });
   } catch (err) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[SMTP Error] Transport failed:', { code: /^[A-Z0-9_]+$/.test(String(err.code || '')) ? err.code : 'SMTP_ERROR' });
+      const error = new Error('Email delivery is temporarily unavailable. Please try again shortly.');
+      error.statusCode = 502;
+      error.publicMessage = error.message;
+      throw error;
+    }
     console.error('[SMTP Error] Transport failed:', err);
     if (/535|authentication|invalid login/i.test(err.message || '')) {
       const detailedError = new Error(

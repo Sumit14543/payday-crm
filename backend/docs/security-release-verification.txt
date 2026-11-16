@@ -16,7 +16,8 @@ Other changes
 - Updated affected backend/frontend packages and aligned react-router packages.
 - Added full dependency audits to deployment/PR verification. Any npm advisory
   severity now blocks a new deployment; rollback does not depend on that gate.
-- Production database-readiness and Tally failures use generic public messages.
+- Production database-readiness, SMTP and Tally failures use generic public
+  messages. Production SMTP logs include only a bounded error category.
 - Tally keys are bound to a company. Existing TALLY_API_KEY defaults to
   waqtfinance; TALLY_TENANT configures another owner. TALLY_COMPANY_KEYS can hold
   a private JSON array of {tenant,key} entries for separate company credentials.
