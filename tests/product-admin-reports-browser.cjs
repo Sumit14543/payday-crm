@@ -101,8 +101,20 @@ async function main() {
       assert.ok(cardsReadyMs < 1000, `Overview lead cards waited for unrelated reports: ${cardsReadyMs}ms`);
       assert.ok(overview.requests.some((item) => item.path === '/api/leads'));
       assert.ok(overview.requests.some((item) => item.path === '/api/leads/reports/reloans'));
+      await pause(1600);
+      const beforePeriodChange = overview.requests.length;
+      const periodStartedAt = Date.now();
+      await overview.page.click('button[aria-label="Select report period"]');
+      await overview.page.waitForSelector('[role="option"]');
+      await overview.page.evaluate(() => [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent?.trim() === 'All Time')?.click());
+      await overview.page.waitForFunction(() => document.querySelector('button[aria-label="Select report period"]')?.textContent?.includes('All Time'));
+      const allTimeSelectionMs = Date.now() - periodStartedAt;
+      await overview.page.waitForFunction((count) => performance.getEntriesByType('resource').length >= count, {}, 0);
+      await pause(200);
+      const periodRequests = overview.requests.slice(beforePeriodChange).map((item) => item.path);
+      assert.deepEqual([...new Set(periodRequests)], ['/api/leads/telecaller-sla-report']);
       assert.deepEqual(overview.pageErrors, []);
-      console.log(JSON.stringify({ productAdminReportsBrowser: 'passed', singleReportApiCounts: { lead: 1, payment: 1, audit: 1 }, overviewCardsReadyMs: cardsReadyMs, syntheticTrafficOnly: true }, null, 2));
+      console.log(JSON.stringify({ productAdminReportsBrowser: 'passed', singleReportApiCounts: { lead: 1, payment: 1, audit: 1 }, overviewCardsReadyMs: cardsReadyMs, allTimeSelectionMs, allTimeHeavyReloads: 0, periodRefreshPaths: [...new Set(periodRequests)], syntheticTrafficOnly: true }, null, 2));
     } finally {
       await overview.context.close();
     }

@@ -646,6 +646,7 @@ export function Reports() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [reloansReportData, setReloansReportData] = useState<ReloanReportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSlaLoading, setIsSlaLoading] = useState(false);
   const [areOverviewCardsLoading, setAreOverviewCardsLoading] = useState(true);
   const [apiError, setApiError] = useState("");
   const currentRole = "superadmin";
@@ -656,7 +657,6 @@ export function Reports() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const reportType = searchParams.get("type");
-  const slaPeriod = !reportType || reportType === "employee-performance" ? selectedPeriod : "";
 
   const { hash } = useLocation();
 
@@ -697,9 +697,7 @@ export function Reports() {
           return rows || [];
         })
         .catch(() => [] as Lead[]);
-    const slaRequest = requiredSources.has("sla") && (isTelecaller || isSuperadmin)
-      ? apiGet<SlaReport>(`/leads/telecaller-sla-report?period=${slaPeriod}`, controller.signal).catch(() => null)
-      : Promise.resolve(null);
+    const slaRequest = Promise.resolve<SlaReport | null>(null);
     const accountRequest = requiredSources.has("account") && (isAccountant || isSuperadmin)
       ? apiGet<AccountantReport>("/dashboard/accountant", controller.signal).catch(() => null)
       : Promise.resolve(null);
@@ -746,7 +744,7 @@ export function Reports() {
     }
 
     Promise.all([leadsRequest, slaRequest, accountRequest, interestRequest, collectionRequest, collectionDeepRequest, auditLogsRequest, loansRequest, reloansRequest])
-      .then(([leadRows, report, account, interest, collectionRows, collectionDeep, logs, loansData, reloansList]) => {
+      .then(([leadRows, , account, interest, collectionRows, collectionDeep, logs, loansData, reloansList]) => {
         const schemes = ["Payday Loan (Standard)", "Payday Loan (Express)", "Payday Loan (Flexi)", "Payday Loan (Premium)"];
         const activeIdx = schemes.indexOf(activeProduct);
         const filterList = (arr: any[]) => arr;
@@ -754,16 +752,6 @@ export function Reports() {
         const filteredLeads = filterList(leadRows || []);
         const filteredCollections = filterList(collectionRows || []);
         const filteredLogs = filterList(logs || []);
-
-        let filteredSla = null;
-        if (report) {
-          filteredSla = {
-            ...report,
-            breachedLeads: filterList(report.breachedLeads || []),
-            byOwner: report.byOwner || [],
-            summary: report.summary || {}
-          };
-        }
 
         let filteredAccount = null;
         if (account) {
@@ -804,7 +792,6 @@ export function Reports() {
         }
 
         setLeads(filteredLeads);
-        setSlaReport(filteredSla);
         setAccountantReport(filteredAccount);
         setInterestReports(filteredInterest);
         setCollections(filteredCollections);
@@ -823,7 +810,29 @@ export function Reports() {
       });
 
     return () => controller.abort();
-  }, [isAccountant, isCollection, isTelecaller, slaPeriod, currentRole, reportType]);
+  }, [isAccountant, isCollection, isTelecaller, currentRole, reportType]);
+
+  useEffect(() => {
+    const shouldLoadSla = (!reportType || reportType === "employee-performance") && (isTelecaller || isSuperadmin);
+    if (!shouldLoadSla) {
+      setSlaReport(null);
+      setIsSlaLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setIsSlaLoading(true);
+    apiGet<SlaReport>(`/leads/telecaller-sla-report?period=${selectedPeriod}`, controller.signal)
+      .then((report) => {
+        if (!controller.signal.aborted) setSlaReport(report || null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSlaReport(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsSlaLoading(false);
+      });
+    return () => controller.abort();
+  }, [isSuperadmin, isTelecaller, reportType, selectedPeriod]);
 
   const filteredLeads = useMemo(() => {
     const { start, end } = getPeriodRange(selectedPeriod);
@@ -1115,7 +1124,7 @@ export function Reports() {
         auditLogs={auditLogs}
         reloansData={reloansReportData}
         loansList={loansList}
-        isLoading={isLoading}
+        isLoading={isLoading || (reportType === "employee-performance" && isSlaLoading)}
         apiError={apiError}
         selectedPeriod={selectedPeriod}
         onPeriodChange={setSelectedPeriod}
