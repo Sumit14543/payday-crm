@@ -60,7 +60,9 @@ jobs:
         run: npm run build
       - name: Verify sanction confirmation in a local browser fixture
         # Browser verification uses local fixtures and does not contact production.
-        run: node tests/sanction-decision-browser.cjs
+        run: |
+          node tests/sanction-decision-browser.cjs
+          node tests/telecaller-initial-browser.cjs
       - name: Prepare verified release package
         run: |
           mkdir -p deploy-package/backend deploy-package/frontend

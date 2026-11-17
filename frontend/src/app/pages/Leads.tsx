@@ -412,7 +412,7 @@ export function Leads() {
         if (assignedToFilter !== "all") params.set("assignedTo", assignedToFilter);
         if (sourceSystemFilter !== "all") params.set("sourceSystem", sourceSystemFilter);
 
-        const data = await apiGet<TelecallerWorkbenchResponse>(`/leads/telecaller-workbench-v2?${params.toString()}`, signal);
+        const data = await apiGet<TelecallerWorkbenchResponse>(`/leads/telecaller-workbench-v2?${params.toString()}`, signal, { preferSameOrigin: true });
         setLeads(data.items);
         setWorkbenchCounts(data.counts);
         setWorkbenchPagination(data.pagination);
@@ -449,7 +449,7 @@ export function Leads() {
   useEffect(() => {
     if (!isTelecaller) return;
     const controller = new AbortController();
-    apiGet<TelecallerPolicy>("/leads/telecaller-policy", controller.signal)
+    apiGet<TelecallerPolicy>("/leads/telecaller-policy", controller.signal, { preferSameOrigin: true })
       .then(setPolicy)
       .catch(() => undefined);
     return () => controller.abort();

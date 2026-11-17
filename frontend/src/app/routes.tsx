@@ -1,5 +1,5 @@
 import React, { lazy } from "react";
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, useLocation } from "react-router-dom";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { RequireAuth, RequireRole } from "./lib/auth";
 
@@ -36,7 +36,8 @@ const CreditApplications = lazyRetry(() => import("./pages/CreditApplications").
 const CreditManagerPanel = lazyRetry(() => import("./pages/CreditManagerPanel").then((module) => ({ default: module.CreditManagerPanel })));
 const Dashboard = lazyRetry(() => import("./pages/Dashboard").then((module) => ({ default: module.Dashboard })));
 const Customers = lazyRetry(() => import("./pages/Customers").then((module) => ({ default: module.Customers })));
-const Leads = lazyRetry(() => import("./pages/Leads").then((module) => ({ default: module.Leads })));
+const loadLeads = () => import("./pages/Leads").then((module) => ({ default: module.Leads }));
+const Leads = lazyRetry(loadLeads);
 const LeadDetails = lazyRetry(() => import("./pages/LeadDetails").then((module) => ({ default: module.LeadDetails })));
 const Login = lazyRetry(() => import("./pages/Login").then((module) => ({ default: module.Login })));
 const TeamManagement = lazyRetry(() => import("./pages/TeamManagement").then((module) => ({ default: module.TeamManagement })));
@@ -76,6 +77,17 @@ const ProductAdminRevenue = lazyRetry(() => import("./pages/product-admin/Revenu
 const ProductAdminAuditLogs = lazyRetry(() => import("./pages/product-admin/AuditLogs").then((module) => ({ default: module.AuditLogs })));
 
 import { useAuth } from "./lib/auth";
+
+function AppLayoutRoute() {
+  const { user, activeRole } = useAuth();
+  const { pathname } = useLocation();
+  if ((activeRole || user?.role) === "telecaller" && /^\/leads\/?$/.test(pathname)) {
+    // Fetch page code while Layout is still loading. This fetches no lead data;
+    // the existing lazy retry and route guards still own rendering and errors.
+    void loadLeads().catch(() => undefined);
+  }
+  return <Layout />;
+}
 
 function LeadsRoute() {
   const { user, activeRole } = useAuth();
@@ -160,7 +172,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/",
-        Component: Layout,
+        Component: AppLayoutRoute,
         errorElement: <RouteErrorBoundary />,
         children: [
           { index: true, element: <Dashboard /> },

@@ -138,7 +138,20 @@ export type ApiResponse<T> = {
   message?: string;
 };
 
-type ReadOptions = { timeoutMs?: number };
+type ReadOptions = { timeoutMs?: number; preferSameOrigin?: boolean };
+
+function readApiBase(path: string, options?: ReadOptions) {
+  // Only these reads have a verified proxy on this managed production host.
+  // Custom hosts, other endpoints and all writes keep their configured API.
+  if (options?.preferSameOrigin
+    && typeof window !== "undefined"
+    && window.location.origin === "https://payday.waqtmoney.com"
+    && trimTrailingSlash(API_BASE_URL) === "https://payday-api.waqtmoney.com/api"
+    && /^\/leads\/telecaller-(?:workbench-v2|policy)(?:$|\?)/.test(path)) {
+    return "/api";
+  }
+  return API_BASE_URL;
+}
 
 async function readWithDeadline<T>(read: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal, options: ReadOptions = {}): Promise<T> {
   signal?.throwIfAborted();
@@ -173,9 +186,12 @@ async function readWithDeadline<T>(read: (signal: AbortSignal) => Promise<T>, si
 export async function apiGet<T>(path: string, signal?: AbortSignal, options?: ReadOptions): Promise<T> {
   const identity = getAuthToken();
   const separator = path.includes("?") ? "&" : "?";
-  const url = `${API_BASE_URL}${path}${separator}_t=${Date.now()}`;
+  const url = `${readApiBase(path, options)}${path}${separator}_t=${Date.now()}`;
   return readWithDeadline(async requestSignal => {
-    const response = await apiFetch(url, { headers: authHeaders(path), signal: requestSignal });
+    const response = await apiFetch(url, {
+      headers: authHeaders(path), signal: requestSignal,
+      ...(options?.preferSameOrigin ? { cache: "no-store" as RequestCache } : {}),
+    });
     const result = await readApiResponse<T>(response, path);
     if (getAuthToken() !== identity) throw new Error('Session changed while loading data. Please reload.');
     return result;

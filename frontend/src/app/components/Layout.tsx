@@ -230,7 +230,7 @@ export function Layout() {
     if (role !== "telecaller") return;
     const counts = emptyDispositionCounts();
     try {
-      const payload = await apiGet<TelecallerWorkbenchCountsResponse>("/leads/telecaller-workbench-v2?page=1&pageSize=5", signal);
+      const payload = await apiGet<TelecallerWorkbenchCountsResponse>("/leads/telecaller-workbench-v2?page=1&pageSize=5", signal, { preferSameOrigin: true });
       Object.entries(payload.counts?.disposition || {}).forEach(([key, value]) => {
         const label = key === NO_DISPOSITION_VALUE ? "No Disposition" : key;
         if (counts[label] !== undefined) counts[label] = Number(value || 0);
