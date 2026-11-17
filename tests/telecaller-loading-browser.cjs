@@ -15,7 +15,7 @@ async function otp(browser, dist, expectedPreload, failCodePrefetch = false) {
   try {
     await f.page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });
     await f.page.waitForSelector('input[type="password"]');
-    await f.page.type('input[type="password"]', 'SYN-ONLY-NOT-A-CREDENTIAL');
+    await f.page.type('input[type="password"]', 'dummy-test-input');
     await f.page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled);
     await submit(f.page);
     await f.page.waitForSelector('input[placeholder="123456"]');
@@ -118,8 +118,8 @@ async function otherRoleOtp(browser, dist) {
     await f.page.goto(origin + '/login'); await f.page.waitForSelector('input[type="password"]');
     await f.page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Telecaller').click());
     await f.page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Product Admin').click());
-    await f.page.type('input[type="email"]', 'admin@waqtfinance.com');
-    await f.page.type('input[type="password"]', 'SYN-ONLY-NOT-A-CREDENTIAL');
+    await f.page.type('input[type="email"]', 'admin@example.invalid');
+    await f.page.type('input[type="password"]', 'dummy-test-input');
     await f.page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled); await submit(f.page);
     await f.page.waitForSelector('input[placeholder="123456"]'); await delay(350);
     assert.equal(f.requests.filter(r => /^\/assets\/(Layout|Leads)-.*\.js$/.test(r.path)).length, 0);

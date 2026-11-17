@@ -43,9 +43,9 @@ async function openFixture(browser, dist, { candidate = true, authenticated = tr
       if (loginFlow && request.method() === 'POST' && ['/api/auth/login', '/api/superadmin/login', '/api/auth/verify-otp'].includes(url.pathname)) {
         const body = JSON.parse(request.postData());
         const cors = { 'access-control-allow-origin': appOrigin, 'access-control-allow-headers': 'content-type,x-tenant-slug' };
-        if (url.pathname.endsWith('/login')) return respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: { requiresOtp: true, tempToken: 'SYN-OTP-CHALLENGE', tenant: 'synthetic-company', email: 'agent@waqtfinance.com' } }) });
+        if (url.pathname.endsWith('/login')) return respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: { requiresOtp: true, tempToken: 'SYN-OTP-CHALLENGE', tenant: 'synthetic-company', email: 'agent@example.invalid' } }) });
         if (body.otp !== '123456') return respond({ status: 401, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'Synthetic invalid OTP' }) });
-        return respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: { token: 'SYN-BROWSER-SESSION', documentToken: 'SYN-DOCUMENT', user: { name: 'Synthetic Agent', email: 'agent@waqtfinance.com', role: 'telecaller', tenant: 'synthetic-company' } } }) });
+        return respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: { token: 'SYN-BROWSER-SESSION', documentToken: 'SYN-DOCUMENT', user: { name: 'Synthetic Agent', email: 'agent@example.invalid', role: 'telecaller', tenant: 'synthetic-company' } } }) });
       }
       if (!['GET', 'OPTIONS'].includes(request.method())) { unsafeRequests.push(url.pathname); return request.abort(); }
       if (url.pathname.startsWith('/api/')) {
