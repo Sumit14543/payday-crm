@@ -37,16 +37,24 @@ async function openPage(browser, route, { slowUnrelated = false } = {}) {
     try {
       const url = new URL(request.url());
       if (![appOrigin, apiOrigin].includes(url.origin)) return request.abort();
-      if (request.method() !== 'GET') return request.abort();
       if (url.pathname.startsWith('/api/')) {
+        const cors = {
+          'access-control-allow-origin': appOrigin,
+          'access-control-allow-methods': 'GET, OPTIONS',
+          'access-control-allow-headers': request.headers()['access-control-request-headers'] || 'authorization,x-tenant-slug',
+          'cache-control': 'private, no-store',
+        };
+        if (request.method() === 'OPTIONS') return request.respond({ status: 204, headers: cors });
+        if (request.method() !== 'GET') return request.abort();
         requests.push({ path: url.pathname, at: Date.now() });
         assert.equal(request.headers().authorization, 'Bearer SYN-REPORT-SESSION');
         assert.equal(request.headers()['x-tenant-slug'], 'synthetic-company');
         const isFastCardSource = ['/api/leads', '/api/leads/reports/reloans'].includes(url.pathname);
         await pause(slowUnrelated && !isFastCardSource ? 1400 : 120);
         const data = Object.prototype.hasOwnProperty.call(apiPayloads, url.pathname) ? apiPayloads[url.pathname] : {};
-        return request.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': appOrigin, 'cache-control': 'private, no-store' }, body: JSON.stringify({ success: true, data }) });
+        return request.respond({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ success: true, data }) });
       }
+      if (request.method() !== 'GET') return request.abort();
       if (url.pathname.startsWith('/assets/')) {
         const file = path.resolve(root, 'frontend/dist', '.' + url.pathname);
         assert.ok(file.startsWith(path.resolve(root, 'frontend/dist') + path.sep) && fs.existsSync(file));
