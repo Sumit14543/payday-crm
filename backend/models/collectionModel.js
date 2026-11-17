@@ -403,15 +403,22 @@ async function getCollectionReports() {
         r.status AS status,
         r.reference AS reference,
         r.received_by AS receivedBy
-      FROM loan_repayments r
+      FROM (
+        SELECT
+          id, loan_id, customer_id, lead_id, application_id, amount,
+          principal_component, interest_component, received_at, created_at,
+          status, reference, received_by
+        FROM loan_repayments
+        WHERE LOWER(TRIM(status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
+        ORDER BY COALESCE(received_at, created_at) DESC, id DESC
+        LIMIT 200
+      ) r
       LEFT JOIN loans l ON l.id = r.loan_id
       LEFT JOIN customers c ON c.id = COALESCE(r.customer_id, l.customer_id)
       LEFT JOIN collection_cases cc ON cc.loan_id = r.loan_id
       LEFT JOIN loan_applications la ON (la.application_id = r.application_id OR CAST(la.id AS CHAR) = r.lead_id)
-      WHERE LOWER(TRIM(r.status)) IN ('received', 'success', 'paid', 'settled', 'completed', 'approved')
       GROUP BY r.id, r.loan_id, r.amount, r.principal_component, r.interest_component, r.received_at, r.created_at, r.status, r.reference, r.received_by
       ORDER BY COALESCE(r.received_at, r.created_at) DESC, r.id DESC
-      LIMIT 200
     `),
     query(`
       SELECT status, COUNT(*) AS count, COALESCE(SUM(amount), 0) AS amount
