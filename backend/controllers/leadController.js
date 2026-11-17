@@ -637,15 +637,58 @@ async function getReloansReport(req, res) {
   let rawApplications = [];
   try {
     rawApplications = await query(`
+      WITH payment_matches AS (
+        SELECT la.id AS appRowId, lap.loan_id AS loanId, lap.id AS sortValue
+        FROM loan_applications la
+        JOIN lead_accounting_payments lap ON lap.application_id = la.application_id
+        WHERE lap.loan_id IS NOT NULL AND lap.loan_id <> ''
+        UNION ALL
+        SELECT la.id AS appRowId, lap.loan_id AS loanId, lap.id AS sortValue
+        FROM loan_applications la
+        JOIN lead_accounting_payments lap ON lap.lead_id = CAST(la.id AS CHAR)
+        WHERE lap.loan_id IS NOT NULL AND lap.loan_id <> ''
+      ),
+      payment_ranked AS (
+        SELECT appRowId, loanId,
+          ROW_NUMBER() OVER (PARTITION BY appRowId ORDER BY sortValue DESC) AS rowNum
+        FROM payment_matches
+      ),
+      collection_matches AS (
+        SELECT la.id AS appRowId, cc.loan_id AS loanId, cc.created_at AS sortValue
+        FROM loan_applications la
+        JOIN collection_cases cc ON cc.customer_id = la.application_id
+        WHERE cc.loan_id IS NOT NULL AND cc.loan_id <> ''
+        UNION ALL
+        SELECT la.id AS appRowId, cc.loan_id AS loanId, cc.created_at AS sortValue
+        FROM loan_applications la
+        JOIN collection_cases cc ON cc.customer_id = CAST(la.id AS CHAR)
+        WHERE cc.loan_id IS NOT NULL AND cc.loan_id <> ''
+      ),
+      collection_ranked AS (
+        SELECT appRowId, loanId,
+          ROW_NUMBER() OVER (PARTITION BY appRowId ORDER BY sortValue DESC) AS rowNum
+        FROM collection_matches
+      ),
+      loan_matches AS (
+        SELECT la.id AS appRowId, l.id AS loanId, l.created_at AS sortValue
+        FROM loan_applications la
+        JOIN loans l ON l.customer_id = la.application_id
+        WHERE l.id IS NOT NULL AND l.id <> ''
+        UNION ALL
+        SELECT la.id AS appRowId, l.id AS loanId, l.created_at AS sortValue
+        FROM loan_applications la
+        JOIN loans l ON l.customer_id = CAST(la.id AS CHAR)
+        WHERE l.id IS NOT NULL AND l.id <> ''
+      ),
+      loan_ranked AS (
+        SELECT appRowId, loanId,
+          ROW_NUMBER() OVER (PARTITION BY appRowId ORDER BY sortValue DESC) AS rowNum
+        FROM loan_matches
+      )
       SELECT 
         la.id,
         la.application_id AS applicationId,
-        COALESCE(
-          (SELECT lap.loan_id FROM lead_accounting_payments lap WHERE (lap.application_id = la.application_id OR lap.lead_id = CAST(la.id AS CHAR)) AND lap.loan_id IS NOT NULL AND lap.loan_id <> '' ORDER BY lap.id DESC LIMIT 1),
-          (SELECT cc.loan_id FROM collection_cases cc WHERE (cc.customer_id = la.application_id OR cc.customer_id = CAST(la.id AS CHAR)) AND cc.loan_id IS NOT NULL AND cc.loan_id <> '' ORDER BY cc.created_at DESC LIMIT 1),
-          (SELECT l.id FROM loans l WHERE (l.customer_id = la.application_id OR l.customer_id = CAST(la.id AS CHAR)) AND l.id IS NOT NULL AND l.id <> '' ORDER BY l.created_at DESC LIMIT 1),
-          ''
-        ) AS loanId,
+        COALESCE(pr.loanId, cr.loanId, lr.loanId, '') AS loanId,
         la.full_name AS customerName,
         la.mobile AS phone,
         la.email,
@@ -668,6 +711,9 @@ async function getReloansReport(req, res) {
         la.created_at AS createdAt,
         la.updated_at AS updatedAt
       FROM loan_applications la
+      LEFT JOIN payment_ranked pr ON pr.appRowId = la.id AND pr.rowNum = 1
+      LEFT JOIN collection_ranked cr ON cr.appRowId = la.id AND cr.rowNum = 1
+      LEFT JOIN loan_ranked lr ON lr.appRowId = la.id AND lr.rowNum = 1
       ORDER BY la.created_at ASC, la.id ASC
     `);
   } catch (err) {

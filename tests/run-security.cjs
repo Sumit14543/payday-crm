@@ -13,6 +13,7 @@ const files = [
   'security-sanction-company-links',
   'performance-telecaller-initial',
   'performance-telecaller-loading',
+  'reloan-report-performance',
 ];
 const result = spawnSync(process.execPath, ['--test', '--test-isolation=none', ...files.map(file => path.join(__dirname, file + '.cjs'))], { stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
 if (result.error) throw result.error;
