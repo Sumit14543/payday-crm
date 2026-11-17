@@ -58,12 +58,13 @@ jobs:
           VITE_SUPPORT_PHONE: '+919217086608'
           VITE_SUPPORT_WHATSAPP: '919217086608'
         run: npm run build
-      - name: Verify sanction and telecaller flows in local browsers
+      - name: Verify sanction, telecaller and reports flows in local browsers
         # Browser verification uses local fixtures and does not contact production.
         run: |
           node tests/sanction-decision-browser.cjs
           node tests/telecaller-initial-browser.cjs
           node tests/telecaller-loading-browser.cjs
+          node tests/product-admin-reports-browser.cjs
       - name: Prepare verified release package
         run: |
           mkdir -p deploy-package/backend deploy-package/frontend

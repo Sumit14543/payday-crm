@@ -262,6 +262,37 @@ const reportPageSizeOptions = [
   { label: "50 / page", value: "50" },
 ];
 
+type ReportDataSource = "leads" | "sla" | "account" | "interest" | "collections" | "collectionDeep" | "auditLogs" | "loans" | "reloans";
+
+const allReportDataSources = new Set<ReportDataSource>([
+  "leads", "sla", "account", "interest", "collections", "collectionDeep", "auditLogs", "loans", "reloans",
+]);
+
+const reportDataSources: Record<string, ReportDataSource[]> = {
+  "lead-report": ["leads"],
+  "application-report": ["leads"],
+  "loan-report": ["collections"],
+  "reloan-report": ["reloans", "leads"],
+  "disbursement-report": ["loans", "collections", "account"],
+  "collection-report": ["collections"],
+  "cibil-report": ["collections"],
+  "due-report": ["collections"],
+  "dpd-bucket-report": ["collections"],
+  "interest-accrued-report": ["interest"],
+  "outstanding-report": ["collections"],
+  "payment-report": ["collectionDeep"],
+  "employee-performance": ["sla"],
+  "customer-report": ["interest"],
+  "recovery-report": ["collections"],
+  "audit-log-report": ["auditLogs"],
+};
+
+const getRequiredReportDataSources = (reportType: string | null) => (
+  reportType
+    ? new Set<ReportDataSource>(reportDataSources[reportType] || ["leads", "collections", "auditLogs"])
+    : allReportDataSources
+);
+
 const formatCurrency = (value: number | null | undefined) => currencyFormatter.format(Number(value || 0));
 
 const formatDate = (value?: string | null) => {
@@ -615,6 +646,7 @@ export function Reports() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [reloansReportData, setReloansReportData] = useState<ReloanReportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [areOverviewCardsLoading, setAreOverviewCardsLoading] = useState(true);
   const [apiError, setApiError] = useState("");
   const currentRole = "superadmin";
   const isTelecaller = currentRole === "telecaller";
@@ -624,6 +656,7 @@ export function Reports() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const reportType = searchParams.get("type");
+  const slaPeriod = !reportType || reportType === "employee-performance" ? selectedPeriod : "";
 
   const { hash } = useLocation();
 
@@ -652,44 +685,65 @@ export function Reports() {
   useEffect(() => {
     const controller = new AbortController();
     setIsLoading(true);
+    setAreOverviewCardsLoading(!reportType);
     setApiError("");
+    const requiredSources = getRequiredReportDataSources(reportType);
 
-    const leadsRequest = (isAccountant || isCollection) && !isSuperadmin
+    const leadsRequest = !requiredSources.has("leads") || ((isAccountant || isCollection) && !isSuperadmin)
       ? Promise.resolve<Lead[]>([])
-      : apiGet<Lead[]>(isTelecaller ? "/leads/telecaller-workbench" : "/leads", controller.signal).catch(() => [] as Lead[]);
-    const slaRequest = isTelecaller || isSuperadmin
-      ? apiGet<SlaReport>(`/leads/telecaller-sla-report?period=${selectedPeriod}`, controller.signal).catch(() => null)
+      : apiGet<Lead[]>(isTelecaller ? "/leads/telecaller-workbench" : "/leads", controller.signal)
+        .then((rows) => {
+          if (!controller.signal.aborted) setLeads(rows || []);
+          return rows || [];
+        })
+        .catch(() => [] as Lead[]);
+    const slaRequest = requiredSources.has("sla") && (isTelecaller || isSuperadmin)
+      ? apiGet<SlaReport>(`/leads/telecaller-sla-report?period=${slaPeriod}`, controller.signal).catch(() => null)
       : Promise.resolve(null);
-    const accountRequest = isAccountant || isSuperadmin
+    const accountRequest = requiredSources.has("account") && (isAccountant || isSuperadmin)
       ? apiGet<AccountantReport>("/dashboard/accountant", controller.signal).catch(() => null)
       : Promise.resolve(null);
-    const interestRequest = isAccountant || isSuperadmin
+    const interestRequest = requiredSources.has("interest") && (isAccountant || isSuperadmin)
       ? apiGet<InterestReportsResponse>("/accounts/reports/interest", controller.signal).catch(() => null)
       : Promise.resolve(null);
-    const collectionRequest = isAccountant || isCollection || isSuperadmin
+    const collectionRequest = requiredSources.has("collections") && (isAccountant || isCollection || isSuperadmin)
       ? apiGet<CollectionReportRow[]>("/collections", controller.signal).catch(() => [] as CollectionReportRow[])
       : Promise.resolve<CollectionReportRow[]>([]);
-    const collectionDeepRequest = isCollection || isSuperadmin
+    const collectionDeepRequest = requiredSources.has("collectionDeep") && (isCollection || isSuperadmin)
       ? apiGet<CollectionDeepReport>("/collections/reports", controller.signal).catch(() => null)
       : Promise.resolve(null);
-    const auditLogsRequest = isAccountant || currentRole === "credit-manager" || isSuperadmin
+    const auditLogsRequest = requiredSources.has("auditLogs") && (isAccountant || currentRole === "credit-manager" || isSuperadmin)
       ? apiGet<AuditLog[]>("/dashboard/audit-logs", controller.signal).catch(() => [] as AuditLog[])
       : Promise.resolve<AuditLog[]>([]);
-    const loansRequest = apiGet<any[]>("/loans?page=1&limit=5000", controller.signal)
+    const loansRequest = (requiredSources.has("loans")
+      ? apiGet<any[]>("/loans?page=1&limit=5000", controller.signal)
       .then((res: any) => {
         if (Array.isArray(res)) return res;
         if (res && Array.isArray(res.data)) return res.data;
         if (res && Array.isArray(res.loans)) return res.loans;
         return [];
       })
-      .catch(() => []);
-    const reloansRequest = apiGet<any>("/leads/reports/reloans", controller.signal)
+      .catch(() => [])
+      : Promise.resolve<any[]>([]));
+    const reloansRequest = (requiredSources.has("reloans")
+      ? apiGet<any>("/leads/reports/reloans", controller.signal)
       .then((res: any) => {
-        if (Array.isArray(res)) return res as ReloanReportItem[];
-        if (res && Array.isArray(res.data)) return res.data as ReloanReportItem[];
-        return [] as ReloanReportItem[];
+        const rows = Array.isArray(res)
+          ? res as ReloanReportItem[]
+          : res && Array.isArray(res.data)
+            ? res.data as ReloanReportItem[]
+            : [] as ReloanReportItem[];
+        if (!controller.signal.aborted) setReloansReportData(rows);
+        return rows;
       })
-      .catch(() => [] as ReloanReportItem[]);
+      .catch(() => [] as ReloanReportItem[])
+      : Promise.resolve<ReloanReportItem[]>([]));
+
+    if (!reportType) {
+      Promise.all([leadsRequest, reloansRequest]).finally(() => {
+        if (!controller.signal.aborted) setAreOverviewCardsLoading(false);
+      });
+    }
 
     Promise.all([leadsRequest, slaRequest, accountRequest, interestRequest, collectionRequest, collectionDeepRequest, auditLogsRequest, loansRequest, reloansRequest])
       .then(([leadRows, report, account, interest, collectionRows, collectionDeep, logs, loansData, reloansList]) => {
@@ -769,7 +823,7 @@ export function Reports() {
       });
 
     return () => controller.abort();
-  }, [isAccountant, isCollection, isTelecaller, selectedPeriod, currentRole, reportType]);
+  }, [isAccountant, isCollection, isTelecaller, slaPeriod, currentRole, reportType]);
 
   const filteredLeads = useMemo(() => {
     const { start, end } = getPeriodRange(selectedPeriod);
@@ -1632,7 +1686,7 @@ export function Reports() {
             <ReportMetricCard
               icon={Icon as typeof Users}
               accent={index === 2 ? "warning" : index === 3 ? "teal" : "info"}
-              metric={isLoading ? "-" : value as number}
+              metric={areOverviewCardsLoading ? "-" : value as number}
               note={note as string}
               title={label as string}
               trend="Live"
