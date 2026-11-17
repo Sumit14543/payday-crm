@@ -443,6 +443,10 @@ export function Leads() {
       if (!signal.aborted) {
         setApiError(error instanceof Error ? error.message : "Unable to load leads");
       }
+    } finally {
+      // Only the current result/error ends a page transition. An aborted read
+      // must not reveal old rows while its replacement is still loading.
+      if (isTelecaller && !signal.aborted) setIsPageTransitioning(false);
     }
   }, [activeTab, assignedToFilter, currentPage, dispositionFilter, isTelecaller, priorityFilter, searchTerm, sourceSystemFilter, statusFilter]);
 
@@ -856,7 +860,14 @@ export function Leads() {
       window.clearTimeout(pageTransitionTimerRef.current);
     }
     setIsPageTransitioning(true);
+    if (isTelecaller && boundedPage === currentPage) {
+      // The URL can already target a page whose previous request failed. Retry
+      // that read instead of waiting for a URL change that cannot happen.
+      void refresh();
+      return;
+    }
     updatePageParam(boundedPage, false);
+    if (isTelecaller) return;
     pageTransitionTimerRef.current = window.setTimeout(() => {
       setIsPageTransitioning(false);
       pageTransitionTimerRef.current = null;

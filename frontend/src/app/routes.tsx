@@ -2,6 +2,7 @@ import React, { lazy } from "react";
 import { createBrowserRouter, useLocation } from "react-router-dom";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { RequireAuth, RequireRole } from "./lib/auth";
+import { loadAppLayoutCode, loadTelecallerLeadsCode, preloadTelecallerPageCode } from "./lib/telecallerPageCode";
 
 function lazyRetry<T extends React.ComponentType<any>>(factory: () => Promise<{ default: T }>) {
   return lazy(async () => {
@@ -30,14 +31,13 @@ function lazyRetry<T extends React.ComponentType<any>>(factory: () => Promise<{ 
   });
 }
 
-const Layout = lazyRetry(() => import("./components/Layout").then((module) => ({ default: module.Layout })));
+const Layout = lazyRetry(loadAppLayoutCode);
 const AccountantPanel = lazyRetry(() => import("./pages/AccountantPanel").then((module) => ({ default: module.AccountantPanel })));
 const CreditApplications = lazyRetry(() => import("./pages/CreditApplications").then((module) => ({ default: module.CreditApplications })));
 const CreditManagerPanel = lazyRetry(() => import("./pages/CreditManagerPanel").then((module) => ({ default: module.CreditManagerPanel })));
 const Dashboard = lazyRetry(() => import("./pages/Dashboard").then((module) => ({ default: module.Dashboard })));
 const Customers = lazyRetry(() => import("./pages/Customers").then((module) => ({ default: module.Customers })));
-const loadLeads = () => import("./pages/Leads").then((module) => ({ default: module.Leads }));
-const Leads = lazyRetry(loadLeads);
+const Leads = lazyRetry(loadTelecallerLeadsCode);
 const LeadDetails = lazyRetry(() => import("./pages/LeadDetails").then((module) => ({ default: module.LeadDetails })));
 const Login = lazyRetry(() => import("./pages/Login").then((module) => ({ default: module.Login })));
 const TeamManagement = lazyRetry(() => import("./pages/TeamManagement").then((module) => ({ default: module.TeamManagement })));
@@ -84,7 +84,7 @@ function AppLayoutRoute() {
   if ((activeRole || user?.role) === "telecaller" && /^\/leads\/?$/.test(pathname)) {
     // Fetch page code while Layout is still loading. This fetches no lead data;
     // the existing lazy retry and route guards still own rendering and errors.
-    void loadLeads().catch(() => undefined);
+    preloadTelecallerPageCode();
   }
   return <Layout />;
 }

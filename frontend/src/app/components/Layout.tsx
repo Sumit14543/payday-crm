@@ -64,6 +64,7 @@ import {
 } from "./ui/dialog";
 import { PageLoading } from "./PageLoading";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
+import { preloadTelecallerPageCode } from "../lib/telecallerPageCode";
 
 const LEAD_DISPOSITION_FILTERS = [
   "No Disposition",
@@ -601,6 +602,8 @@ export function Layout() {
                       <Link
                         to={item.href}
                         onClick={closeMobileMenu}
+                        onMouseEnter={() => { if (role === "telecaller" && item.href === "/leads") preloadTelecallerPageCode(); }}
+                        onFocus={() => { if (role === "telecaller" && item.href === "/leads") preloadTelecallerPageCode(); }}
                         aria-current={active ? "page" : undefined}
                         className={`group relative flex items-center overflow-hidden text-sm font-semibold transition-all duration-200 ${
                           collapsed

@@ -21,10 +21,15 @@ function workbench(url) {
     items: filtered.slice((page - 1) * size, page * size),
     pagination: { page, pageSize: size, totalItems: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / size)) }, lastUpdatedAt: '2026-11-17T09:00:00Z' };
 }
-async function openFixture(browser, dist, { candidate = true, authenticated = true } = {}) {
+async function openFixture(browser, dist, { candidate = true, authenticated = true, apiDelayMs = 250, workbenchReply, loginFlow = false, failCodePrefetch = false } = {}) {
   const context = await browser.createBrowserContext(), page = await context.newPage();
   await page.setViewport({ width: 1365, height: 900 });
-  const requests = [], pageErrors = [], unsafeRequests = []; let expired = false;
+  const requests = [], pageErrors = [], unsafeRequests = []; let expired = false, codeFailureSent = false;
+  const records = new WeakMap();
+  page.on('requestfailed', request => { const record = records.get(request); if (record) record.failed = true; });
+  if (loginFlow) await page.evaluateOnNewDocument(() => {
+    navigator.geolocation.getCurrentPosition = (_success, failure) => failure?.({ code: 1, message: 'Synthetic test location unavailable' });
+  });
   if (authenticated) await page.evaluateOnNewDocument(() => localStorage.setItem('paydayops.auth.user', JSON.stringify({ token: 'SYN-BROWSER-SESSION', user: { name: 'Synthetic Agent', email: 'agent@example.invalid', role: 'telecaller', tenant: 'synthetic-company' } })));
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.setRequestInterception(true);
@@ -32,8 +37,16 @@ async function openFixture(browser, dist, { candidate = true, authenticated = tr
     try {
       const url = new URL(request.url()), record = { path: url.pathname, origin: url.origin, method: request.method(), start: Date.now(), query: url.searchParams.toString() };
       requests.push(record);
-      const respond = async data => { await request.respond(data); record.end = Date.now(); };
+      records.set(request, record);
+      const respond = async data => { if (record.failed) return; await request.respond(data); record.end = Date.now(); };
       if (![appOrigin, apiOrigin].includes(url.origin)) return request.abort();
+      if (loginFlow && request.method() === 'POST' && ['/api/auth/login', '/api/superadmin/login', '/api/auth/verify-otp'].includes(url.pathname)) {
+        const body = JSON.parse(request.postData());
+        const cors = { 'access-control-allow-origin': appOrigin, 'access-control-allow-headers': 'content-type,x-tenant-slug' };
+        if (url.pathname.endsWith('/login')) return respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: { requiresOtp: true, tempToken: 'SYN-OTP-CHALLENGE', tenant: 'synthetic-company', email: 'agent@waqtfinance.com' } }) });
+        if (body.otp !== '123456') return respond({ status: 401, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'Synthetic invalid OTP' }) });
+        return respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: { token: 'SYN-BROWSER-SESSION', documentToken: 'SYN-DOCUMENT', user: { name: 'Synthetic Agent', email: 'agent@waqtfinance.com', role: 'telecaller', tenant: 'synthetic-company' } } }) });
+      }
       if (!['GET', 'OPTIONS'].includes(request.method())) { unsafeRequests.push(url.pathname); return request.abort(); }
       if (url.pathname.startsWith('/api/')) {
         const cors = { 'access-control-allow-origin': appOrigin, 'access-control-allow-headers': request.headers()['access-control-request-headers'] || 'authorization,x-tenant-slug', 'cache-control': 'private, no-store' };
@@ -42,7 +55,11 @@ async function openFixture(browser, dist, { candidate = true, authenticated = tr
           assert.equal(request.headers().authorization, 'Bearer SYN-BROWSER-SESSION');
           assert.equal(request.headers()['x-tenant-slug'], 'synthetic-company');
           if (candidate) assert.equal(url.origin, appOrigin);
-          await pause(250);
+          const override = url.pathname.endsWith('telecaller-workbench-v2') && workbenchReply ? await workbenchReply(url) : null;
+          await pause(apiDelayMs);
+          if (record.failed) return;
+          if (override?.abort) return request.abort('failed');
+          if (override?.status) return respond({ status: override.status, contentType: 'application/json', headers: cors, body: JSON.stringify({ success: false, message: override.message || 'Synthetic page failure' }) });
           if (expired) return respond({ status: 401, contentType: 'application/json', headers: cors, body: JSON.stringify({ success: false, message: 'Synthetic session expired' }) });
           const data = url.pathname.endsWith('telecaller-policy')
             ? { allowedActions: [], dispositions: [], documentChecks: [], teamMembers: [], sla: { firstCallMinutes: 15, docsWarningHours: 24, docsBreachHours: 48 }, noDispositionValue: '__none__' }
@@ -56,6 +73,10 @@ async function openFixture(browser, dist, { candidate = true, authenticated = tr
         const file = path.resolve(dist, '.' + url.pathname);
         assert.ok(file.startsWith(dist + path.sep) && fs.existsSync(file), 'Asset must be inside fixture build');
         await pause(100);
+        if (failCodePrefetch && !codeFailureSent && /^\/assets\/Leads-.*\.js$/.test(url.pathname)) {
+          codeFailureSent = true;
+          return respond({ status: 503, contentType: 'application/javascript', body: '// Synthetic failed code preload' });
+        }
         return respond({ status: 200, contentType: url.pathname.endsWith('.css') ? 'text/css' : 'application/javascript', body: fs.readFileSync(file) });
       }
       return respond({ status: 200, contentType: 'text/html', body: fs.readFileSync(path.join(dist, 'index.html')) });
@@ -100,7 +121,7 @@ async function sample(browser, dist, candidate, functional = false) {
     return result;
   } finally { await f.context.close(); }
 }
-(async () => {
+async function main() {
   const executablePath = process.env.CHROME_PATH || (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : '/usr/bin/google-chrome');
   const browser = await puppeteer.launch({ executablePath, headless: true, args: [...(process.platform === 'win32' ? [] : ['--no-sandbox']), '--disable-background-networking'] });
   const dist = path.resolve(root, 'frontend/dist'), baseline = process.env.TELECALLER_BASELINE_DIST ? path.resolve(process.env.TELECALLER_BASELINE_DIST) : null;
@@ -122,4 +143,6 @@ async function sample(browser, dist, candidate, functional = false) {
     if (process.env.TELECALLER_BROWSER_REPORT) fs.writeFileSync(process.env.TELECALLER_BROWSER_REPORT, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+}
+module.exports = { openFixture, sample };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

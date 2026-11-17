@@ -6,6 +6,7 @@ import { apiGet } from "../lib/api";
 import { getTenantBranding } from "../lib/tenant";
 import { setPublicFavicons } from "../lib/favicon";
 import { detectExactLocation } from "../lib/location";
+import { preloadTelecallerPageCode } from "../lib/telecallerPageCode";
 
 type LocationState = {
   from?: {
@@ -68,6 +69,12 @@ export function Login() {
   });
   const state = location.state as LocationState | null;
   const isGeetPay = branding.slug === "geetpay";
+
+  useEffect(() => {
+    // Prepare static code during OTP entry. Lead reads/assignment remain behind
+    // successful authentication and actual navigation.
+    if (step === "otp" && role === "telecaller") preloadTelecallerPageCode(true);
+  }, [step, role]);
 
   useEffect(() => {
     if (otpResendTimer <= 0) return;
