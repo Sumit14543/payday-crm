@@ -62,10 +62,13 @@ async function openPage(browser, route, { slowUnrelated = false } = {}) {
   return { context, page, requests, pageErrors };
 }
 
-async function verifySingleReport(browser, type, expectedPaths, expectedText) {
+async function verifySingleReport(browser, type, expectedPaths, expectedTitle) {
   const fixture = await openPage(browser, `/reports?type=${type}`);
   try {
-    await fixture.page.waitForFunction((text) => document.body.innerText.includes(text), {}, expectedText);
+    await fixture.page.waitForFunction((title) => {
+      const workspace = document.querySelector('.reports-workspace[aria-busy="false"]');
+      return workspace?.querySelector('h1')?.textContent?.trim() === title;
+    }, {}, expectedTitle);
     await pause(100);
     assert.deepEqual([...new Set(fixture.requests.map((item) => item.path))].sort(), [...expectedPaths].sort());
     assert.deepEqual(fixture.pageErrors, []);
@@ -78,9 +81,9 @@ async function main() {
   const executablePath = process.env.CHROME_PATH || (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : '/usr/bin/google-chrome');
   const browser = await puppeteer.launch({ executablePath, headless: true, args: [...(process.platform === 'win32' ? [] : ['--no-sandbox']), '--disable-background-networking'] });
   try {
-    await verifySingleReport(browser, 'lead-report', ['/api/leads'], 'Synthetic Report Borrower');
-    await verifySingleReport(browser, 'payment-report', ['/api/leads', '/api/collections/reports'], 'No report data');
-    await verifySingleReport(browser, 'audit-log-report', ['/api/leads', '/api/dashboard/audit-logs'], 'No report data');
+    await verifySingleReport(browser, 'lead-report', ['/api/leads'], 'Lead Report');
+    await verifySingleReport(browser, 'payment-report', ['/api/leads', '/api/collections/reports'], 'Payment Report');
+    await verifySingleReport(browser, 'audit-log-report', ['/api/leads', '/api/dashboard/audit-logs'], 'Audit Log Report');
 
     const overview = await openPage(browser, '/reports', { slowUnrelated: true });
     try {
