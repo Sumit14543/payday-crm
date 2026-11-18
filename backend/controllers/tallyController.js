@@ -79,13 +79,13 @@ function resolveStateInfo(rawState, rawAddress, city = '', pincode = '') {
 }
 
 /**
- * Builds balanced journal entries for loan disbursal booking with GST & Interest.
+ * Builds balanced journal entries for Fee & GST booking (without Interest).
  * - For UP customer: GST is split into Output CGST + Output SGST (50% each)
  * - For non-UP customer: GST is Output IGST
  * - Uses proper Tally standard uppercase names (Output CGST / CGST)
  * - Guarantees Debit and Credit are 100% balanced
  */
-function buildJournalEntries(loanId, processingFee, gstAmount, interestAmount, isUP, totalLoanAmount, netDisbursed = 0, options = {}) {
+function buildFeeJournalEntries(loanId, processingFee, gstAmount, isUP, options = {}) {
   const entries = [];
 
   const shortGst = options.shortGst === true || options.gstMode === 'direct';
@@ -93,9 +93,6 @@ function buildJournalEntries(loanId, processingFee, gstAmount, interestAmount, i
   const sgstLedger = options.sgstLedger || (shortGst ? 'SGST' : 'Output SGST');
   const igstLedger = options.igstLedger || (shortGst ? 'IGST' : 'Output IGST');
   const feeLedger = options.feeLedger || 'Processing Fee (WaqtMoney)';
-  const interestLedger = options.interestLedger || 'Interest on Loan';
-  const bankLedger = options.bankLedger || 'Bank / Disbursal Gateway Account';
-  const isFullBooking = options.bookingMode === 'full' || options.includePrincipal === true;
 
   let cgst = 0;
   let sgst = 0;
@@ -110,61 +107,7 @@ function buildJournalEntries(loanId, processingFee, gstAmount, interestAmount, i
     }
   }
 
-  const validInterest = Math.max(0, Number(interestAmount) || 0);
   const validFee = Math.max(0, Number(processingFee) || 0);
-  const validDisbursed = Math.max(0, Number(netDisbursed) || 0);
-
-  if (isFullBooking && validDisbursed > 0) {
-    // Comprehensive full loan voucher: Dr Borrower (Total Repayment), Cr Bank (Net Disbursed), Cr Fee, Cr GST, Cr Interest
-    const totalDebit = validDisbursed + validFee + (gstAmount || 0) + validInterest;
-
-    entries.push({
-      ledger_name: loanId,
-      amount: totalDebit,
-      dr_cr: 'Dr',
-    });
-
-    entries.push({
-      ledger_name: bankLedger,
-      amount: validDisbursed,
-      dr_cr: 'Cr',
-    });
-
-    if (validFee > 0) {
-      entries.push({
-        ledger_name: feeLedger,
-        amount: validFee,
-        dr_cr: 'Cr',
-      });
-    }
-
-    if (isUP) {
-      if (cgst > 0) entries.push({ ledger_name: cgstLedger, amount: cgst, dr_cr: 'Cr' });
-      if (sgst > 0) entries.push({ ledger_name: sgstLedger, amount: sgst, dr_cr: 'Cr' });
-    } else {
-      if (igst > 0) entries.push({ ledger_name: igstLedger, amount: igst, dr_cr: 'Cr' });
-    }
-
-    if (validInterest > 0) {
-      entries.push({
-        ledger_name: interestLedger,
-        amount: validInterest,
-        dr_cr: 'Cr',
-      });
-    }
-
-    return {
-      entries,
-      totalDebit,
-      totalCredit: totalDebit,
-      cgst,
-      sgst,
-      igst,
-    };
-  }
-
-  // Standard separate booking voucher: Dr Borrower (Fee + GST + Interest), Cr Fee, Cr GST, Cr Interest
-  const totalCredits = validFee + (gstAmount || 0) + validInterest;
 
   if (validFee > 0) {
     entries.push({
@@ -181,7 +124,44 @@ function buildJournalEntries(loanId, processingFee, gstAmount, interestAmount, i
     if (igst > 0) entries.push({ ledger_name: igstLedger, amount: igst, dr_cr: 'Cr' });
   }
 
+  const totalCreditSum = entries.reduce((sum, e) => sum + (e.dr_cr === 'Cr' ? e.amount : 0), 0);
+  const totalDebit = totalCreditSum;
+
+  if (totalDebit > 0) {
+    entries.unshift({
+      ledger_name: loanId,
+      amount: totalDebit,
+      dr_cr: 'Dr',
+    });
+  }
+
+  return {
+    entries,
+    totalDebit,
+    totalCredit: totalCreditSum,
+    cgst,
+    sgst,
+    igst,
+  };
+}
+
+/**
+ * Builds balanced journal entries for Loan Interest booking (completely separate voucher).
+ * - Dr. Borrower Ledger (Loan ID)
+ * - Cr. Interest on Loan
+ */
+function buildInterestJournalEntries(loanId, interestAmount, options = {}) {
+  const entries = [];
+  const interestLedger = options.interestLedger || 'Interest on Loan';
+  const validInterest = Math.max(0, Number(interestAmount) || 0);
+
   if (validInterest > 0) {
+    entries.push({
+      ledger_name: loanId,
+      amount: validInterest,
+      dr_cr: 'Dr',
+    });
+
     entries.push({
       ledger_name: interestLedger,
       amount: validInterest,
@@ -189,22 +169,10 @@ function buildJournalEntries(loanId, processingFee, gstAmount, interestAmount, i
     });
   }
 
-  const totalCreditSum = entries.reduce((sum, e) => sum + (e.dr_cr === 'Cr' ? e.amount : 0), 0);
-  const totalDebit = totalCreditSum > 0 ? totalCreditSum : (Number(totalLoanAmount) || 0);
-
-  entries.unshift({
-    ledger_name: loanId,
-    amount: totalDebit,
-    dr_cr: 'Dr',
-  });
-
   return {
     entries,
-    totalDebit,
-    totalCredit: totalCreditSum || totalDebit,
-    cgst,
-    sgst,
-    igst,
+    totalDebit: validInterest,
+    totalCredit: validInterest,
   };
 }
 
@@ -235,7 +203,24 @@ function formatDateForTally(dateInput) {
  */
 async function getTallyVouchers(req, res) {
   try {
-    if (require('../middleware/tallyAuth').authorize(req, res) !== true) return res;
+    // 1. API Key Authentication Check
+    const apiKey =
+      req.headers['x-api-key'] ||
+      req.headers['x-tally-api-key'] ||
+      (req.headers['authorization'] ? req.headers['authorization'].replace('Bearer ', '').trim() : null) ||
+      req.query.api_key ||
+      req.query.apiKey;
+
+    const validKey = process.env.TALLY_API_KEY;
+
+    if (!validKey || apiKey !== validKey) {
+      return res.status(401).json({
+        status: false,
+        count: 0,
+        data: [],
+        message: 'Unauthorized: Invalid or missing API Key for Tally integration.',
+      });
+    }
 
     const { startDate, endDate, voucherType = 'all' } = req.query;
 
@@ -277,9 +262,12 @@ async function getTallyVouchers(req, res) {
       }
     }
 
-    // 1. DISBURSAL VOUCHERS (Journal / Payment)
-    if (voucherType === 'all' || voucherType === 'journal' || voucherType === 'payment') {
-      const isPayment = voucherType === 'payment';
+    // 1. DISBURSAL VOUCHERS (Journal / Payment / Fee / Interest)
+    const isPaymentRequested = voucherType === 'all' || voucherType === 'payment';
+    const isFeeRequested = voucherType === 'all' || voucherType === 'journal' || voucherType === 'fee';
+    const isInterestRequested = voucherType === 'all' || voucherType === 'journal' || voucherType === 'interest';
+
+    if (isPaymentRequested || isFeeRequested || isInterestRequested) {
 
       // Source 1A: Query `loans` table as primary source for genuine disbursals
       try {
@@ -493,7 +481,7 @@ async function getTallyVouchers(req, res) {
             const sgst = isUP ? (gstAmount - cgst) : 0;
             const igst = isUP ? 0 : gstAmount;
 
-            if (isPayment) {
+            if (isPaymentRequested) {
               vouchers.push({
                 id: loanId,
                 loan_id: loanId,
@@ -510,6 +498,7 @@ async function getTallyVouchers(req, res) {
                 is_up: isUP,
                 gst_type: isUP ? 'CGST+SGST' : 'IGST',
                 voucher_type: "payment",
+                voucher_category: "disbursal",
                 voucher_date: voucherDate,
                 voucher_number: `VCH/PAY/${loanId}`,
                 reference_number: payment?.transaction_id || payment?.reference || `REF/PAY/${loanId}`,
@@ -533,54 +522,106 @@ async function getTallyVouchers(req, res) {
                   { ledger_name: journalOptions.bankLedger || "Bank / Disbursal Gateway Account", amount: netDisbursed, dr_cr: "Cr" }
                 ]
               });
-            } else {
-              const { entries, totalDebit, totalCredit, cgst: jCgst, sgst: jSgst, igst: jIgst } = buildJournalEntries(
+            }
+
+            // Separate Voucher 1: Fee & GST Booking (Journal)
+            if (isFeeRequested && (processingFee > 0 || gstAmount > 0)) {
+              const { entries: feeEntries, totalDebit: feeDebit, totalCredit: feeCredit, cgst: jCgst, sgst: jSgst, igst: jIgst } = buildFeeJournalEntries(
                 loanId,
                 processingFee,
                 gstAmount,
-                interestAmount,
                 isUP,
-                principalAmount,
-                netDisbursed,
                 journalOptions
               );
 
-              vouchers.push({
-                id: loanId,
-                loan_id: loanId,
-                agreement_number: sanction?.agreement_number || strippedId || loanId,
-                borrower_name: customerName,
-                customer_name: customerName,
-                pan_number: panNumber,
-                State: customerState,
-                state: customerState,
-                city: customerCity,
-                pincode: customerPin,
-                address_line1: customerAddress,
-                address_line2: null,
-                is_up: isUP,
-                gst_type: isUP ? 'CGST+SGST' : 'IGST',
-                voucher_type: "journal",
-                voucher_date: voucherDate,
-                voucher_number: `VCH/DISB/${loanId}`,
-                reference_number: payment?.transaction_id || payment?.reference || `REF/DISB/${loanId}`,
-                narration: `Fee, GST & Interest Booking for ${customerName} (${loanId})`,
-                loan_amount: principalAmount,
-                principal: principalAmount,
-                principal_amount: principalAmount,
-                processing_fee: processingFee,
-                gst_amount: gstAmount,
-                cgst: jCgst,
-                sgst: jSgst,
-                igst: jIgst,
-                interest_amount: interestAmount,
-                disbursed_amount: netDisbursed,
-                net_disbursed: netDisbursed,
-                repayment_amount: repaymentAmount,
-                total_debit: totalDebit,
-                total_credit: totalCredit,
-                entries
-              });
+              if (feeEntries.length > 0) {
+                vouchers.push({
+                  id: loanId,
+                  loan_id: loanId,
+                  agreement_number: sanction?.agreement_number || strippedId || loanId,
+                  borrower_name: customerName,
+                  customer_name: customerName,
+                  pan_number: panNumber,
+                  State: customerState,
+                  state: customerState,
+                  city: customerCity,
+                  pincode: customerPin,
+                  address_line1: customerAddress,
+                  address_line2: null,
+                  is_up: isUP,
+                  gst_type: isUP ? 'CGST+SGST' : 'IGST',
+                  voucher_type: "journal",
+                  voucher_category: "processing_fee",
+                  voucher_date: voucherDate,
+                  voucher_number: `VCH/FEE/${loanId}`,
+                  reference_number: payment?.transaction_id || payment?.reference || `REF/FEE/${loanId}`,
+                  narration: `Processing Fee & GST Booking for ${customerName} (${loanId})`,
+                  loan_amount: principalAmount,
+                  principal: principalAmount,
+                  principal_amount: principalAmount,
+                  processing_fee: processingFee,
+                  gst_amount: gstAmount,
+                  cgst: jCgst,
+                  sgst: jSgst,
+                  igst: jIgst,
+                  interest_amount: 0,
+                  disbursed_amount: netDisbursed,
+                  net_disbursed: netDisbursed,
+                  repayment_amount: repaymentAmount,
+                  total_debit: feeDebit,
+                  total_credit: feeCredit,
+                  entries: feeEntries
+                });
+              }
+            }
+
+            // Separate Voucher 2: Loan Interest Booking (Journal - Bilkul Alag)
+            if (isInterestRequested && interestAmount > 0) {
+              const { entries: intEntries, totalDebit: intDebit, totalCredit: intCredit } = buildInterestJournalEntries(
+                loanId,
+                interestAmount,
+                journalOptions
+              );
+
+              if (intEntries.length > 0) {
+                vouchers.push({
+                  id: loanId,
+                  loan_id: loanId,
+                  agreement_number: sanction?.agreement_number || strippedId || loanId,
+                  borrower_name: customerName,
+                  customer_name: customerName,
+                  pan_number: panNumber,
+                  State: customerState,
+                  state: customerState,
+                  city: customerCity,
+                  pincode: customerPin,
+                  address_line1: customerAddress,
+                  address_line2: null,
+                  is_up: isUP,
+                  gst_type: isUP ? 'CGST+SGST' : 'IGST',
+                  voucher_type: "journal",
+                  voucher_category: "loan_interest",
+                  voucher_date: voucherDate,
+                  voucher_number: `VCH/INT/${loanId}`,
+                  reference_number: payment?.transaction_id || payment?.reference || `REF/INT/${loanId}`,
+                  narration: `Loan Interest Booking for ${customerName} (${loanId})`,
+                  loan_amount: principalAmount,
+                  principal: principalAmount,
+                  principal_amount: principalAmount,
+                  processing_fee: 0,
+                  gst_amount: 0,
+                  cgst: 0,
+                  sgst: 0,
+                  igst: 0,
+                  interest_amount: interestAmount,
+                  disbursed_amount: netDisbursed,
+                  net_disbursed: netDisbursed,
+                  repayment_amount: repaymentAmount,
+                  total_debit: intDebit,
+                  total_credit: intCredit,
+                  entries: intEntries
+                });
+              }
             }
           });
         }
@@ -658,7 +699,7 @@ async function getTallyVouchers(req, res) {
           const sgst = isUP ? (gstAmount - cgst) : 0;
           const igst = isUP ? 0 : gstAmount;
 
-          if (isPayment) {
+          if (isPaymentRequested) {
             vouchers.push({
               id: loanId,
               loan_id: loanId,
@@ -675,6 +716,7 @@ async function getTallyVouchers(req, res) {
               is_up: isUP,
               gst_type: isUP ? 'CGST+SGST' : 'IGST',
               voucher_type: "payment",
+              voucher_category: "disbursal",
               voucher_date: voucherDate,
               voucher_number: `VCH/PAY/${item.id}`,
               reference_number: item.transaction_id || item.reference || `REF/PAY/${item.id}`,
@@ -698,54 +740,106 @@ async function getTallyVouchers(req, res) {
                 { ledger_name: journalOptions.bankLedger || "Bank / Disbursal Gateway Account", amount: netDisbursed, dr_cr: "Cr" }
               ]
             });
-          } else {
-            const { entries, totalDebit, totalCredit, cgst: jCgst, sgst: jSgst, igst: jIgst } = buildJournalEntries(
+          }
+
+          // Separate Voucher 1: Fee & GST Booking (Journal)
+          if (isFeeRequested && (processingFee > 0 || gstAmount > 0)) {
+            const { entries: feeEntries, totalDebit: feeDebit, totalCredit: feeCredit, cgst: jCgst, sgst: jSgst, igst: jIgst } = buildFeeJournalEntries(
               loanId,
               processingFee,
               gstAmount,
-              interestAmount,
               isUP,
-              principalAmount,
-              netDisbursed,
               journalOptions
             );
 
-            vouchers.push({
-              id: loanId,
-              loan_id: loanId,
-              agreement_number: item.agreement_number || strippedId || loanId,
-              borrower_name: customerName,
-              customer_name: customerName,
-              pan_number: panNumber,
-              State: customerState,
-              state: customerState,
-              city: customerCity,
-              pincode: customerPin,
-              address_line1: customerAddress,
-              address_line2: null,
-              is_up: isUP,
-              gst_type: isUP ? 'CGST+SGST' : 'IGST',
-              voucher_type: "journal",
-              voucher_date: voucherDate,
-              voucher_number: `VCH/DISB/${item.id}`,
-              reference_number: item.transaction_id || item.reference || `REF/DISB/${item.id}`,
-              narration: `Fee, GST & Interest Booking for ${customerName} (${loanId})`,
-              loan_amount: principalAmount,
-              principal: principalAmount,
-              principal_amount: principalAmount,
-              processing_fee: processingFee,
-              gst_amount: gstAmount,
-              cgst: jCgst,
-              sgst: jSgst,
-              igst: jIgst,
-              interest_amount: interestAmount,
-              disbursed_amount: netDisbursed,
-              net_disbursed: netDisbursed,
-              repayment_amount: repaymentAmount,
-              total_debit: totalDebit,
-              total_credit: totalCredit,
-              entries
-            });
+            if (feeEntries.length > 0) {
+              vouchers.push({
+                id: loanId,
+                loan_id: loanId,
+                agreement_number: item.agreement_number || strippedId || loanId,
+                borrower_name: customerName,
+                customer_name: customerName,
+                pan_number: panNumber,
+                State: customerState,
+                state: customerState,
+                city: customerCity,
+                pincode: customerPin,
+                address_line1: customerAddress,
+                address_line2: null,
+                is_up: isUP,
+                gst_type: isUP ? 'CGST+SGST' : 'IGST',
+                voucher_type: "journal",
+                voucher_category: "processing_fee",
+                voucher_date: voucherDate,
+                voucher_number: `VCH/FEE/${item.id}`,
+                reference_number: item.transaction_id || item.reference || `REF/FEE/${item.id}`,
+                narration: `Processing Fee & GST Booking for ${customerName} (${loanId})`,
+                loan_amount: principalAmount,
+                principal: principalAmount,
+                principal_amount: principalAmount,
+                processing_fee: processingFee,
+                gst_amount: gstAmount,
+                cgst: jCgst,
+                sgst: jSgst,
+                igst: jIgst,
+                interest_amount: 0,
+                disbursed_amount: netDisbursed,
+                net_disbursed: netDisbursed,
+                repayment_amount: repaymentAmount,
+                total_debit: feeDebit,
+                total_credit: feeCredit,
+                entries: feeEntries
+              });
+            }
+          }
+
+          // Separate Voucher 2: Loan Interest Booking (Journal - Bilkul Alag)
+          if (isInterestRequested && interestAmount > 0) {
+            const { entries: intEntries, totalDebit: intDebit, totalCredit: intCredit } = buildInterestJournalEntries(
+              loanId,
+              interestAmount,
+              journalOptions
+            );
+
+            if (intEntries.length > 0) {
+              vouchers.push({
+                id: loanId,
+                loan_id: loanId,
+                agreement_number: item.agreement_number || strippedId || loanId,
+                borrower_name: customerName,
+                customer_name: customerName,
+                pan_number: panNumber,
+                State: customerState,
+                state: customerState,
+                city: customerCity,
+                pincode: customerPin,
+                address_line1: customerAddress,
+                address_line2: null,
+                is_up: isUP,
+                gst_type: isUP ? 'CGST+SGST' : 'IGST',
+                voucher_type: "journal",
+                voucher_category: "loan_interest",
+                voucher_date: voucherDate,
+                voucher_number: `VCH/INT/${item.id}`,
+                reference_number: item.transaction_id || item.reference || `REF/INT/${item.id}`,
+                narration: `Loan Interest Booking for ${customerName} (${loanId})`,
+                loan_amount: principalAmount,
+                principal: principalAmount,
+                principal_amount: principalAmount,
+                processing_fee: 0,
+                gst_amount: 0,
+                cgst: 0,
+                sgst: 0,
+                igst: 0,
+                interest_amount: interestAmount,
+                disbursed_amount: netDisbursed,
+                net_disbursed: netDisbursed,
+                repayment_amount: repaymentAmount,
+                total_debit: intDebit,
+                total_credit: intCredit,
+                entries: intEntries
+              });
+            }
           }
         });
       } catch (err) {
@@ -856,7 +950,7 @@ async function getTallyVouchers(req, res) {
       status: false,
       count: 0,
       data: [],
-      message: process.env.NODE_ENV === 'production' ? 'Unable to load Tally vouchers. Please try again.' : "Failed to fetch Tally vouchers: " + error.message
+      message: "Failed to fetch Tally vouchers: " + error.message
     });
   }
 }
@@ -864,5 +958,6 @@ async function getTallyVouchers(req, res) {
 module.exports = {
   getTallyVouchers,
   resolveStateInfo,
-  buildJournalEntries,
+  buildFeeJournalEntries,
+  buildInterestJournalEntries,
 };
