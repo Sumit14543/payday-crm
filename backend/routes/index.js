@@ -73,7 +73,6 @@ router.use('/leads/emandate', requireAuth, billdeskEmandateRoutes);
 const accountAggregatorRoutes = require('./accountAggregatorRoutes');
 
 router.use('/account-aggregator', accountAggregatorRoutes);
-router.use('/account-aggregator/uat', require('./accountAggregatorUatRoutes'));
 router.use('/credit/cashfree-emandate', requireAuth, cashfreeEmandateRoutes);
 router.use('/leads/cashfree-emandate', requireAuth, cashfreeEmandateRoutes);
 router.post('/webhooks/billdesk-emandate', webhookLimiter, asyncHandler(billdeskEmandateController.handleBilldeskWebhook));
