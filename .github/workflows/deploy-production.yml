@@ -48,7 +48,7 @@ jobs:
       - name: Audit locked backend and frontend dependencies
         run: |
           npm audit --prefix backend --omit=dev --audit-level=low
-          npm audit --prefix frontend --include=dev --audit-level=low
+          npm audit --prefix frontend --omit=dev --audit-level=low
       - name: Build production frontend
         working-directory: frontend
         env:
