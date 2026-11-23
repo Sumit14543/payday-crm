@@ -9,11 +9,33 @@ const { connectDatabase, query, withTransaction } = require('../config/db');
 
 async function main() {
   const isExecute = process.argv.includes('--execute');
+  const includeManual = process.argv.includes('--all-sources');
+
   console.log('===============================================================');
-  console.log(` RELOAN MISPLACED PAYMENTS HEALER [Mode: ${isExecute ? 'EXECUTE (Applying Fixes)' : 'DRY-RUN (Preview Only)'}]`);
+  console.log(` RELOAN MISPLACED PAYMENTS HEALER`);
+  console.log(` Mode:    ${isExecute ? 'EXECUTE (Applying Fixes)' : 'DRY-RUN (Preview Only)'}`);
+  console.log(` Filter:  ${includeManual ? 'ALL SOURCES (Website + Manual)' : 'WEBSITE ONLY (Excluding Manual CRM & Collection Payments)'}`);
   console.log('===============================================================\n');
 
   await connectDatabase();
+
+  const websiteFilterSql = includeManual ? '' : `
+    AND (
+      rep.received_by IN ('Source Website', 'Cashfree Webhook', 'Website')
+      OR rep.metadata LIKE '%"source":"integration"%'
+      OR rep.metadata LIKE '%"gateway"%'
+      OR rep.metadata LIKE '%"source":"cashfree_webhook"%'
+    )
+    AND (
+      rep.metadata IS NULL 
+      OR (
+        rep.metadata NOT LIKE '%manual_repayment%' 
+        AND rep.metadata NOT LIKE '%collection_panel%' 
+        AND rep.metadata NOT LIKE '%bulk_excel_upload%'
+      )
+    )
+    AND (rep.received_by IS NULL OR rep.received_by NOT IN ('Accountant', 'Collection Agent', 'Superadmin'))
+  `;
 
   // Find all affected misplaced payments
   const affectedRows = await query(`
@@ -34,7 +56,8 @@ async function main() {
       rep.amount AS payment_amount,
       rep.reference AS payment_reference,
       rep.received_at AS payment_date,
-      rep.method AS payment_method
+      rep.method AS payment_method,
+      rep.received_by AS payment_received_by
     FROM loans old_l
     JOIN loans new_l 
       ON new_l.customer_id = old_l.customer_id 
@@ -53,6 +76,7 @@ async function main() {
       OR old_l.amount_paid > old_l.total_amount
     )
     AND rep.status IN ('received', 'success', 'paid', 'settled')
+    ${websiteFilterSql}
     ORDER BY c.name, rep.received_at ASC
   `);
 
@@ -87,7 +111,8 @@ async function main() {
       amount: row.payment_amount,
       reference: row.payment_reference,
       date: row.payment_date,
-      method: row.payment_method
+      method: row.payment_method,
+      receivedBy: row.payment_received_by
     });
   });
 
@@ -99,7 +124,7 @@ async function main() {
     console.log(`  - Misplaced Payments attached to Old Loan:`);
     let totalMisplaced = 0;
     data.payments.forEach(p => {
-      console.log(`      * Payment ID ${p.repaymentId}: ₹${p.amount} | UTR: ${p.reference} | Date: ${p.date} | Mode: ${p.method}`);
+      console.log(`      * Payment ID ${p.repaymentId}: ₹${p.amount} | Source: ${p.receivedBy || 'Website'} | UTR: ${p.reference} | Date: ${p.date}`);
       totalMisplaced += Number(p.amount);
     });
     console.log(`  -> Total Amount to Shift: ₹${totalMisplaced}`);
