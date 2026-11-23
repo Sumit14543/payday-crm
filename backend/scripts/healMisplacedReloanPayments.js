@@ -1,0 +1,208 @@
+const { connectDatabase, query, withTransaction } = require('../config/db');
+
+/**
+ * Script to diagnose and heal misplaced reloan payments
+ * Usage:
+ *   node scripts/healMisplacedReloanPayments.js --dry-run   (Only preview affected loans)
+ *   node scripts/healMisplacedReloanPayments.js --execute   (Execute the fix in a transaction)
+ */
+
+async function main() {
+  const isExecute = process.argv.includes('--execute');
+  console.log('===============================================================');
+  console.log(` RELOAN MISPLACED PAYMENTS HEALER [Mode: ${isExecute ? 'EXECUTE (Applying Fixes)' : 'DRY-RUN (Preview Only)'}]`);
+  console.log('===============================================================\n');
+
+  await connectDatabase();
+
+  // Find all affected misplaced payments
+  const affectedRows = await query(`
+    SELECT 
+      c.id AS customer_id,
+      c.name AS customer_name,
+      c.phone AS customer_phone,
+      old_l.id AS old_loan_id,
+      old_l.total_amount AS old_total_due,
+      old_l.amount_paid AS old_amount_paid,
+      old_l.balance AS old_balance,
+      new_l.id AS new_reloan_id,
+      new_l.total_amount AS new_total_due,
+      new_l.amount_paid AS new_current_paid,
+      new_l.balance AS new_current_balance,
+      new_l.start_date AS reloan_start_date,
+      rep.id AS repayment_id,
+      rep.amount AS payment_amount,
+      rep.reference AS payment_reference,
+      rep.received_at AS payment_date,
+      rep.method AS payment_method
+    FROM loans old_l
+    JOIN loans new_l 
+      ON new_l.customer_id = old_l.customer_id 
+      AND new_l.id <> old_l.id 
+      AND (
+        new_l.id LIKE CONCAT(old_l.id, 'R%') 
+        OR new_l.id LIKE CONCAT(old_l.id, '-R%') 
+        OR new_l.created_at > old_l.created_at
+      )
+    JOIN customers c 
+      ON c.id = old_l.customer_id
+    JOIN loan_repayments rep 
+      ON rep.loan_id = old_l.id
+    WHERE (
+      rep.received_at >= new_l.start_date
+      OR old_l.amount_paid > old_l.total_amount
+    )
+    AND rep.status IN ('received', 'success', 'paid', 'settled')
+    ORDER BY c.name, rep.received_at ASC
+  `);
+
+  if (!affectedRows || affectedRows.length === 0) {
+    console.log('✓ No misplaced reloan payments found in the database. All loans are in sync!');
+    process.exit(0);
+  }
+
+  console.log(`Found ${affectedRows.length} misplaced payment(s) across affected reloan cases:\n`);
+
+  // Group by customer
+  const casesByCustomer = new Map();
+  affectedRows.forEach(row => {
+    const key = `${row.customer_id}|${row.old_loan_id}|${row.new_reloan_id}`;
+    if (!casesByCustomer.has(key)) {
+      casesByCustomer.set(key, {
+        customerName: row.customer_name,
+        customerPhone: row.customer_phone,
+        oldLoanId: row.old_loan_id,
+        oldTotalDue: row.old_total_due,
+        oldAmountPaid: row.old_amount_paid,
+        newReloanId: row.new_reloan_id,
+        newTotalDue: row.new_total_due,
+        newAmountPaid: row.new_current_paid,
+        newBalance: row.new_current_balance,
+        reloanStartDate: row.reloan_start_date,
+        payments: []
+      });
+    }
+    casesByCustomer.get(key).payments.push({
+      repaymentId: row.repayment_id,
+      amount: row.payment_amount,
+      reference: row.payment_reference,
+      date: row.payment_date,
+      method: row.payment_method
+    });
+  });
+
+  let index = 1;
+  for (const [key, data] of casesByCustomer.entries()) {
+    console.log(`Case #${index}: Customer: ${data.customerName} (${data.customerPhone})`);
+    console.log(`  - Old Loan:   ${data.oldLoanId} (Total: ₹${data.oldTotalDue}, Paid: ₹${data.oldAmountPaid})`);
+    console.log(`  - New Reloan: ${data.newReloanId} (Total: ₹${data.newTotalDue}, Currently Paid: ₹${data.newAmountPaid}, Balance: ₹${data.newBalance})`);
+    console.log(`  - Misplaced Payments attached to Old Loan:`);
+    let totalMisplaced = 0;
+    data.payments.forEach(p => {
+      console.log(`      * Payment ID ${p.repaymentId}: ₹${p.amount} | UTR: ${p.reference} | Date: ${p.date} | Mode: ${p.method}`);
+      totalMisplaced += Number(p.amount);
+    });
+    console.log(`  -> Total Amount to Shift: ₹${totalMisplaced}`);
+    console.log(`  -> Projected Old Loan Paid:   ₹${Math.max(0, data.oldAmountPaid - totalMisplaced)} (Balance: ₹0, Status: Paid Off)`);
+    console.log(`  -> Projected New Reloan Paid: ₹${data.newAmountPaid + totalMisplaced} (Balance: ₹${Math.max(0, data.newTotalDue - (data.newAmountPaid + totalMisplaced))})`);
+    console.log('---------------------------------------------------------------');
+    index++;
+  }
+
+  if (!isExecute) {
+    console.log('\n[INFO] This was a preview. No changes were made to the database.');
+    console.log('To apply these fixes and shift the payments to the active reloan, run:');
+    console.log('  node scripts/healMisplacedReloanPayments.js --execute\n');
+    process.exit(0);
+  }
+
+  console.log('\n[EXECUTE] Applying database updates within transactions...');
+
+  for (const [key, data] of casesByCustomer.entries()) {
+    await withTransaction(async () => {
+      const repaymentIds = data.payments.map(p => p.repaymentId);
+
+      // Find new schedule ID
+      const [schedRow] = await query('SELECT id FROM loan_repayment_schedule WHERE loan_id = ? ORDER BY id ASC LIMIT 1', [data.newReloanId]);
+      const newScheduleId = schedRow ? schedRow.id : null;
+
+      // 1. Shift payments to new reloan
+      const placeholders = repaymentIds.map(() => '?').join(',');
+      await query(`
+        UPDATE loan_repayments
+        SET loan_id = ?,
+            repayment_schedule_id = COALESCE(?, repayment_schedule_id)
+        WHERE id IN (${placeholders})
+      `, [data.newReloanId, newScheduleId, ...repaymentIds]);
+
+      // 2. Recalculate Old Loan
+      const [oldTotals] = await query(`
+        SELECT COALESCE(SUM(amount), 0) AS totalPaid 
+        FROM loan_repayments 
+        WHERE loan_id = ? AND status IN ('received', 'success', 'paid', 'settled')
+      `, [data.oldLoanId]);
+      const oldPaid = Number(oldTotals.totalPaid || 0);
+      const oldBalance = Math.max(0, Number(data.oldTotalDue) - oldPaid);
+      const oldStatus = oldBalance <= 0 ? 'Paid Off' : 'Active';
+
+      await query(`
+        UPDATE loans 
+        SET amount_paid = ?, balance = ?, status = ?, payment_status = ?
+        WHERE id = ?
+      `, [oldPaid, oldBalance, oldStatus, oldBalance <= 0 ? 'Paid' : 'Partial', data.oldLoanId]);
+
+      // 3. Recalculate New Reloan
+      const [newTotals] = await query(`
+        SELECT COALESCE(SUM(amount), 0) AS totalPaid 
+        FROM loan_repayments 
+        WHERE loan_id = ? AND status IN ('received', 'success', 'paid', 'settled')
+      `, [data.newReloanId]);
+      const newPaid = Number(newTotals.totalPaid || 0);
+      const newBalance = Math.max(0, Number(data.newTotalDue) - newPaid);
+      const newStatus = newBalance <= 0 ? 'Paid Off' : 'Active';
+
+      await query(`
+        UPDATE loans 
+        SET amount_paid = ?, balance = ?, status = ?, payment_status = ?, next_payment_amount = ?
+        WHERE id = ?
+      `, [newPaid, newBalance, newStatus, newBalance <= 0 ? 'Paid' : 'Partial', newBalance, data.newReloanId]);
+
+      // 4. Sync Schedules & Collections
+      await query(`
+        UPDATE loan_repayment_schedule 
+        SET amount_paid = ?, status = ?
+        WHERE loan_id = ?
+      `, [oldPaid, oldBalance <= 0 ? 'paid' : 'pending', data.oldLoanId]);
+
+      await query(`
+        UPDATE loan_repayment_schedule 
+        SET amount_paid = ?, status = ?
+        WHERE loan_id = ?
+      `, [newPaid, newBalance <= 0 ? 'paid' : 'pending', data.newReloanId]);
+
+      await query(`
+        UPDATE collection_cases 
+        SET total_due = ?, status = ?
+        WHERE loan_id = ?
+      `, [oldBalance, oldBalance <= 0 ? 'Paid Off' : 'Active', data.oldLoanId]);
+
+      await query(`
+        UPDATE collection_cases 
+        SET total_due = ?, status = ?
+        WHERE loan_id = ?
+      `, [newBalance, newBalance <= 0 ? 'Paid Off' : 'Active', data.newReloanId]);
+
+      console.log(`✓ Case fixed for ${data.customerName}: Payments shifted from ${data.oldLoanId} -> ${data.newReloanId}.`);
+    });
+  }
+
+  console.log('\n===============================================================');
+  console.log(' ALL AFFECTED RELOAN CASES HAVE BEEN SUCCESSFULLY HEALED!');
+  console.log('===============================================================\n');
+  process.exit(0);
+}
+
+main().catch(err => {
+  console.error('[ERROR] Failed to heal misplaced payments:', err);
+  process.exit(1);
+});
