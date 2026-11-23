@@ -37,7 +37,12 @@ async function main() {
     AND (rep.received_by IS NULL OR rep.received_by NOT IN ('Accountant', 'Collection Agent', 'Superadmin'))
   `;
 
-  // Find all affected misplaced payments
+  // Find all affected misplaced payments:
+  // Condition:
+  // 1. old_l is closed/paid off or overpaid (amount_paid > total_amount)
+  // 2. new_l is an active reloan with remaining balance > 0
+  // 3. Payment was credited to old_l on or after new_l's start date
+  // 4. Payment came from Website (Source Website / Gateway), NOT manual entry
   const affectedRows = await query(`
     SELECT 
       c.id AS customer_id,
@@ -47,10 +52,12 @@ async function main() {
       old_l.total_amount AS old_total_due,
       old_l.amount_paid AS old_amount_paid,
       old_l.balance AS old_balance,
+      old_l.status AS old_status,
       new_l.id AS new_reloan_id,
       new_l.total_amount AS new_total_due,
       new_l.amount_paid AS new_current_paid,
       new_l.balance AS new_current_balance,
+      new_l.status AS new_status,
       new_l.start_date AS reloan_start_date,
       rep.id AS repayment_id,
       rep.amount AS payment_amount,
@@ -71,12 +78,20 @@ async function main() {
       ON c.id = old_l.customer_id
     JOIN loan_repayments rep 
       ON rep.loan_id = old_l.id
-    WHERE (
-      rep.received_at >= new_l.start_date
-      OR old_l.amount_paid > old_l.total_amount
-    )
-    AND rep.status IN ('received', 'success', 'paid', 'settled')
-    ${websiteFilterSql}
+    WHERE 
+      -- Naya reloan abhi active hona chahiye aur balance baaki hona chahiye
+      new_l.balance > 0 
+      AND LOWER(new_l.status) NOT IN ('paid off', 'closed', 'settled')
+      -- Purana loan ya to closed/paid off tha ya payment aane se overpaid ho gaya
+      AND (
+        old_l.amount_paid > old_l.total_amount
+        OR LOWER(old_l.status) IN ('paid off', 'closed', 'settled')
+        OR old_l.balance <= 0
+      )
+      -- Payment naye reloan ki date par ya uske baad hui
+      AND rep.received_at >= COALESCE(new_l.start_date, new_l.created_at)
+      AND rep.status IN ('received', 'success', 'paid', 'settled')
+      ${websiteFilterSql}
     ORDER BY c.name, rep.received_at ASC
   `);
 
