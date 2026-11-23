@@ -179,6 +179,8 @@ type CollectionReportRow = {
   baseRepayment?: number;
   status?: string;
   customer?: string;
+  lastLoginAt?: string | null;
+  lastLogin?: string | null;
 };
 
 type CollectionDeepReport = {
@@ -847,6 +849,7 @@ export function Reports() {
     dueDate: formatDate(item.dueDate),
     emiStatus: item.emiStatus || "-",
     loanId: item.loanId,
+    lastLogin: (item.lastLoginAt || item.lastLogin) ? formatDateTime(item.lastLoginAt || item.lastLogin) : "-",
     outstanding: formatCurrency(item.outstanding || item.totalDue),
     pan: item.pan || "-",
     phone: item.phone || "-",
@@ -861,6 +864,7 @@ export function Reports() {
     PAN: row.pan,
     Aadhaar: row.aadhaar,
     "Loan Account": row.loanId,
+    "Customer Last Login": row.lastLogin,
     Disbursement: row.disbursement,
     "Disbursement Date": row.disbursementDate,
     "Due Date": row.dueDate,
@@ -1443,7 +1447,7 @@ export function Reports() {
         <ReportTable
           id="collection-report"
           title="Collection Report"
-          headers={["S. No.", "Borrower", "Phone", "PAN", "Aadhaar", "Loan Account", "Disbursement", "Outstanding", "EMI Status", "DPD"]}
+          headers={["S. No.", "Borrower", "Phone", "PAN", "Aadhaar", "Loan Account", "Disbursement", "Outstanding", "EMI Status", "Customer Last Login", "DPD"]}
           rows={collectionRows.map((row) => [
             String(row.serial),
             row.borrower,
@@ -1454,6 +1458,7 @@ export function Reports() {
             row.disbursement,
             row.outstanding,
             row.emiStatus,
+            row.lastLogin,
             String(row.dpd),
           ])}
         />

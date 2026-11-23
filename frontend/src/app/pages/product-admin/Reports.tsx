@@ -1567,7 +1567,7 @@ export function Reports() {
         <ReportTable
           id="collection-report"
           title="Collection Report"
-          headers={["S. No.", "Borrower", "Phone", "PAN", "Aadhaar", "Loan Account", "Disbursement", "Outstanding", "EMI Status", "DPD"]}
+          headers={["S. No.", "Borrower", "Phone", "PAN", "Aadhaar", "Loan Account", "Disbursement", "Outstanding", "EMI Status", "Customer Last Login", "DPD"]}
           rows={collectionRows.map((row) => [
             String(row.serial),
             row.borrower,
@@ -1578,6 +1578,7 @@ export function Reports() {
             row.disbursement,
             row.outstanding,
             row.emiStatus,
+            row.lastLogin,
             String(row.dpd),
           ])}
         />

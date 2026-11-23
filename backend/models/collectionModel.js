@@ -402,7 +402,8 @@ async function getCollectionReports() {
         DATE_FORMAT(MAX(l.due_date), '%Y-%m-%d') AS dueDate,
         r.status AS status,
         r.reference AS reference,
-        r.received_by AS receivedBy
+        r.received_by AS receivedBy,
+        COALESCE(MAX(c.last_login_at), MAX(cc.last_login_at), MAX(la.last_login_at)) AS lastLoginAt
       FROM (
         SELECT
           id, loan_id, customer_id, lead_id, application_id, amount,

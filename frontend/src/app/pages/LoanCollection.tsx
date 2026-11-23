@@ -244,7 +244,7 @@ function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function startOfToday() {
@@ -1793,6 +1793,7 @@ export function LoanCollection() {
       "Outstanding Balance",
       "EMI status",
       "DPD (Days Past Due)",
+      "Customer Last Login",
       "Part Payment Sequence",
       "Part Payment Date",
       "Part Payment Amount (INR)",
@@ -1833,6 +1834,10 @@ export function LoanCollection() {
       const memberCodeVal = String(item.memberCode || "").trim();
       const formattedMemberCode = memberCodeVal ? (/^\d{10,16}$/.test(memberCodeVal) ? `\t${memberCodeVal}` : memberCodeVal) : "";
 
+      const customerLastLogin = (item.lastLoginAt || (item as any).lastLogin)
+        ? formatDateTime(item.lastLoginAt || (item as any).lastLogin)
+        : "-";
+
       const baseInfo = [
         formattedMemberCode,
         item.borrowerName || item.customer || "",
@@ -1862,6 +1867,7 @@ export function LoanCollection() {
         String(item.outstanding !== undefined ? item.outstanding : (item.totalDue || 0)),
         item.emiStatus || item.status || "",
         String(getDaysPastDue(item)),
+        customerLastLogin,
       ];
 
       if (loanPayments && loanPayments.length > 0) {
@@ -1902,6 +1908,7 @@ export function LoanCollection() {
             "0", // Outstanding Balance (0 on subsequent rows to prevent double counting in Excel)
             item.emiStatus || item.status || "",
             String(getDaysPastDue(item)),
+            customerLastLogin,
           ];
 
           rows.push([
@@ -2050,6 +2057,7 @@ export function LoanCollection() {
                   "Reference / UTR",
                   "Received At",
                   "Status",
+                  "Customer Last Login",
                 ];
                 const rows = displayPaymentsList.map((p, idx) => [
                   String(idx + 1),
@@ -2059,6 +2067,7 @@ export function LoanCollection() {
                   p.reference || "N/A",
                   p.receivedAt || "",
                   p.status || "Received",
+                  (p as any).lastLoginAt ? formatDateTime((p as any).lastLoginAt) : "-",
                 ]);
                 const csvContent = "\uFEFF" + [header, ...rows]
                   .map((row) => row.map((cell) => `"${String(cell || "").replace(/"/g, '""')}"`).join(","))
@@ -3189,6 +3198,7 @@ if (isLogPaymentPage) {
                   "Total Amount Paid",
                   "Outstanding Balance",
                   "EMI Status",
+                  "Customer Last Login",
                   "Part Payment Sequence",
                   "Part Payment Date",
                   "Part Payment Amount (INR)",
@@ -3229,6 +3239,10 @@ if (isLogPaymentPage) {
 
                   const displayAmountPaid = isCollectedTodayFilter ? String(todayAmt) : String(c.amountPaid || 0);
 
+                  const customerLastLogin = (c.lastLoginAt || (c as any).lastLogin)
+                    ? formatDateTime(c.lastLoginAt || (c as any).lastLogin)
+                    : "-";
+
                   const base = [
                     c.borrowerName || c.customer || "",
                     formattedPhone,
@@ -3240,6 +3254,7 @@ if (isLogPaymentPage) {
                     displayAmountPaid,
                     String(c.outstanding !== undefined ? c.outstanding : (c.totalDue || 0)),
                     c.status || c.emiStatus || "",
+                    customerLastLogin,
                   ];
 
                   if (loanPayments && loanPayments.length > 0) {
@@ -3267,6 +3282,7 @@ if (isLogPaymentPage) {
                                 String(p.amount || 0),
                                 String(c.outstanding !== undefined ? c.outstanding : (c.totalDue || 0)),
                                 c.status || c.emiStatus || "",
+                                customerLastLogin,
                               ]
                             : base)
                         : [
@@ -3280,6 +3296,7 @@ if (isLogPaymentPage) {
                             isCollectedTodayFilter ? String(p.amount || 0) : "0", // Total Amount Paid (0 on subsequent rows to prevent double counting in Excel)
                             "0", // Outstanding Balance (0 on subsequent rows to prevent double counting in Excel)
                             c.status || c.emiStatus || "",
+                            customerLastLogin,
                           ];
 
                       csvRows.push([
