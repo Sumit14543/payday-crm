@@ -63,14 +63,20 @@ const STATUS_DEFINITIONS = {
 };
 
 const DB_STATUS_TO_PUBLIC = {
+  active: 'Converted',
   approved: 'Qualified',
   closed: 'Closed',
+  'Paid Off': 'Closed',
+  'paid off': 'Closed',
+  paid: 'Closed',
+  settled: 'Closed',
   disbursed: 'Converted',
   documents_pending: 'Documents Pending',
   draft: 'New',
   not_connected: 'Not Connected',
   rejected: 'Lost',
   review: 'Document Collection',
+  send_to_credit: 'Document Collection',
   submitted: 'Contacted',
 };
 
@@ -322,27 +328,48 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
   const normalizedMobile = last10(mobile);
   const normalizedPan = String(pan || '').trim().toUpperCase();
 
+  const waqtFamily = new Set(['waqtmoney', 'waqtfinance', 'website']);
+  const isWaqtFamily = waqtFamily.has(sourceSystem);
+
   if (sourceSystem && sourceLeadId) {
-    clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
-    params.push(sourceSystem);
+    if (isWaqtFamily) {
+      clauses.push('(source_system IN ("waqtmoney", "waqtfinance", "website") OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
+    } else {
+      clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
+      params.push(sourceSystem);
+    }
     clauses.push('(source_lead_id = ? OR source_lead_id LIKE ?)');
     params.push(sourceLeadId, `${sourceLeadId}-R%`);
   } else if (sourceApplicationId) {
     clauses.push('(source_application_id = ? OR application_id = ? OR CAST(id AS CHAR) = ?)');
     params.push(sourceApplicationId, sourceApplicationId, sourceApplicationId);
   } else if (normalizedPan) {
-    clauses.push('pan_number = ?');
-    params.push(normalizedPan);
+    clauses.push(`(
+      REPLACE(UPPER(TRIM(pan_number)), " ", "") = ?
+      OR pan_number = ?
+      OR EXISTS (
+        SELECT 1 FROM loan_applications la_pan
+        WHERE (la_pan.mobile = loan_applications.mobile OR la_pan.pan_number = loan_applications.pan_number)
+          AND (REPLACE(UPPER(TRIM(la_pan.pan_number)), " ", "") = ? OR la_pan.pan_number = ?)
+      )
+    )`);
+    params.push(normalizedPan, normalizedPan, normalizedPan, normalizedPan);
   } else if (normalizedMobile) {
-    clauses.push("RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(mobile, ' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), 10) = ?");
-    params.push(normalizedMobile);
+    clauses.push("(RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(mobile, ' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), 10) = ? OR RIGHT(mobile, 10) = ?)");
+    params.push(normalizedMobile, normalizedMobile);
   } else {
     return null;
   }
 
   if (!sourceSystem) return null;
-  clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
-  params.push(sourceSystem);
+  if (!sourceLeadId) {
+    if (isWaqtFamily) {
+      clauses.push('(source_system IN ("waqtmoney", "waqtfinance", "website") OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
+    } else {
+      clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
+      params.push(sourceSystem);
+    }
+  }
   const rows = await query(`
     SELECT
       id,
@@ -383,9 +410,14 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
     WHERE ${clauses.join(' AND ')}
     ORDER BY
       (CASE
-        WHEN status IN ('disbursed', 'approved', 'review', 'submitted') THEN 0
-        WHEN status = 'closed' THEN 1
-        ELSE 2
+        WHEN EXISTS (
+          SELECT 1 FROM loans l
+          WHERE (l.id = loan_applications.application_id OR l.id = CAST(loan_applications.id AS CHAR) OR l.customer_id = CONCAT('CUS', loan_applications.id))
+            AND l.balance > 0 AND LOWER(l.status) NOT IN ('paid off', 'closed', 'settled')
+        ) THEN 0
+        WHEN LOWER(TRIM(status)) IN ('converted', 'disbursed', 'active', 'approved', 'qualified', 'review', 'submitted', 'send_to_credit', 'contacted', 'documents_pending', 'new', 'draft', 'pending') THEN 1
+        WHEN LOWER(TRIM(status)) IN ('closed', 'paid off', 'settled', 'paid') THEN 2
+        ELSE 3
       END) ASC,
       is_reloan DESC,
       updated_at DESC,

@@ -199,7 +199,7 @@ async function getSourceLeadStatus(req, res) {
   });
   if (!tracking) return notFound(res, 'Source lead tracking record not found.');
 
-  const targetMobile = mobile || tracking.mobile || sourceLeadId || sourceApplicationId;
+  const targetMobile = mobile || tracking.phone || tracking.mobile || sourceLeadId || sourceApplicationId;
   if (targetMobile) {
     customerModel.markCustomerLogin(targetMobile).catch(() => {});
   }
