@@ -677,51 +677,95 @@ async function repaymentSummaryByLead(lead) {
   };
 }
 
-async function disbursementSummaryByLead(lead) {
-  if (!lead?.id && !lead?.rawId) return null;
+async function disbursementSummaryByLead(lead, activeLoanId = null) {
+  if (!lead?.id && !lead?.rawId && !activeLoanId) return null;
 
-  const rows = await query(`
-    SELECT
-      payment.loan_id AS loanId,
-      payment.amount AS disbursedAmount,
-      payment.transfer_type AS transferType,
-      payment.transaction_id AS transactionId,
-      payment.status AS paymentStatus,
-      payment.disbursed_at AS disbursedAt,
-      loan.status AS loanStatus,
-      loan.payment_status AS loanPaymentStatus,
-      loan.balance AS outstanding,
-      loan.due_date AS dueDate,
-      sanction.agreement_number AS agreementNumber,
-      sanction.disbursed_amount AS sanctionedDisbursedAmount
-    FROM lead_accounting_payments payment
-    LEFT JOIN loans loan
-      ON loan.id = payment.loan_id
-    LEFT JOIN lead_sanctions sanction
-      ON sanction.id = (
-        SELECT s2.id
-        FROM lead_sanctions s2
-        WHERE s2.application_id = payment.application_id
-          OR s2.lead_id = payment.lead_id
-        ORDER BY s2.created_at DESC, s2.id DESC
-        LIMIT 1
-      )
-    WHERE payment.application_id = ? OR payment.lead_id = ?
-    ORDER BY payment.disbursed_at DESC, payment.id DESC
-    LIMIT 1
-  `, [lead.id || '', lead.rawId || '']);
+  const targetLoanId = String(activeLoanId || '').trim();
+
+  let rows = [];
+  if (targetLoanId) {
+    rows = await query(`
+      SELECT
+        payment.loan_id AS loanId,
+        payment.amount AS disbursedAmount,
+        payment.transfer_type AS transferType,
+        payment.transaction_id AS transactionId,
+        payment.status AS paymentStatus,
+        payment.disbursed_at AS disbursedAt,
+        loan.status AS loanStatus,
+        loan.payment_status AS loanPaymentStatus,
+        loan.balance AS outstanding,
+        loan.due_date AS dueDate,
+        loan.principal AS loanPrincipal,
+        loan.start_date AS loanStartDate,
+        sanction.agreement_number AS agreementNumber,
+        sanction.disbursed_amount AS sanctionedDisbursedAmount
+      FROM loans loan
+      LEFT JOIN lead_accounting_payments payment
+        ON payment.loan_id = loan.id
+      LEFT JOIN lead_sanctions sanction
+        ON (sanction.agreement_number = loan.id OR sanction.lead_id = ? OR sanction.application_id = ?)
+      WHERE loan.id = ?
+         OR TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(loan.id), ' ', ''), '-', ''), '_', '')) = TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(?), ' ', ''), '-', ''), '_', ''))
+      ORDER BY payment.disbursed_at DESC, sanction.created_at DESC
+      LIMIT 1
+    `, [lead?.rawId || '', lead?.id || '', targetLoanId, targetLoanId]);
+  }
+
+  if (!rows || !rows.length) {
+    rows = await query(`
+      SELECT
+        payment.loan_id AS loanId,
+        payment.amount AS disbursedAmount,
+        payment.transfer_type AS transferType,
+        payment.transaction_id AS transactionId,
+        payment.status AS paymentStatus,
+        payment.disbursed_at AS disbursedAt,
+        loan.status AS loanStatus,
+        loan.payment_status AS loanPaymentStatus,
+        loan.balance AS outstanding,
+        loan.due_date AS dueDate,
+        loan.principal AS loanPrincipal,
+        loan.start_date AS loanStartDate,
+        sanction.agreement_number AS agreementNumber,
+        sanction.disbursed_amount AS sanctionedDisbursedAmount
+      FROM lead_accounting_payments payment
+      LEFT JOIN loans loan
+        ON loan.id = payment.loan_id
+      LEFT JOIN lead_sanctions sanction
+        ON sanction.id = (
+          SELECT s2.id
+          FROM lead_sanctions s2
+          WHERE s2.application_id = payment.application_id
+            OR s2.lead_id = payment.lead_id
+          ORDER BY s2.created_at DESC, s2.id DESC
+          LIMIT 1
+        )
+      WHERE payment.application_id = ? OR payment.lead_id = ?
+      ORDER BY payment.disbursed_at DESC, payment.id DESC
+      LIMIT 1
+    `, [lead?.id || '', lead?.rawId || '']);
+  }
 
   const row = rows[0];
   if (!row) return {
     status: 'pending',
   };
 
+  const finalDisbursedAmount = Number(
+    row.disbursedAmount ||
+    row.sanctionedDisbursedAmount ||
+    (row.loanPrincipal ? Math.round(row.loanPrincipal * 0.882) : 0)
+  );
+
+  const finalDisbursedAt = row.disbursedAt || row.loanStartDate || null;
+
   return {
     agreementNumber: row.agreementNumber || '',
-    disbursedAmount: Number(row.disbursedAmount || row.sanctionedDisbursedAmount || 0),
-    disbursedAt: row.disbursedAt,
+    disbursedAmount: finalDisbursedAmount,
+    disbursedAt: finalDisbursedAt,
     dueDate: row.dueDate,
-    loanId: row.loanId || '',
+    loanId: row.loanId || targetLoanId || '',
     loanPaymentStatus: row.loanPaymentStatus || '',
     loanStatus: row.loanStatus || '',
     outstanding: Number(row.outstanding || 0),

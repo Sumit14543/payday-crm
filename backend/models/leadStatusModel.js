@@ -262,8 +262,9 @@ async function findPublicTracking(applicationId, phone) {
   const current = definitionFor(lead.status);
   const lifecycle = statusLifecycleService.summarizeTimeline(publicTimeline, current);
   const repayment = await repaymentModel.repaymentSummaryByLead(lead);
+  const activeLoanId = repayment?.loanId || null;
   const sanction = await sanctionModel.findLatestByLead(lead);
-  const disbursement = await repaymentModel.disbursementSummaryByLead(lead);
+  const disbursement = await repaymentModel.disbursementSummaryByLead(lead, activeLoanId);
 
   const interestAccrued = sanction
     ? Math.max(0, Number(sanction.repaymentAmount || 0)
@@ -444,8 +445,9 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
   const current = definitionFor(lead.status);
   const lifecycle = statusLifecycleService.summarizeTimeline(publicTimeline, current);
   const repayment = await repaymentModel.repaymentSummaryByLead(lead);
+  const activeLoanId = repayment?.loanId || null;
   const sanction = await sanctionModel.findLatestByLead(lead);
-  const disbursement = await repaymentModel.disbursementSummaryByLead(lead);
+  const disbursement = await repaymentModel.disbursementSummaryByLead(lead, activeLoanId);
 
   const { repaymentBlock, sanctionBlock } = sourceTrackingSnapshotService.calculateLiveStatusBlocks(lead, sanction, disbursement, repayment);
 

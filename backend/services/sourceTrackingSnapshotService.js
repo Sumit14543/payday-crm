@@ -104,17 +104,29 @@ function calculateLiveStatusBlocks(lead, sanction, disbursement, repayment) {
     tenureDays,
   } : null;
 
+  const isDifferentLoan = Boolean(
+    repayment?.loanId &&
+    sanction?.agreementNumber &&
+    String(repayment.loanId).trim().toLowerCase() !== String(sanction.agreementNumber).trim().toLowerCase()
+  );
+
+  const finalSanctionPrincipal = isDifferentLoan ? principalAmount : Number(sanction?.principalAmount || principalAmount);
+  const finalSanctionRepayment = isDifferentLoan ? dueAmount : Number(sanction?.repaymentAmount || dueAmount);
+  const finalSanctionDisbursed = isDifferentLoan
+    ? Number(disbursement?.disbursedAmount || (principalAmount ? Math.round(principalAmount * 0.882) : 0))
+    : Number(sanction?.disbursedAmount || disbursement?.disbursedAmount || 0);
+
   const sanctionBlock = sanction ? {
-    agreementNumber: sanction.agreementNumber,
+    agreementNumber: isDifferentLoan ? repayment.loanId : sanction.agreementNumber,
     emailStatus: sanction.emailStatus,
-    pdfAvailable: Boolean(sanction.pdfPath),
-    pdfUrl: sanctionPdfUrl(lead, sanction),
-    sentAt: sanction.sentAt,
+    pdfAvailable: Boolean(sanction.pdfPath && !isDifferentLoan),
+    pdfUrl: isDifferentLoan ? '' : sanctionPdfUrl(lead, sanction),
+    sentAt: isDifferentLoan ? (disbursement?.disbursedAt || sanction.sentAt) : sanction.sentAt,
     whatsappStatus: sanction.whatsappStatus,
-    dueDate: sanction.dueDate,
-    principalAmount: Number(sanction.principalAmount || 0),
-    repaymentAmount: Number(sanction.repaymentAmount || 0),
-    disbursedAmount: Number(sanction.disbursedAmount || 0),
+    dueDate: dueDate ? String(dueDate).slice(0, 10) : sanction.dueDate,
+    principalAmount: finalSanctionPrincipal,
+    repaymentAmount: finalSanctionRepayment,
+    disbursedAmount: finalSanctionDisbursed,
   } : (hasLoanOrSanction ? {
     principalAmount,
     repaymentAmount: dueAmount,
@@ -127,10 +139,11 @@ function calculateLiveStatusBlocks(lead, sanction, disbursement, repayment) {
 async function buildForLead(lead) {
   if (!lead?.id && !lead?.rawId) return {};
 
-  const [sanction, disbursement, repayment] = await Promise.all([
+  const repayment = await repaymentModel.repaymentSummaryByLead(lead);
+  const activeLoanId = repayment?.loanId || null;
+  const [sanction, disbursement] = await Promise.all([
     sanctionModel.findLatestByLead(lead),
-    repaymentModel.disbursementSummaryByLead(lead),
-    repaymentModel.repaymentSummaryByLead(lead),
+    repaymentModel.disbursementSummaryByLead(lead, activeLoanId),
   ]);
 
   const { repaymentBlock, sanctionBlock } = calculateLiveStatusBlocks(lead, sanction, disbursement, repayment);

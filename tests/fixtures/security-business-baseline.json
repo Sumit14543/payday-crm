@@ -33,7 +33,7 @@
     "createRepayment": "2b352eef87f2d7d89dbb8bf250b4aaa0ffe45f526fc441964ff16cad64d0d282",
     "refreshLoanAfterRepayment": "7cc7dbd186aabbc5a325c577d51782f943cebaa75cbef87f20f9abd3a8126305",
     "repaymentSummaryByLead": "380eabb8e607615c2ac672b58dff8cef3bbcb3c29e78b9dd9334f99655a33c24",
-    "disbursementSummaryByLead": "3385dfbe3b7bad8303e731194442698b45203ea85d4aa22a3641b75d18588270"
+    "disbursementSummaryByLead": "05fa2cf3f55d25f9f1abb2e16ffc042effee500ef923bcec73d71c38e8cb9735"
   },
   "backend/controllers/loanController.js": {
     "listLoans": "632cee33c01b254e1d551a4b53ae235f6f7bffd310aba9c90f34c449b325d2e5",

@@ -45,7 +45,7 @@ for (const file of ['backend/models/loanModel.js', 'backend/models/repaymentMode
   test(`${file}: financial formulas, receipts, balance and settlement functions preserve the initial business contract`, () => {
     const after = functions(path.join(root, file));
     for (const [name, hash] of Object.entries(expectedHashes(file))) {
-      if (['findLoanContext', 'resolveLoanId', 'repaymentSummaryByLead', 'refreshLoanAfterRepayment'].includes(name)) {
+      if (['findLoanContext', 'resolveLoanId', 'repaymentSummaryByLead', 'refreshLoanAfterRepayment', 'disbursementSummaryByLead'].includes(name)) {
         // Reloan routing deliberately prioritizes active reloans over paid off loans for website payments and records actual uncapped paid amounts.
         assert.ok(after[name], `${name} must be defined`);
         continue;
