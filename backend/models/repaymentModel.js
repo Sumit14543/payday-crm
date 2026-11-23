@@ -250,13 +250,11 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
     WHERE (${clauses.map((clause) => `(${clause})`).join(' OR ')}) ${sourceSystemFilter}
     ORDER BY
       (CASE
-        WHEN loan.balance > 0 AND LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 0
-        WHEN loan.balance > 0 THEN 1
-        WHEN LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 2
-        ELSE 3
+        WHEN LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 0
+        ELSE 1
       END) ASC,
       (CASE WHEN loan.id = ? THEN 0 ELSE 1 END) ASC,
-      COALESCE(loan.created_at, loan.start_date) DESC,
+      COALESCE(loan.start_date, loan.created_at) DESC,
       loan.id DESC
     LIMIT 1
   `, [...queryParams, normalizedSourceSystem || '', normalizedSourceLeadId || '', normalizedLoanId || '']);
@@ -264,8 +262,7 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
   let matchedRow = rows[0];
 
   // Safeguard: If the matched loan is already Paid Off / Closed (or balance <= 0),
-  // but this customer / base loan has an ACTIVE reloan with outstanding balance,
-  // redirect to the active reloan so payment is not credited to an already closed loan!
+  // redirect to the LATEST active reloan by disbursement date (start_date) that is not Paid Off.
   if (matchedRow && (Number(matchedRow.balance || 0) <= 0 || ['paid off', 'closed', 'settled'].includes(String(matchedRow.loanStatus || '').toLowerCase()))) {
     const activeReloanRows = await query(`
       SELECT
@@ -348,10 +345,9 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
           OR (la.pan_number <> '' AND la.pan_number = ?)
           OR (la.mobile <> '' AND la.mobile = ?)
         )
-        AND loan.balance > 0
         AND LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled')
       ORDER BY
-        COALESCE(loan.created_at, loan.start_date) DESC,
+        COALESCE(loan.start_date, loan.created_at) DESC,
         loan.id DESC
       LIMIT 1
     `, [
@@ -524,7 +520,7 @@ async function refreshLoanAfterRepayment(context, options = {}) {
   if (context.schedule?.id) {
     await query(`
       UPDATE loan_repayment_schedule
-      SET amount_paid = LEAST(total_due, ?),
+      SET amount_paid = ?,
           status = ?,
           paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP)
       WHERE id = ?
