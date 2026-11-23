@@ -105,8 +105,9 @@ async function initiateReloan(req, res) {
       office_email, office_address, reference1_name, reference1_mobile, reference1_relation,
       reference2_name, reference2_mobile, reference2_relation, bank_name, branch_name,
       account_holder, account_number, ifsc_code, priority, assigned_to, status,
-      is_active_application, is_reloan, previous_loan_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Medium', 'Credit Manager', 'review', 1, 1, ?)
+      is_active_application, is_reloan, previous_loan_id,
+      source_system, source_lead_id, source_application_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Medium', 'Credit Manager', 'review', 1, 1, ?, ?, ?, ?)
   `, [
     newApplicationId,
     lastLead.loanType || 'payday',
@@ -141,7 +142,10 @@ async function initiateReloan(req, res) {
     lastLead.accountHolder,
     lastLead.accountNumber,
     lastLead.ifscCode,
-    previousLoanId
+    previousLoanId,
+    lastLead.sourceSystem || 'website',
+    lastLead.sourceLeadId ? `${lastLead.sourceLeadId}-R${Date.now()}` : null,
+    newApplicationId
   ]);
 
   const newLead = await leadModel.findById(newApplicationId);

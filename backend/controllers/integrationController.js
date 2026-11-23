@@ -292,7 +292,17 @@ async function postRepayment(req, res) {
       repaymentPublicError('Loan repayment account not found for the provided source details.', 404);
     }
 
-    if (String(context.lead.sourceSystem || '').toLowerCase() !== payload.sourceSystem) repaymentPublicError('Repayment source does not match the loan.', 403);
+    const leadSourceSystem = String(context.lead.sourceSystem || '').toLowerCase();
+    if (leadSourceSystem && payload.sourceSystem && leadSourceSystem !== payload.sourceSystem && !context.lead.isReloan) {
+      repaymentPublicError('Repayment source does not match the loan.', 403);
+    }
+    if (!leadSourceSystem && payload.sourceSystem && context.lead?.rawId) {
+      const { query } = require('../config/db');
+      query('UPDATE loan_applications SET source_system = ? WHERE id = ? AND (source_system IS NULL OR source_system = "")', [
+        payload.sourceSystem,
+        context.lead.rawId,
+      ]).catch(() => {});
+    }
     const existing = await repaymentModel.findByReference(payload.reference);
     if (existing) {
       if (existing.loanId !== context.loan.id || Number(existing.amount) !== payload.amount) repaymentPublicError('This reference belongs to a different payment.', 409);

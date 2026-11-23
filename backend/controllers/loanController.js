@@ -34,6 +34,24 @@ async function getLoan(req, res) {
 async function resolveLoanId({ loanId, phone, pan }) {
   if (loanId) {
     const cleanId = String(loanId).trim();
+    // 1. If exact loan is active with balance > 0, return it directly
+    const activeRows = await query('SELECT id FROM loans WHERE id = ? AND balance > 0 AND status NOT IN ("Paid Off", "Closed") LIMIT 1', [cleanId]);
+    if (activeRows.length) return activeRows[0].id;
+
+    // 2. Check if this base loan or customer has an active reloan
+    const reloanRows = await query(`
+      SELECT l.id FROM loans l
+      WHERE (
+        l.id LIKE ? OR l.id LIKE ?
+        OR l.customer_id IN (SELECT l2.customer_id FROM loans l2 WHERE l2.id = ?)
+      )
+      AND l.balance > 0 AND l.status NOT IN ("Paid Off", "Closed")
+      ORDER BY (CASE WHEN l.id LIKE ? OR l.id LIKE ? THEN 0 ELSE 1 END) ASC, l.created_at DESC, l.id DESC
+      LIMIT 1
+    `, [`${cleanId}R%`, `${cleanId}-R%`, cleanId, `${cleanId}R%`, `${cleanId}-R%`]);
+    if (reloanRows.length) return reloanRows[0].id;
+
+    // 3. Fallback to exact loan if no active reloan exists
     const rows = await query('SELECT id FROM loans WHERE id = ? LIMIT 1', [cleanId]);
     if (rows.length) return rows[0].id;
   }
@@ -46,7 +64,9 @@ async function resolveLoanId({ loanId, phone, pan }) {
         SELECT l.id AS loanId FROM loans l
         LEFT JOIN customers c ON c.id = l.customer_id
         WHERE RIGHT(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), 10) = ?
-          AND l.status = 'Active'
+        ORDER BY
+          (CASE WHEN l.balance > 0 AND l.status NOT IN ('Paid Off', 'Closed') THEN 0 ELSE 1 END) ASC,
+          l.created_at DESC, l.id DESC
         LIMIT 1
       `, [searchPhone]);
       if (rows.length) return rows[0].loanId;
@@ -61,7 +81,9 @@ async function resolveLoanId({ loanId, phone, pan }) {
         LEFT JOIN loan_repayment_schedule s ON s.loan_id = l.id
         LEFT JOIN loan_applications la ON la.id = s.lead_id OR la.application_id = s.application_id
         WHERE UPPER(TRIM(la.pan_number)) = ?
-          AND l.status = 'Active'
+        ORDER BY
+          (CASE WHEN l.balance > 0 AND l.status NOT IN ('Paid Off', 'Closed') THEN 0 ELSE 1 END) ASC,
+          l.created_at DESC, l.id DESC
         LIMIT 1
       `, [cleanPan]);
       if (rows.length) return rows[0].loanId;

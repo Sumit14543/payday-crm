@@ -427,8 +427,9 @@ async function initiateReloan(req, res) {
       reference2_name, reference2_mobile, reference2_relation, bank_name, branch_name,
       account_holder, account_number, ifsc_code, priority, assigned_to, status,
       is_active_application, is_reloan, previous_loan_id, cibil_report_url, company_id_card,
-      selfie_image, video_kyc
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Medium', 'Credit Manager', 'review', 1, 1, ?, ?, ?, ?, ?)
+      selfie_image, video_kyc,
+      source_system, source_lead_id, source_application_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Medium', 'Credit Manager', 'review', 1, 1, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     newApplicationId,
     lead.loanType || 'payday',
@@ -467,7 +468,10 @@ async function initiateReloan(req, res) {
     lead.cibilReportUrl || null,
     lead.companyIdCard || null,
     lead.selfieImage || null,
-    lead.videoKyc || null
+    lead.videoKyc || null,
+    lead.sourceSystem || 'website',
+    lead.sourceLeadId ? `${lead.sourceLeadId}-R${Date.now()}` : null,
+    newApplicationId
   ]);
 
   const newLead = await leadModel.findById(newApplicationId);

@@ -323,10 +323,10 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
   const normalizedPan = String(pan || '').trim().toUpperCase();
 
   if (sourceSystem && sourceLeadId) {
-    clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL)');
+    clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
     params.push(sourceSystem);
-    clauses.push('source_lead_id = ?');
-    params.push(sourceLeadId);
+    clauses.push('(source_lead_id = ? OR source_lead_id LIKE ?)');
+    params.push(sourceLeadId, `${sourceLeadId}-R%`);
   } else if (sourceApplicationId) {
     clauses.push('(source_application_id = ? OR application_id = ? OR CAST(id AS CHAR) = ?)');
     params.push(sourceApplicationId, sourceApplicationId, sourceApplicationId);
@@ -341,7 +341,7 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
   }
 
   if (!sourceSystem) return null;
-  clauses.push('source_system = ?');
+  clauses.push('(source_system = ? OR source_system = "" OR source_system IS NULL OR is_reloan = 1)');
   params.push(sourceSystem);
   const rows = await query(`
     SELECT
@@ -372,7 +372,7 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
         LIMIT 1
       ), 0) AS cibilScore,
       status,
-      source_system AS sourceSystem,
+      COALESCE(NULLIF(source_system, ''), ?) AS sourceSystem,
       source_lead_id AS sourceLeadId,
       source_application_id AS sourceApplicationId,
       source_status AS sourceStatus,
@@ -381,9 +381,17 @@ async function findSourceTracking({ sourceSystem, sourceLeadId, sourceApplicatio
       updated_at AS updatedAt
     FROM loan_applications
     WHERE ${clauses.join(' AND ')}
-    ORDER BY updated_at DESC, id DESC
+    ORDER BY
+      (CASE
+        WHEN status IN ('disbursed', 'approved', 'review', 'submitted') THEN 0
+        WHEN status = 'closed' THEN 1
+        ELSE 2
+      END) ASC,
+      is_reloan DESC,
+      updated_at DESC,
+      id DESC
     LIMIT 1
-  `, params);
+  `, [...params, sourceSystem]);
   const row = rows[0];
   if (!row) return null;
 

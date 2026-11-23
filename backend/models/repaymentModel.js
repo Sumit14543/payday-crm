@@ -103,18 +103,38 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
   const normalizedPanNumber = clean(panNumber).toUpperCase();
 
   if (normalizedLoanId) {
-    clauses.push('loan.id = ?');
-    params.push(normalizedLoanId);
+    // Match exact loan id, or reloan variants (e.g. LN100R1, LN100-R1), or loans belonging to the same customer
+    clauses.push(`(
+      loan.id = ?
+      OR loan.id LIKE ?
+      OR loan.id LIKE ?
+      OR loan.customer_id IN (SELECT l_sub.customer_id FROM loans l_sub WHERE l_sub.id = ?)
+    )`);
+    params.push(normalizedLoanId, `${normalizedLoanId}R%`, `${normalizedLoanId}-R%`, normalizedLoanId);
   }
 
   if (normalizedSourceSystem && normalizedSourceLeadId) {
-    clauses.push('(la.source_system = ? AND la.source_lead_id = ?)');
-    params.push(normalizedSourceSystem, normalizedSourceLeadId);
+    clauses.push(`(
+      (la.source_system = ? AND la.source_lead_id = ?)
+      OR (la.is_reloan = 1 AND EXISTS (
+        SELECT 1 FROM loan_applications la_prev
+        WHERE (la_prev.pan_number = la.pan_number OR la_prev.mobile = la.mobile)
+          AND la_prev.source_system = ? AND la_prev.source_lead_id = ?
+      ))
+    )`);
+    params.push(normalizedSourceSystem, normalizedSourceLeadId, normalizedSourceSystem, normalizedSourceLeadId);
   }
 
   if (normalizedSourceSystem && normalizedSourceApplicationId) {
-    clauses.push('(la.source_system = ? AND la.source_application_id = ?)');
-    params.push(normalizedSourceSystem, normalizedSourceApplicationId);
+    clauses.push(`(
+      (la.source_system = ? AND la.source_application_id = ?)
+      OR (la.is_reloan = 1 AND EXISTS (
+        SELECT 1 FROM loan_applications la_prev
+        WHERE (la_prev.pan_number = la.pan_number OR la_prev.mobile = la.mobile)
+          AND la_prev.source_system = ? AND la_prev.source_application_id = ?
+      ))
+    )`);
+    params.push(normalizedSourceSystem, normalizedSourceApplicationId, normalizedSourceSystem, normalizedSourceApplicationId);
   }
 
   if (normalizedPanNumber) {
@@ -123,6 +143,24 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
   }
 
   if (!clauses.length) return null;
+
+  const sourceSystemFilter = normalizedSourceSystem
+    ? `AND (
+        la.source_system = ?
+        OR la.source_system IS NULL
+        OR la.source_system = ''
+        OR la.is_reloan = 1
+        OR EXISTS (
+          SELECT 1 FROM loan_applications la_prev
+          WHERE (la_prev.pan_number = la.pan_number OR la_prev.mobile = la.mobile)
+            AND la_prev.source_system = ?
+        )
+      )`
+    : '';
+
+  const queryParams = normalizedSourceSystem
+    ? [...params, normalizedSourceSystem, normalizedSourceSystem]
+    : params;
 
   const rows = await query(`
     SELECT
@@ -149,8 +187,20 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
       COALESCE(NULLIF(la.full_name, ''), collection.customer, customer.name, '') AS customerName,
       COALESCE(la.mobile, collection.phone, customer.phone, '') AS phone,
       COALESCE(la.email, customer.email, '') AS email,
-      COALESCE(la.source_system, '') AS sourceSystem,
-      COALESCE(la.source_lead_id, '') AS sourceLeadId,
+      COALESCE(NULLIF(la.source_system, ''), (
+        SELECT la_orig.source_system
+        FROM loan_applications la_orig
+        WHERE (la_orig.pan_number = la.pan_number OR la_orig.mobile = la.mobile)
+          AND la_orig.source_system <> ''
+        LIMIT 1
+      ), ?) AS sourceSystem,
+      COALESCE(NULLIF(la.source_lead_id, ''), (
+        SELECT la_orig.source_lead_id
+        FROM loan_applications la_orig
+        WHERE (la_orig.pan_number = la.pan_number OR la_orig.mobile = la.mobile)
+          AND la_orig.source_lead_id <> ''
+        LIMIT 1
+      ), ?) AS sourceLeadId,
       COALESCE(la.source_application_id, '') AS sourceApplicationId,
       CASE la.status
         WHEN 'draft' THEN 'New'
@@ -197,12 +247,131 @@ async function findLoanContext({ loanId, sourceSystem, sourceLeadId, sourceAppli
           la2.id DESC
         LIMIT 1
       )
-    WHERE (${clauses.map((clause) => `(${clause})`).join(' OR ')}) ${normalizedSourceSystem ? 'AND la.source_system = ?' : ''}
-    ORDER BY loan.created_at DESC
+    WHERE (${clauses.map((clause) => `(${clause})`).join(' OR ')}) ${sourceSystemFilter}
+    ORDER BY
+      (CASE
+        WHEN loan.balance > 0 AND LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 0
+        WHEN loan.balance > 0 THEN 1
+        WHEN LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 2
+        ELSE 3
+      END) ASC,
+      (CASE WHEN loan.id = ? THEN 0 ELSE 1 END) ASC,
+      COALESCE(loan.created_at, loan.start_date) DESC,
+      loan.id DESC
     LIMIT 1
-  `, normalizedSourceSystem ? [...params, normalizedSourceSystem] : params);
+  `, [...queryParams, normalizedSourceSystem || '', normalizedSourceLeadId || '', normalizedLoanId || '']);
 
-  return mapContext(rows[0]);
+  let matchedRow = rows[0];
+
+  // Safeguard: If the matched loan is already Paid Off / Closed (or balance <= 0),
+  // but this customer / base loan has an ACTIVE reloan with outstanding balance,
+  // redirect to the active reloan so payment is not credited to an already closed loan!
+  if (matchedRow && (Number(matchedRow.balance || 0) <= 0 || ['paid off', 'closed', 'settled'].includes(String(matchedRow.loanStatus || '').toLowerCase()))) {
+    const activeReloanRows = await query(`
+      SELECT
+        loan.id AS loanId,
+        loan.customer_id AS customerId,
+        loan.principal,
+        loan.total_amount AS totalAmount,
+        loan.amount_paid AS amountPaid,
+        loan.balance,
+        loan.due_date AS dueDate,
+        loan.status AS loanStatus,
+        loan.payment_status AS paymentStatus,
+        schedule.id AS scheduleId,
+        schedule.principal_due AS schedulePrincipalDue,
+        schedule.interest_due AS scheduleInterestDue,
+        schedule.fees_due AS scheduleFeesDue,
+        schedule.penalty_due AS schedulePenaltyDue,
+        schedule.total_due AS scheduleTotalDue,
+        schedule.amount_paid AS scheduleAmountPaid,
+        schedule.due_date AS scheduleDueDate,
+        schedule.status AS scheduleStatus,
+        la.id AS rawLeadId,
+        COALESCE(NULLIF(la.application_id, ''), CONCAT('APP-', la.id)) AS applicationId,
+        COALESCE(NULLIF(la.full_name, ''), collection.customer, customer.name, '') AS customerName,
+        COALESCE(la.mobile, collection.phone, customer.phone, '') AS phone,
+        COALESCE(la.email, customer.email, '') AS email,
+        COALESCE(NULLIF(la.source_system, ''), ?) AS sourceSystem,
+        COALESCE(la.source_lead_id, ?) AS sourceLeadId,
+        COALESCE(la.source_application_id, ?) AS sourceApplicationId,
+        CASE la.status
+          WHEN 'draft' THEN 'New'
+          WHEN 'submitted' THEN 'Contacted'
+          WHEN 'review' THEN 'Document Collection'
+          WHEN 'approved' THEN 'Qualified'
+          WHEN 'rejected' THEN 'Lost'
+          WHEN 'disbursed' THEN 'Converted'
+          ELSE 'Converted'
+        END AS leadStatus,
+        collection.id AS collectionCaseId,
+        collection.status AS collectionStatus,
+        collection.total_due AS collectionTotalDue
+      FROM loans loan
+      LEFT JOIN loan_repayment_schedule schedule
+        ON schedule.id = (
+          SELECT s2.id
+          FROM loan_repayment_schedule s2
+          WHERE s2.loan_id = loan.id
+          ORDER BY s2.installment_number ASC, s2.id ASC
+          LIMIT 1
+        )
+      LEFT JOIN collection_cases collection
+        ON TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(collection.loan_id), ' ', ''), '-', ''), '_', '')) = TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(loan.id), ' ', ''), '-', ''), '_', ''))
+      LEFT JOIN customers customer
+        ON customer.id = loan.customer_id
+      LEFT JOIN loan_applications la
+        ON la.id = (
+          SELECT la2.id
+          FROM loan_applications la2
+          WHERE la2.application_id = schedule.application_id
+            OR CAST(la2.id AS CHAR) = schedule.lead_id
+            OR (
+              collection.phone <> ''
+              AND la2.mobile = collection.phone
+            )
+          ORDER BY
+            CASE
+              WHEN la2.application_id = schedule.application_id THEN 1
+              WHEN CAST(la2.id AS CHAR) = schedule.lead_id THEN 2
+              WHEN collection.phone <> '' AND la2.mobile = collection.phone THEN 3
+              ELSE 4
+            END,
+            la2.id DESC
+          LIMIT 1
+        )
+      WHERE loan.id <> ?
+        AND (
+          loan.customer_id = ?
+          OR loan.id LIKE ?
+          OR loan.id LIKE ?
+          OR (la.pan_number <> '' AND la.pan_number = ?)
+          OR (la.mobile <> '' AND la.mobile = ?)
+        )
+        AND loan.balance > 0
+        AND LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled')
+      ORDER BY
+        COALESCE(loan.created_at, loan.start_date) DESC,
+        loan.id DESC
+      LIMIT 1
+    `, [
+      normalizedSourceSystem || '',
+      normalizedSourceLeadId || '',
+      normalizedSourceApplicationId || '',
+      matchedRow.loanId,
+      matchedRow.customerId,
+      `${matchedRow.loanId}R%`,
+      `${matchedRow.loanId}-R%`,
+      normalizedPanNumber || '',
+      matchedRow.phone || '',
+    ]);
+
+    if (activeReloanRows && activeReloanRows.length > 0) {
+      matchedRow = activeReloanRows[0];
+    }
+  }
+
+  return mapContext(matchedRow);
 }
 
 function allocatePayment(context, amount) {
@@ -465,7 +634,15 @@ async function repaymentSummaryByLead(lead) {
       OR (loan.id = ?)
       OR (TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(loan.id), ' ', ''), '-', ''), '_', '')) = TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(?), ' ', ''), '-', ''), '_', '')))
       OR (TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(collection.loan_id), ' ', ''), '-', ''), '_', '')) = TRIM(LEADING 'LN' FROM REPLACE(REPLACE(REPLACE(UPPER(?), ' ', ''), '-', ''), '_', '')))
-    ORDER BY loan.created_at DESC
+    ORDER BY
+      (CASE
+        WHEN loan.balance > 0 AND LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 0
+        WHEN loan.balance > 0 THEN 1
+        WHEN LOWER(loan.status) NOT IN ('paid off', 'closed', 'settled') THEN 2
+        ELSE 3
+      END) ASC,
+      COALESCE(loan.created_at, loan.start_date) DESC,
+      loan.id DESC
     LIMIT 1
   `, [
     lead.id || '',
