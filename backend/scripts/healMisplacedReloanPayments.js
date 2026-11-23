@@ -39,10 +39,10 @@ async function main() {
 
   // Find all affected misplaced payments:
   // Condition:
-  // 1. old_l is closed/paid off or overpaid (amount_paid > total_amount)
-  // 2. new_l is an active reloan with remaining balance > 0
-  // 3. Payment was credited to old_l on or after new_l's start date
-  // 4. Payment came from Website (Source Website / Gateway), NOT manual entry
+  // 1. Payment reference explicitly indicates the target reloan (e.g. repay_LNWQTMN06011_...)
+  //    OR payment was made on website after reloan creation and credited to the old closed loan.
+  // 2. old_l is closed/paid off or overpaid (amount_paid > total_amount)
+  // 3. new_l is the active reloan with remaining balance > 0
   const affectedRows = await query(`
     SELECT 
       c.id AS customer_id,
@@ -68,29 +68,37 @@ async function main() {
     FROM loans old_l
     JOIN loans new_l 
       ON new_l.customer_id = old_l.customer_id 
-      AND new_l.id <> old_l.id 
-      AND (
-        new_l.id LIKE CONCAT(old_l.id, 'R%') 
-        OR new_l.id LIKE CONCAT(old_l.id, '-R%') 
-        OR new_l.created_at > old_l.created_at
-      )
+      AND new_l.id <> old_l.id
     JOIN customers c 
       ON c.id = old_l.customer_id
     JOIN loan_repayments rep 
       ON rep.loan_id = old_l.id
     WHERE 
-      -- Naya reloan abhi active hona chahiye aur balance baaki hona chahiye
+      -- Naya reloan abhi active hona chahiye
       new_l.balance > 0 
       AND LOWER(new_l.status) NOT IN ('paid off', 'closed', 'settled')
-      -- Purana loan ya to closed/paid off tha ya payment aane se overpaid ho gaya
+      -- Purana loan closed/paid off tha ya overpaid ho chuka hai
       AND (
         old_l.amount_paid > old_l.total_amount
         OR LOWER(old_l.status) IN ('paid off', 'closed', 'settled')
         OR old_l.balance <= 0
       )
-      -- Payment naye reloan ki date par ya uske baad hui
+      -- Payment naye reloan ke aane ke baad hui
       AND rep.received_at >= COALESCE(new_l.start_date, new_l.created_at)
       AND rep.status IN ('received', 'success', 'paid', 'settled')
+      -- Intended target match:
+      AND (
+        -- Case A: Reference explicitly embeds the target reloan ID (repay_LNWQTMN..._)
+        (rep.reference LIKE CONCAT('repay_', new_l.id, '_%'))
+        OR
+        -- Case B: Latest active reloan for customer if reference is standard
+        (rep.reference NOT LIKE 'repay_LN%' AND new_l.id = (
+          SELECT l3.id FROM loans l3
+          WHERE l3.customer_id = old_l.customer_id AND l3.id <> old_l.id
+            AND l3.balance > 0 AND LOWER(l3.status) NOT IN ('paid off', 'closed', 'settled')
+          ORDER BY l3.created_at DESC LIMIT 1
+        ))
+      )
       ${websiteFilterSql}
     ORDER BY c.name, rep.received_at ASC
   `);
