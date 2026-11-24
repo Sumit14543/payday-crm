@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ExternalLink, FlaskConical, Terminal, CheckCircle2, Copy } from "lucide-react";
 import { apiGet, apiPost } from "../lib/api";
 
@@ -39,13 +39,14 @@ function localDate(date: Date) {
 }
 
 export function AccountAggregatorUat() {
+  const [searchParams] = useSearchParams();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateCode, setTemplateCode] = useState("CT003");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [vuaId, setVuaId] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(() => searchParams.get("mobile") || searchParams.get("phone") || "");
+  const [vuaId, setVuaId] = useState(() => searchParams.get("vuaId") || searchParams.get("vua") || "");
   const [journey, setJourney] = useState<Journey | null>(null);
-  const [trackingId, setTrackingId] = useState("");
-  const [referenceId, setReferenceId] = useState("");
+  const [trackingId, setTrackingId] = useState(() => searchParams.get("trackingId") || "");
+  const [referenceId, setReferenceId] = useState(() => searchParams.get("referenceId") || "");
   const [accountReferenceId, setAccountReferenceId] = useState("");
   const [fiReferenceId, setFiReferenceId] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);

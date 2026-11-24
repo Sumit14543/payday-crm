@@ -3,11 +3,12 @@ const { randomUUID } = require('node:crypto');
 const { requireRole } = require('../middleware/auth');
 const { request, uatError } = require('../services/crifAccountAggregatorUatService');
 const { buildCrifAnalyticsPayload } = require('../services/crifAnalyticsFallback');
+const emailService = require('../services/emailService');
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/http');
 
 const router = express.Router();
-router.use(requireRole(['credit-manager', 'product-admin']), (_req, res, next) => {
+router.use(requireRole(['credit-manager', 'product-admin', 'superadmin']), (_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
@@ -271,6 +272,93 @@ const analyticsHandler = asyncHandler(async (req, res) => {
 
 // Friendly aliases:
 router.post('/consents', initiateConsentHandler);
+router.post('/lead-consent-and-email', asyncHandler(async (req, res) => {
+  const rawPhone = String(req.body?.phoneNumber || req.body?.phone || '').replace(/\D/g, '');
+  const phoneNumber = rawPhone.slice(-10);
+  if (!/^[6-9]\d{9}$/.test(phoneNumber)) {
+    throw uatError(400, 'Enter a valid 10-digit customer mobile number.');
+  }
+
+  const targetEmail = req.body?.email ? String(req.body.email).trim() : '';
+  const customerName = req.body?.customerName || 'Customer';
+  const templateCode = 'CT003';
+  const trackingId = `AA_CRM_${randomUUID()}`;
+
+  let redirectionBackUrl;
+  try {
+    const callback = process.env.CRIF_UAT_REDIRECT_URL || new URL('/credit-manager/aa-test', process.env.CRIF_REDIRECT_URL || 'https://payday.waqtmoney.com');
+    redirectionBackUrl = new URL(callback).href;
+  } catch {
+    redirectionBackUrl = 'https://payday.waqtmoney.com/credit-manager/aa-test';
+  }
+
+  const response = await request('/fiu-ws/consent/initiate', {
+    templateCode,
+    trackingId,
+    phoneNumber,
+    email: targetEmail || undefined,
+    redirectionBackUrl,
+  }, 'consent initiation', { retryUnauthorized: false });
+
+  const data = response.data;
+  const redirectionUrl = data?.redirectionUrl;
+  const referenceId = data?.consents?.[0]?.referenceId || data?.referenceId;
+
+  if (!redirectionUrl) {
+    throw uatError(502, 'CRIF UAT returned no redirection URL.');
+  }
+
+  let emailSent = false;
+  let emailError = null;
+  if (targetEmail) {
+    try {
+      await emailService.sendMail({
+        to: targetEmail,
+        subject: `Action Required: Complete Bank Statement Consent - Waqt Finance`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #4f46e5; margin: 0; font-size: 22px;">Waqt Finance</h2>
+              <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Bank Account Statement Consent Verification</p>
+            </div>
+            <p style="color: #334155; font-size: 15px; line-height: 1.6;">Dear <strong>${customerName}</strong>,</p>
+            <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+              Please complete your bank account statement consent for your loan application using our RBI-regulated Account Aggregator service (CRIF / Finvu).
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${redirectionUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 8px; display: inline-block; font-size: 15px;">
+                Complete Bank Consent Now →
+              </a>
+            </div>
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 24px;">
+              <p style="font-size: 12px; color: #64748b; margin: 0; word-break: break-all;">
+                Or copy and paste this link in your browser:<br/>
+                <a href="${redirectionUrl}" style="color: #4f46e5;">${redirectionUrl}</a>
+              </p>
+            </div>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+              This is an automated email from Waqt Finance. Verified & secured via RBI Regulated Account Aggregator.
+            </p>
+          </div>
+        `,
+      });
+      emailSent = true;
+    } catch (err) {
+      console.error('[New AA Email Error]', err.message);
+      emailError = err.message;
+    }
+  }
+
+  return success(res, {
+    trackingId: data.trackingId || trackingId,
+    referenceId,
+    redirectionUrl,
+    emailSent,
+    emailError,
+    customerEmail: targetEmail,
+  }, emailSent ? `Consent link created and sent to ${targetEmail} successfully.` : 'Consent link created successfully.');
+}));
 router.post('/accounts', fetchAccountHandler);
 router.post('/sessions', sessionsHandler);
 router.post('/fi-request', fiRequestHandler);
