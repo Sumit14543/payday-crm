@@ -38,30 +38,18 @@ function localDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-const STORAGE_KEY = "crif_aa_uat_cache";
-
-function getCachedUat() {
-  try {
-    const val = localStorage.getItem(STORAGE_KEY);
-    return val ? JSON.parse(val) : {};
-  } catch {
-    return {};
-  }
-}
-
 export function AccountAggregatorUat() {
-  const cached = getCachedUat();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateCode, setTemplateCode] = useState("CT003");
-  const [phoneNumber, setPhoneNumber] = useState(cached.phoneNumber || "9761811212");
-  const [vuaId, setVuaId] = useState(cached.vuaId || "");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [vuaId, setVuaId] = useState("");
   const [journey, setJourney] = useState<Journey | null>(null);
-  const [trackingId, setTrackingId] = useState(cached.trackingId || "");
-  const [referenceId, setReferenceId] = useState(cached.referenceId || "");
-  const [accountReferenceId, setAccountReferenceId] = useState(cached.accountReferenceId || "");
+  const [trackingId, setTrackingId] = useState("");
+  const [referenceId, setReferenceId] = useState("");
+  const [accountReferenceId, setAccountReferenceId] = useState("");
   const [fiReferenceId, setFiReferenceId] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [accountId, setAccountId] = useState(cached.accountId || "");
+  const [accountId, setAccountId] = useState("");
   const [fromDate, setFromDate] = useState(() => {
     const start = new Date();
     start.setDate(start.getDate() - 30);
@@ -69,32 +57,19 @@ export function AccountAggregatorUat() {
   });
   const [toDate, setToDate] = useState(() => localDate(new Date()));
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [sessionId, setSessionId] = useState(cached.sessionId || "");
-  const [analysisId, setAnalysisId] = useState(cached.analysisId || "");
+  const [sessionId, setSessionId] = useState("");
+  const [analysisId, setAnalysisId] = useState("");
   const [statement, setStatement] = useState<Statement | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
 
-  // Auto-persist input values to localStorage so page refresh never loses anything!
+  // Clear any existing localStorage cache on load so everything is 100% fresh
   useEffect(() => {
     try {
-      if (!trackingId && !referenceId && !phoneNumber && !sessionId) {
-        localStorage.removeItem(STORAGE_KEY);
-      } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          phoneNumber,
-          vuaId,
-          trackingId,
-          referenceId,
-          accountReferenceId,
-          accountId,
-          sessionId,
-          analysisId,
-        }));
-      }
+      localStorage.removeItem("crif_aa_uat_cache");
     } catch {}
-  }, [phoneNumber, vuaId, trackingId, referenceId, accountReferenceId, accountId, sessionId, analysisId]);
+  }, []);
 
   // Live API Inspector State for Google Meet demo
   const [activeApiCall, setActiveApiCall] = useState<{
@@ -308,7 +283,7 @@ export function AccountAggregatorUat() {
 
   function resetAll() {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem("crif_aa_uat_cache");
     } catch {}
     setPhoneNumber("");
     setVuaId("");
@@ -325,7 +300,7 @@ export function AccountAggregatorUat() {
     setReport(null);
     setJourney(null);
     setActiveApiCall(null);
-    setMessage({ text: "All fields reset and cleared successfully." });
+    setMessage({ text: "Screen cleared completely." });
   }
 
   return (
@@ -409,10 +384,10 @@ export function AccountAggregatorUat() {
               </select>
             </label>
             <label className={label}>Sandbox mobile number
-              <input className={field} required maxLength={10} value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} />
+              <input className={field} required maxLength={10} value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} placeholder="e.g. 9761811212" />
             </label>
             <label className={label}>Sandbox VUA (optional)
-              <input className={field} maxLength={128} value={vuaId} onChange={event => setVuaId(event.target.value)} placeholder="7379282989@crif" />
+              <input className={field} maxLength={128} value={vuaId} onChange={event => setVuaId(event.target.value)} placeholder="e.g. 7379282989@crif" />
             </label>
             <div className="flex flex-wrap gap-2">
               <button className={action} type="submit">Create consent link</button>
