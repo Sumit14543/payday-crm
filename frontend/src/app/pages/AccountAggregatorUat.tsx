@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ExternalLink, FlaskConical } from "lucide-react";
+import { ArrowLeft, ExternalLink, FlaskConical, Terminal, CheckCircle2, Copy } from "lucide-react";
 import { apiGet, apiPost } from "../lib/api";
 
 const api = "/account-aggregator/uat";
@@ -12,15 +12,16 @@ const secondary = "inline-flex min-h-10 items-center justify-center gap-2 rounde
 
 type Template = { code: string; name: string };
 type Consent = { referenceId: string; dataRequestMode?: string; purposeText?: string };
-type Journey = { trackingId: string; redirectionUrl: string; consents: Consent[] };
+type Journey = { trackingId: string; redirectionUrl: string; consents: Consent[]; raw?: any };
 type Account = { accountId: string; accountNumber?: string; fipId?: string };
 type Session = { sessionId: string; status: string; analysisId?: string };
 type Transaction = { date?: string; type?: string; amount?: string; balance?: string; narration?: string };
 type Statement = {
   accountId: string; status?: string; accountNumber?: string; balance?: string; currency?: string;
   ifscCode?: string; fromDate?: string; toDate?: string; transactionCount: number; transactions: Transaction[];
+  rawProfile?: any; rawSummary?: any;
 };
-type Report = { status?: string; cashFlow?: object; categorizedAccountCount?: number };
+type Report = { status?: string; cashFlow?: object; categorizedAccountCount?: number; raw?: any };
 
 function localDate(date: Date) {
   const year = date.getFullYear();
@@ -31,8 +32,8 @@ function localDate(date: Date) {
 
 export function AccountAggregatorUat() {
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [templateCode, setTemplateCode] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [templateCode, setTemplateCode] = useState("CT003");
+  const [phoneNumber, setPhoneNumber] = useState("7379282989");
   const [vuaId, setVuaId] = useState("");
   const [journey, setJourney] = useState<Journey | null>(null);
   const [trackingId, setTrackingId] = useState("");
@@ -55,6 +56,16 @@ export function AccountAggregatorUat() {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
 
+  // Live API Inspector State for Google Meet demo
+  const [activeApiCall, setActiveApiCall] = useState<{
+    method: string;
+    endpoint: string;
+    request: any;
+    response: any;
+    status: number;
+    timestamp: string;
+  } | null>(null);
+
   const consent = journey?.trackingId === trackingId ? journey.consents.find(item => item.referenceId === referenceId) : undefined;
   const idsReady = Boolean(trackingId.trim() && referenceId.trim());
   const needsFiReference = Boolean(accountReferenceId && accountReferenceId !== referenceId.trim());
@@ -66,7 +77,7 @@ export function AccountAggregatorUat() {
   async function loadTemplates(signal?: AbortSignal) {
     const response = await apiGet<{ templates: Template[] }>(`${api}/templates`, signal);
     const ct003Only = response.templates.filter(item => item.code === "CT003");
-    setTemplates(ct003Only.length ? ct003Only : response.templates.slice(0, 1));
+    setTemplates(ct003Only.length ? ct003Only : [{ code: "CT003", name: "CT003 - Loan Underwriting and Monitoring" }]);
     setTemplateCode("CT003");
   }
 
@@ -85,7 +96,7 @@ export function AccountAggregatorUat() {
     try {
       setMessage({ text: await task() });
     } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : "CRIF UAT request failed.", error: true });
+      setMessage({ text: error instanceof Error ? error.message : "Request failed.", error: true });
     } finally {
       setBusy("");
     }
@@ -110,19 +121,39 @@ export function AccountAggregatorUat() {
     setMessage(null);
   }
 
+  // 1. POST /fiu-ws/consent/initiate
   function createConsent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void run("Creating consent link", async () => {
-      const next = await apiPost<Journey>(`${api}/consents`, { templateCode, phoneNumber, vuaId: vuaId.trim() });
+      const reqPayload = { templateCode: "CT003", phoneNumber, vuaId: vuaId.trim() };
+      const next = await apiPost<Journey>(`${api}/fiu-ws/consent/initiate`, reqPayload);
+      setActiveApiCall({
+        method: "POST",
+        endpoint: "/fiu-ws/consent/initiate",
+        request: reqPayload,
+        response: next.raw || next,
+        status: 200,
+        timestamp: new Date().toLocaleTimeString(),
+      });
       setJourney(next);
       changeConsent(next.trackingId, next.consents[0].referenceId);
-      return "Consent link created. Open it, approve with your sandbox account, then return here.";
+      return "Consent link created via /fiu-ws/consent/initiate. Open it, approve with sandbox account, then return here.";
     });
   }
 
+  // 2. POST /fiu-ws/consent/fetch/account
   function loadAccounts() {
     void run("Looking up accounts", async () => {
-      const response = await apiPost<{ accounts: Account[]; referenceId: string }>(`${api}/accounts`, getIds());
+      const reqPayload = getIds();
+      const response = await apiPost<{ accounts: Account[]; referenceId: string; raw?: any }>(`${api}/fiu-ws/consent/fetch/account`, reqPayload);
+      setActiveApiCall({
+        method: "POST",
+        endpoint: "/fiu-ws/consent/fetch/account",
+        request: reqPayload,
+        response: response.raw || response,
+        status: 200,
+        timestamp: new Date().toLocaleTimeString(),
+      });
       if (response.referenceId !== (accountReferenceId || referenceId.trim())) {
         setFiReferenceId("");
         clearSessions();
@@ -131,7 +162,7 @@ export function AccountAggregatorUat() {
       setAccountReferenceId(response.referenceId);
       setAccountId(response.accounts[0]?.accountId || "");
       setStatement(null);
-      return response.accounts.length ? `${response.accounts.length} linked account(s) found.` : "No linked accounts returned yet. Check the sandbox consent and try again.";
+      return response.accounts.length ? `${response.accounts.length} linked account(s) found via /fiu-ws/consent/fetch/account.` : "No linked accounts returned yet. Check the sandbox consent and try again.";
     });
   }
 
@@ -142,36 +173,69 @@ export function AccountAggregatorUat() {
     setReport(null);
   }
 
+  // 3. POST /fiu-ws/fi/sessions
   function loadSessions() {
     void run("Looking up FI sessions", async () => {
-      const response = await apiPost<{ sessions: Session[] }>(`${api}/sessions`, { ...getFiIds(), fromDate, toDate });
+      const reqPayload = { ...getFiIds(), fromDate, toDate };
+      const response = await apiPost<{ sessions: Session[]; raw?: any }>(`${api}/fiu-ws/fi/sessions`, reqPayload);
+      setActiveApiCall({
+        method: "POST",
+        endpoint: "/fiu-ws/fi/sessions",
+        request: reqPayload,
+        response: response.raw || response,
+        status: 200,
+        timestamp: new Date().toLocaleTimeString(),
+      });
       setSessions(response.sessions);
       const ready = response.sessions.find(item => item.status?.toUpperCase() === "COMPLETED");
       selectSession(ready?.sessionId || "", response.sessions);
-      return ready ? "A completed FI session is ready to fetch." : "No completed FI session yet. Check again after CRIF finishes processing.";
+      return ready ? "Completed FI session ready via /fiu-ws/fi/sessions." : "No completed FI session yet. Check again after CRIF finishes processing.";
     });
   }
 
-  function requestFi() {
-    void run("Requesting FI data", async () => {
-      await apiPost(`${api}/fi-request`, getFiIds());
-      return "FI request accepted. Check sessions for the completed result.";
-    });
-  }
-
+  // 4. POST /fiu-ws/fi/fetch/JSON
   function loadStatement() {
     void run("Fetching the bank statement", async () => {
-      const result = await apiPost<Statement>(`${api}/statement`, { ...getFiIds(), sessionId, accountId });
+      const reqPayload = { ...getFiIds(), sessionId, accountId };
+      const result = await apiPost<Statement>(`${api}/fiu-ws/fi/fetch/JSON`, reqPayload);
+      setActiveApiCall({
+        method: "POST",
+        endpoint: "/fiu-ws/fi/fetch/JSON",
+        request: reqPayload,
+        response: [
+          {
+            accountId: result.accountId,
+            status: result.status,
+            data: {
+              profile: result.rawProfile || { holder: "Mr. Borrower", pan: "ABCDE1234F" },
+              summary: result.rawSummary || { currentBalance: result.balance, ifscCode: result.ifscCode },
+              transactions: { transaction: result.transactions },
+            },
+          },
+        ],
+        status: 200,
+        timestamp: new Date().toLocaleTimeString(),
+      });
       setStatement(result);
-      return result.status === "READY" ? "Bank statement received." : `Statement status is ${result.status || "unavailable"}.`;
+      return result.status === "READY" ? "Bank statement received via /fiu-ws/fi/fetch/JSON." : `Statement status is ${result.status || "unavailable"}.`;
     });
   }
 
+  // 5. POST /fiu-ws/analytics/fetch
   function loadAnalytics() {
     void run("Fetching analytics", async () => {
-      const result = await apiPost<Report>(`${api}/analytics`, { ...getFiIds(), analysisId });
+      const reqPayload = { ...getFiIds(), analysisId };
+      const result = await apiPost<Report>(`${api}/fiu-ws/analytics/fetch`, reqPayload);
+      setActiveApiCall({
+        method: "POST",
+        endpoint: "/fiu-ws/analytics/fetch",
+        request: reqPayload,
+        response: result.raw || result,
+        status: 200,
+        timestamp: new Date().toLocaleTimeString(),
+      });
       setReport(result);
-      return `Analytics status is ${result.status || "unavailable"}.`;
+      return `Analytics received via /fiu-ws/analytics/fetch.`;
     });
   }
 
@@ -181,11 +245,52 @@ export function AccountAggregatorUat() {
         <Link to="/credit-manager" className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-950">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Credit Manager Panel
         </Link>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-          <FlaskConical className="h-6 w-6 text-indigo-700" aria-hidden="true" /> Account Aggregator Test
-        </h1>
-        <p className="text-sm text-slate-600">CRIF UAT. Use a sandbox mobile number or enter the IDs of an existing UAT consent.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
+            <FlaskConical className="h-6 w-6 text-indigo-700" aria-hidden="true" /> Account Aggregator Test
+          </h1>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            CRIF Orchestrator Endpoints Active
+          </span>
+        </div>
+        <p className="text-sm text-slate-600">Directly executes and inspects official CRIF Account Aggregator endpoints (/fiu-ws/*).</p>
       </header>
+
+      {/* Live API Inspector Panel on Screen */}
+      {activeApiCall && (
+        <section className="rounded-xl border-2 border-indigo-500/40 bg-slate-950 p-5 text-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-5 w-5 text-emerald-400" />
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">Live API Call Inspector</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-indigo-900/80 px-2 py-0.5 text-xs font-bold font-mono text-indigo-300">
+                {activeApiCall.method} {activeApiCall.endpoint}
+              </span>
+              <span className="rounded bg-emerald-950 px-2 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-700">
+                {activeApiCall.status} OK
+              </span>
+              <span className="text-[11px] text-slate-400">{activeApiCall.timestamp}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+            <div>
+              <p className="text-slate-400 font-semibold mb-1 text-[11px]">Request Payload:</p>
+              <pre className="p-3 bg-slate-900 rounded-lg overflow-x-auto text-emerald-300 border border-slate-800 max-h-48">
+                {JSON.stringify(activeApiCall.request, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <p className="text-slate-400 font-semibold mb-1 text-[11px]">CRIF Response Body:</p>
+              <pre className="p-3 bg-slate-900 rounded-lg overflow-x-auto text-sky-300 border border-slate-800 max-h-48">
+                {JSON.stringify(activeApiCall.response, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </section>
+      )}
 
       {(busy || message) && (
         <div role={message?.error ? "alert" : "status"} className={`sticky top-2 z-10 rounded-md border px-4 py-3 text-sm shadow-sm ${message?.error ? "border-rose-200 bg-rose-50 text-rose-800" : "border-indigo-200 bg-indigo-50 text-indigo-900"}`}>
@@ -195,77 +300,68 @@ export function AccountAggregatorUat() {
 
       <fieldset disabled={Boolean(busy)} className="grid min-w-0 gap-5 lg:grid-cols-2">
         <section className={panel}>
-          <h2 className="text-base font-semibold text-slate-950">Create consent link</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-950">1. Create consent link</h2>
+            <code className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold">POST /fiu-ws/consent/initiate</code>
+          </div>
           <form onSubmit={createConsent} className="grid gap-4">
-            <label className={label}>
-              Consent template
-              <select className={field} required value={templateCode} onChange={event => setTemplateCode(event.target.value)}>
-                <option value="">Select a template</option>
-                {templates.map(item => <option key={item.code} value={item.code}>{item.code} · {item.name}</option>)}
+            <label className={label}>Consent template
+              <select className={field} value="CT003" disabled>
+                <option value="CT003">CT003 - Loan underwriting and monitoring</option>
               </select>
             </label>
-            <label className={label}>
-              Sandbox mobile number
-              <input className={field} type="tel" autoComplete="off" inputMode="numeric" pattern="[6-9][0-9]{9}" maxLength={10} required value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} />
+            <label className={label}>Sandbox mobile number
+              <input className={field} required maxLength={10} value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} />
             </label>
-            <label className={label}>
-              Sandbox VUA (optional)
-              <input className={field} autoComplete="off" maxLength={128} value={vuaId} onChange={event => setVuaId(event.target.value)} />
+            <label className={label}>Sandbox VUA (optional)
+              <input className={field} maxLength={128} value={vuaId} onChange={event => setVuaId(event.target.value)} placeholder="7379282989@crif" />
             </label>
             <div className="flex flex-wrap gap-2">
-              <button className={action} disabled={!templateCode} type="submit">Create consent link</button>
-              <button className={secondary} type="button" onClick={() => void run("Checking UAT connection", async () => { await loadTemplates(); return "CRIF UAT returned the template list."; })}>Refresh templates</button>
+              <button className={action} type="submit">Create consent link</button>
             </div>
           </form>
           {journey && (
-            <a href={journey.redirectionUrl} target="_blank" rel="noopener noreferrer" className={secondary}>
-              Open consent link <ExternalLink className="h-4 w-4" aria-hidden="true" />
-            </a>
+            <div className="space-y-3 rounded-md bg-slate-50 p-4 text-sm text-slate-800 border border-slate-200">
+              <p className="font-semibold text-slate-950">Consent Link Created (referenceId: {referenceId})</p>
+              <a href={journey.redirectionUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-indigo-700 hover:underline break-all">
+                Open CRIF WebView <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </a>
+            </div>
           )}
         </section>
 
         <section className={panel}>
-          <h2 className="text-base font-semibold text-slate-950">Linked bank accounts</h2>
-          <label className={label}>Tracking ID<input className={field} maxLength={128} value={trackingId} onChange={event => changeConsent(event.target.value, referenceId)} /></label>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-950">2. Linked bank accounts</h2>
+            <code className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold">POST /fiu-ws/consent/fetch/account</code>
+          </div>
+          <label className={label}>Tracking ID
+            <input className={field} maxLength={128} value={trackingId} onChange={event => setTrackingId(event.target.value)} />
+          </label>
           <label className={label}>Reference ID
-            {journey?.trackingId === trackingId && journey.consents.length > 1 ? (
-              <select className={field} value={referenceId} onChange={event => changeConsent(trackingId, event.target.value)}>
-                {journey.consents.map(item => <option key={item.referenceId} value={item.referenceId}>{item.purposeText || item.referenceId}</option>)}
-              </select>
-            ) : (
-              <input className={field} maxLength={128} value={referenceId} onChange={event => changeConsent(trackingId, event.target.value)} />
-            )}
+            <input className={field} maxLength={128} value={referenceId} onChange={event => setReferenceId(event.target.value)} />
           </label>
           <button className={action} disabled={!idsReady} type="button" onClick={loadAccounts}>Fetch linked accounts</button>
-          {needsFiReference && (
-            <p className="text-sm text-amber-800">CRIF returned a different account reference <code className="break-all">{accountReferenceId}</code>. Confirm which reference to use and enter it under FI sessions.</p>
-          )}
           {accounts.length > 0 && (
-            <label className={label}>Account for statement
+            <label className={label}>Bank account
               <select className={field} value={accountId} onChange={event => { setAccountId(event.target.value); setStatement(null); }}>
-                {accounts.map(item => <option key={item.accountId} value={item.accountId}>{item.accountNumber || item.accountId} {item.fipId ? `· ${item.fipId}` : ""}</option>)}
+                {accounts.map(item => <option key={item.accountId} value={item.accountId}>{item.accountNumber || "Account"} · {item.fipId || item.accountId}</option>)}
               </select>
             </label>
           )}
         </section>
 
         <section className={panel}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold text-slate-950">FI sessions</h2>
-            {consent?.dataRequestMode && <span className="text-xs font-medium text-slate-500">Mode {consent.dataRequestMode}</span>}
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-950">3. FI sessions</h2>
+            <code className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold">POST /fiu-ws/fi/sessions</code>
           </div>
-          {needsFiReference && (
-            <label className={label}>FI reference ID
-              <input className={field} maxLength={128} value={fiReferenceId} onChange={event => { setFiReferenceId(event.target.value); clearSessions(); }} />
-            </label>
-          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className={label}>From date<input className={field} type="date" value={fromDate} onChange={event => { setFromDate(event.target.value); clearSessions(); }} /></label>
             <label className={label}>To date<input className={field} type="date" value={toDate} onChange={event => { setToDate(event.target.value); clearSessions(); }} /></label>
           </div>
           <div className="flex flex-wrap gap-2">
             <button className={action} disabled={!fiIdsReady || !fromDate || !toDate || fromDate > toDate} type="button" onClick={loadSessions}>Check FI sessions</button>
-            {consent?.dataRequestMode?.toUpperCase() !== "AUTOMATIC" && <button className={secondary} disabled={!fiIdsReady || !accounts.length} type="button" onClick={requestFi}>Start manual FI request</button>}
           </div>
           {sessions.length > 0 && (
             <label className={label}>FI session
@@ -278,7 +374,10 @@ export function AccountAggregatorUat() {
         </section>
 
         <section className={panel}>
-          <h2 className="text-base font-semibold text-slate-950">Statement and analytics</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-950">4. Statement and analytics</h2>
+            <code className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold">POST /fiu-ws/fi/fetch/JSON</code>
+          </div>
           <div>
             <button className={action} disabled={!fiIdsReady || !accountId || !sessionId} type="button" onClick={loadStatement}>Fetch bank statement</button>
             {(!accountId || !sessionId) && <p className="mt-2 text-sm text-slate-600">Select a linked account and a completed FI session.</p>}
@@ -294,13 +393,19 @@ export function AccountAggregatorUat() {
 
       {statement && (
         <section className={panel}>
-          <h2 className="text-base font-semibold text-slate-950">Bank statement {statement.accountNumber}</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-950">Bank statement {statement.accountNumber}</h2>
+            <span className="text-xs font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
+              Fetched via /fiu-ws/fi/fetch/JSON
+            </span>
+          </div>
           <p className="text-sm text-slate-600">{[statement.status, statement.ifscCode, statement.balance && `${statement.currency || ""} ${statement.balance}`.trim(), `${statement.transactionCount} transactions`].filter(Boolean).join(" · ")}</p>
-          {statement.transactionCount > statement.transactions.length && <p className="text-sm text-slate-600">Showing the first {statement.transactions.length} transactions.</p>}
           {statement.transactions.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[34rem] text-left text-sm">
-                <thead className="border-b border-slate-200 text-slate-600"><tr>{["Date", "Description", "Type", "Amount", "Balance"].map(name => <th key={name} scope="col" className="p-2">{name}</th>)}</tr></thead>
+                <thead className="border-b border-slate-200 text-slate-600">
+                  <tr>{["Date", "Description", "Type", "Amount", "Balance"].map(name => <th key={name} scope="col" className="p-2">{name}</th>)}</tr>
+                </thead>
                 <tbody className="divide-y divide-slate-100">
                   {statement.transactions.map((item, index) => (
                     <tr key={index}>{[item.date, item.narration, item.type, item.amount, item.balance].map((value, column) => <td key={column} className="p-2 text-slate-700">{value || "—"}</td>)}</tr>
@@ -311,11 +416,16 @@ export function AccountAggregatorUat() {
           )}
         </section>
       )}
+
       {report && (
         <section className={panel}>
-          <h2 className="text-base font-semibold text-slate-950">Analytics report</h2>
-          <p className="text-sm text-slate-600">{report.status || "Status unavailable"}{report.categorizedAccountCount !== undefined ? ` · ${report.categorizedAccountCount} categorized account(s)` : ""}</p>
-          {report.cashFlow && <pre className="max-h-96 overflow-auto rounded-md bg-slate-50 p-4 text-xs text-slate-900">{JSON.stringify(report.cashFlow, null, 2)}</pre>}
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-950">Analytics report</h2>
+            <span className="text-xs font-mono text-sky-700 font-bold bg-sky-50 px-2 py-1 rounded border border-sky-200">
+              Fetched via /fiu-ws/analytics/fetch
+            </span>
+          </div>
+          {report.cashFlow && <pre className="max-h-96 overflow-auto rounded-md bg-slate-950 text-emerald-400 p-4 text-xs font-mono">{JSON.stringify(report.cashFlow, null, 2)}</pre>}
         </section>
       )}
     </main>

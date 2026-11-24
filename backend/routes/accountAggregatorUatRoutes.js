@@ -41,6 +41,11 @@ function list(value, action) {
   return value;
 }
 
+function mask(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return digits ? `XXXX${digits.slice(-4)}` : undefined;
+}
+
 router.get('/templates', asyncHandler(async (_req, res) => {
   const response = await request('/fiu-ws/template/consent/fetch?page=0&size=50', {}, 'template lookup');
   const templates = list(response.data?.details, 'template lookup')
@@ -49,7 +54,7 @@ router.get('/templates', asyncHandler(async (_req, res) => {
   return success(res, { templates });
 }));
 
-router.post('/consents', asyncHandler(async (req, res) => {
+const initiateConsentHandler = asyncHandler(async (req, res) => {
   const templateCode = field(req.body?.templateCode, 'template code', 50);
   const phoneNumber = field(req.body?.phoneNumber, 'sandbox mobile number', 10);
   if (!/^[6-9]\d{9}$/.test(phoneNumber)) throw uatError(400, 'Enter a valid 10-digit sandbox mobile number.');
@@ -80,22 +85,22 @@ router.post('/consents', asyncHandler(async (req, res) => {
   try {
     const url = new URL(data?.redirectionUrl?.trim());
     if (url.protocol !== 'https:' || url.username || url.password || !consents.length) throw new Error();
-    return success(res, { trackingId: data.trackingId || trackingId, redirectionUrl: url.href, consents }, 'UAT consent created.', 201);
+    return success(res, { trackingId: data.trackingId || trackingId, redirectionUrl: url.href, consents, raw: data }, 'UAT consent created.', 201);
   } catch {
     throw uatError(502, 'CRIF UAT returned an incomplete consent link or reference.');
   }
-}));
+});
 
-router.post('/accounts', asyncHandler(async (req, res) => {
+const fetchAccountHandler = asyncHandler(async (req, res) => {
   const { trackingId, referenceId } = consentIds(req.body);
   const response = await request('/fiu-ws/consent/fetch/account', { trackingId, referenceId }, 'account lookup');
   const accounts = list(response.data?.accounts, 'account lookup')
     .filter(item => typeof item?.accountId === 'string' && item.accountId)
     .map(({ accountId, accountNumber, fipId }) => ({ accountId, accountNumber: mask(accountNumber), fipId }));
-  return success(res, { accounts, referenceId: response.data.referenceId || referenceId });
-}));
+  return success(res, { accounts, referenceId: response.data.referenceId || referenceId, raw: response.data });
+});
 
-router.post('/sessions', asyncHandler(async (req, res) => {
+const sessionsHandler = asyncHandler(async (req, res) => {
   const ids = consentIds(req.body);
   const fromDate = dateField(req.body?.fromDate, 'start date');
   const toDate = dateField(req.body?.toDate, 'end date');
@@ -105,20 +110,15 @@ router.post('/sessions', asyncHandler(async (req, res) => {
   const sessions = list(response.data?.sessionDetails, 'FI session lookup')
     .filter(item => typeof item?.sessionId === 'string' && item.sessionId)
     .map(({ sessionId, status, analysisId }) => ({ sessionId, status, analysisId }));
-  return success(res, { sessions });
-}));
+  return success(res, { sessions, raw: response.data });
+});
 
-router.post('/fi-request', asyncHandler(async (req, res) => {
+const fiRequestHandler = asyncHandler(async (req, res) => {
   const response = await request('/fiu-ws/fi/initiate', consentIds(req.body), 'FI initiation', { retryUnauthorized: false });
-  return success(res, { sessionId: response.data?.sessionId, status: response.data?.status });
-}));
+  return success(res, { sessionId: response.data?.sessionId, status: response.data?.status, raw: response.data });
+});
 
-function mask(value) {
-  const digits = String(value ?? '').replace(/\D/g, '');
-  return digits ? `XXXX${digits.slice(-4)}` : undefined;
-}
-
-router.post('/statement', asyncHandler(async (req, res) => {
+const statementHandler = asyncHandler(async (req, res) => {
   const ids = consentIds(req.body);
   const sessionId = field(req.body?.sessionId, 'session ID');
   const accountId = field(req.body?.accountId, 'account ID');
@@ -138,6 +138,8 @@ router.post('/statement', asyncHandler(async (req, res) => {
     fromDate: data?.transactions?.startDate,
     toDate: data?.transactions?.endDate,
     transactionCount: transactions.length,
+    rawProfile: data?.profile,
+    rawSummary: data?.summary,
     transactions: transactions.slice(0, 100).map(item => ({
       date: item?.valueDate || item?.transactionTimestamp,
       type: item?.type,
@@ -146,9 +148,9 @@ router.post('/statement', asyncHandler(async (req, res) => {
       narration: item?.narration,
     })),
   });
-}));
+});
 
-router.post('/analytics', asyncHandler(async (req, res) => {
+const analyticsHandler = asyncHandler(async (req, res) => {
   const ids = consentIds(req.body);
   const analysisId = field(req.body?.analysisId, 'analysis ID');
   const response = await request('/fiu-ws/analytics/fetch', { ...ids, analysisId }, 'analytics fetch');
@@ -157,7 +159,24 @@ router.post('/analytics', asyncHandler(async (req, res) => {
     status: response.status,
     cashFlow: consumer?.cashFlow,
     categorizedAccountCount: response.data?.categorizedTransactions?.length,
+    raw: response.data,
   });
-}));
+});
+
+// Friendly aliases:
+router.post('/consents', initiateConsentHandler);
+router.post('/accounts', fetchAccountHandler);
+router.post('/sessions', sessionsHandler);
+router.post('/fi-request', fiRequestHandler);
+router.post('/statement', statementHandler);
+router.post('/analytics', analyticsHandler);
+
+// Exact CRIF Swagger Endpoint paths:
+router.post('/fiu-ws/consent/initiate', initiateConsentHandler);
+router.post('/fiu-ws/consent/fetch/account', fetchAccountHandler);
+router.post('/fiu-ws/fi/sessions', sessionsHandler);
+router.post('/fiu-ws/fi/initiate', fiRequestHandler);
+router.post('/fiu-ws/fi/fetch/JSON', statementHandler);
+router.post('/fiu-ws/analytics/fetch', analyticsHandler);
 
 module.exports = router;
