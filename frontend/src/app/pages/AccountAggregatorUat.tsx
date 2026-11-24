@@ -393,23 +393,62 @@ export function AccountAggregatorUat() {
 
       {statement && (
         <section className={panel}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-950">Bank statement {statement.accountNumber}</h2>
-            <span className="text-xs font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-              Fetched via /fiu-ws/fi/fetch/JSON
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-950">Bank Statement ({statement.accountNumber})</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {[statement.status, statement.ifscCode, statement.balance && `Balance: ${statement.currency || "INR"} ${statement.balance}`.trim()].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">
+                Total {statement.transactions.length} Transactions (Latest Month on Top ⬇)
+              </span>
+              <span className="text-xs font-mono text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                POST /fiu-ws/fi/fetch/JSON
+              </span>
+            </div>
           </div>
-          <p className="text-sm text-slate-600">{[statement.status, statement.ifscCode, statement.balance && `${statement.currency || ""} ${statement.balance}`.trim(), `${statement.transactionCount} transactions`].filter(Boolean).join(" · ")}</p>
+
           {statement.transactions.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[34rem] text-left text-sm">
-                <thead className="border-b border-slate-200 text-slate-600">
-                  <tr>{["Date", "Description", "Type", "Amount", "Balance"].map(name => <th key={name} scope="col" className="p-2">{name}</th>)}</tr>
+            <div className="max-h-[550px] overflow-y-auto rounded-xl border border-slate-200 shadow-inner">
+              <table className="w-full min-w-[38rem] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-100 text-slate-700 font-bold border-b border-slate-200 z-10 shadow-sm">
+                  <tr>
+                    <th scope="col" className="p-3 w-28">Date</th>
+                    <th scope="col" className="p-3">Description / Narration</th>
+                    <th scope="col" className="p-3 w-24 text-center">Type</th>
+                    <th scope="col" className="p-3 w-28 text-right">Amount (₹)</th>
+                    <th scope="col" className="p-3 w-28 text-right">Balance (₹)</th>
+                  </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {statement.transactions.map((item, index) => (
-                    <tr key={index}>{[item.date, item.narration, item.type, item.amount, item.balance].map((value, column) => <td key={column} className="p-2 text-slate-700">{value || "—"}</td>)}</tr>
-                  ))}
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {[...statement.transactions]
+                    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+                    .map((item, index) => {
+                      const isCredit = item.type?.toUpperCase() === "CREDIT";
+                      return (
+                        <tr key={index} className="hover:bg-slate-50 transition">
+                          <td className="p-3 font-mono font-medium text-slate-600 whitespace-nowrap">
+                            {item.date ? String(item.date).split("T")[0] : "—"}
+                          </td>
+                          <td className="p-3 text-slate-800 font-medium break-all">
+                            {item.narration || "—"}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${isCredit ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"}`}>
+                              {item.type || (isCredit ? "CREDIT" : "DEBIT")}
+                            </span>
+                          </td>
+                          <td className={`p-3 text-right font-mono font-bold whitespace-nowrap ${isCredit ? "text-emerald-600" : "text-slate-900"}`}>
+                            {isCredit ? `+₹${Number(item.amount || 0).toLocaleString("en-IN")}` : `₹${Number(item.amount || 0).toLocaleString("en-IN")}`}
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-500 whitespace-nowrap">
+                            {item.balance && item.balance !== "—" ? `₹${Number(item.balance || 0).toLocaleString("en-IN")}` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

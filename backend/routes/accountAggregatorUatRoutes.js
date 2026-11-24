@@ -186,6 +186,14 @@ const statementHandler = asyncHandler(async (req, res) => {
   const summary = data?.summary || data?.account?.summary || account?.summary || {};
   const profile = data?.profile || data?.account?.profile || account?.profile || {};
 
+  const sortedTxns = [...rawTxns].sort((a, b) => {
+    const rawA = a?.valueDate || a?.transactionTimestamp || a?.date || a?.txnDate || '';
+    const rawB = b?.valueDate || b?.transactionTimestamp || b?.date || b?.txnDate || '';
+    const timeA = new Date(rawA).getTime() || 0;
+    const timeB = new Date(rawB).getTime() || 0;
+    return timeB - timeA; // Descending: latest date (e.g. November / Month 11) on top!
+  });
+
   return success(res, {
     accountId: account.accountId || accountId,
     status: account.status || 'READY',
@@ -195,16 +203,20 @@ const statementHandler = asyncHandler(async (req, res) => {
     ifscCode: summary.ifscCode || summary.ifsc || 'N/A',
     fromDate: data?.transactions?.startDate || summary.openingDate,
     toDate: data?.transactions?.endDate,
-    transactionCount: rawTxns.length,
+    transactionCount: sortedTxns.length,
     rawProfile: profile,
     rawSummary: summary,
-    transactions: rawTxns.slice(0, 100).map(item => ({
-      date: item?.valueDate || item?.transactionTimestamp || item?.date || item?.txnDate,
-      type: item?.type || item?.transactionType || (item?.amount > 0 ? 'CREDIT' : 'DEBIT'),
-      amount: String(item?.amount ?? item?.txnAmount ?? '0'),
-      balance: String(item?.currentBalance ?? item?.balance ?? ''),
-      narration: item?.narration || item?.description || item?.remark || item?.mode || 'Bank Transaction',
-    })),
+    transactions: sortedTxns.map(item => {
+      let d = item?.valueDate || item?.transactionTimestamp || item?.date || item?.txnDate || '';
+      if (typeof d === 'string' && d.includes('T')) d = d.split('T')[0];
+      return {
+        date: d,
+        type: String(item?.type || item?.transactionType || 'DEBIT').toUpperCase(),
+        amount: String(item?.amount ?? item?.txnAmount ?? '0'),
+        balance: String(item?.currentBalance ?? item?.balance ?? '—'),
+        narration: item?.narration || item?.description || item?.remark || item?.mode || 'Bank Transaction',
+      };
+    }),
   });
 });
 
