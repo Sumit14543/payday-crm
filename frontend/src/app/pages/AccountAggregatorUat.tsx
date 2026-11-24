@@ -65,10 +65,9 @@ export function AccountAggregatorUat() {
 
   async function loadTemplates(signal?: AbortSignal) {
     const response = await apiGet<{ templates: Template[] }>(`${api}/templates`, signal);
-    setTemplates(response.templates);
-    setTemplateCode(current => response.templates.some(item => item.code === current)
-      ? current
-      : response.templates.find(item => item.code === "CT003")?.code || response.templates[0]?.code || "");
+    const ct003Only = response.templates.filter(item => item.code === "CT003");
+    setTemplates(ct003Only.length ? ct003Only : response.templates.slice(0, 1));
+    setTemplateCode("CT003");
   }
 
   useEffect(() => {
