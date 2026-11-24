@@ -262,6 +262,8 @@ export function AccountAggregatorUat() {
       setStatement(result);
       if (result.analysisId) {
         setAnalysisId(result.analysisId);
+      } else if (!analysisId.trim() && sessionId.trim()) {
+        setAnalysisId(sessionId.trim());
       }
       return result.status === "READY" ? "Bank statement received via /fiu-ws/fi/fetch/JSON." : `Statement status is ${result.status || "unavailable"}.`;
     });
@@ -271,7 +273,7 @@ export function AccountAggregatorUat() {
   function loadAnalytics() {
     void run("Fetching analytics", async () => {
       const targetAnalysisId = (analysisId.trim() || sessionId.trim());
-      const reqPayload = { ...getFiIds(), analysisId: targetAnalysisId, sessionId };
+      const reqPayload = { ...getFiIds(), analysisId: targetAnalysisId, sessionId, accountId, vuaId };
       const result = await apiPost<Report>(`${api}/fiu-ws/analytics/fetch`, reqPayload);
       setActiveApiCall({
         method: "POST",
@@ -610,7 +612,7 @@ export function AccountAggregatorUat() {
             </div>
             <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
               <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Risk Band</span>
-              <span className="text-lg font-bold text-emerald-600">
+              <span className={`text-lg font-bold ${String(typeof report.risk === "object" ? (report.risk?.riskBand || report.risk?.band || "LOW") : (report.risk || "LOW")).toUpperCase() === "HIGH" ? "text-amber-600" : "text-emerald-600"}`}>
                 {typeof report.risk === "object" ? (report.risk?.riskBand || report.risk?.band || "LOW") : (report.risk || "LOW")}
               </span>
             </div>
