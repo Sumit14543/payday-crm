@@ -10,6 +10,7 @@ import {
   Eye,
   FileSearch,
   FileWarning,
+  FlaskConical,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -281,6 +282,14 @@ export function CreditManagerPanel() {
           <p className="mt-0.5 text-sm text-slate-500">Review telecaller handoffs, resolve document gaps, complete CAM decisions, and track approval movement.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/credit-manager/aa-test"
+            aria-label="Test Account Aggregator in UAT"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-4 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+          >
+            <FlaskConical className="h-4 w-4" aria-hidden="true" />
+            AA Test
+          </Link>
           <Link
             to="/credit-applications"
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"

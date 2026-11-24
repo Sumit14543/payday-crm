@@ -154,6 +154,7 @@ function CollectionsRoute() {
 
 const AccountAggregatorCallback = lazyRetry(() => import("./pages/AccountAggregatorCallback").then((module) => ({ default: module.AccountAggregatorCallback })));
 const AccountAggregatorTestJourney = lazyRetry(() => import("./pages/AccountAggregatorTestJourney").then((module) => ({ default: module.AccountAggregatorTestJourney })));
+const AccountAggregatorUat = lazyRetry(() => import("./pages/AccountAggregatorUat").then((module) => ({ default: module.AccountAggregatorUat })));
 
 export const router = createBrowserRouter([
   { path: "/login", element: <Login />, errorElement: <RouteErrorBoundary /> },
@@ -193,6 +194,7 @@ export const router = createBrowserRouter([
             element: <RequireRole roles={["credit-manager", "product-admin"]} />,
             children: [
               { path: "credit-manager", element: <CreditManagerPanel /> },
+              { path: "credit-manager/aa-test", element: <AccountAggregatorUat /> },
               { path: "credit-applications", element: <CreditApplicationsRoute /> },
             ],
           },
