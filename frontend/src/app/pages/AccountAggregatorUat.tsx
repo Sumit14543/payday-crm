@@ -79,16 +79,20 @@ export function AccountAggregatorUat() {
   // Auto-persist input values to localStorage so page refresh never loses anything!
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        phoneNumber,
-        vuaId,
-        trackingId,
-        referenceId,
-        accountReferenceId,
-        accountId,
-        sessionId,
-        analysisId,
-      }));
+      if (!trackingId && !referenceId && !phoneNumber && !sessionId) {
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          phoneNumber,
+          vuaId,
+          trackingId,
+          referenceId,
+          accountReferenceId,
+          accountId,
+          sessionId,
+          analysisId,
+        }));
+      }
     } catch {}
   }, [phoneNumber, vuaId, trackingId, referenceId, accountReferenceId, accountId, sessionId, analysisId]);
 
@@ -306,6 +310,8 @@ export function AccountAggregatorUat() {
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {}
+    setPhoneNumber("");
+    setVuaId("");
     setTrackingId("");
     setReferenceId("");
     setAccountReferenceId("");
@@ -319,7 +325,7 @@ export function AccountAggregatorUat() {
     setReport(null);
     setJourney(null);
     setActiveApiCall(null);
-    setMessage({ text: "Form reset to new testing session." });
+    setMessage({ text: "All fields reset and cleared successfully." });
   }
 
   return (
@@ -425,13 +431,24 @@ export function AccountAggregatorUat() {
         <section className={panel}>
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-slate-950">2. Linked bank accounts</h2>
-            <code className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold">POST /fiu-ws/consent/fetch/account</code>
+            <div className="flex items-center gap-2">
+              {(trackingId || referenceId) && (
+                <button
+                  type="button"
+                  onClick={() => { setTrackingId(""); setReferenceId(""); setAccounts([]); setAccountId(""); }}
+                  className="text-xs text-rose-600 hover:text-rose-800 font-semibold underline"
+                >
+                  Clear IDs
+                </button>
+              )}
+              <code className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold">POST /fiu-ws/consent/fetch/account</code>
+            </div>
           </div>
           <label className={label}>Tracking ID
-            <input className={field} maxLength={128} value={trackingId} onChange={event => setTrackingId(event.target.value)} />
+            <input className={field} maxLength={128} value={trackingId} onChange={event => setTrackingId(event.target.value)} placeholder="Auto-generated or paste tracking ID" />
           </label>
           <label className={label}>Reference ID
-            <input className={field} maxLength={128} value={referenceId} onChange={event => setReferenceId(event.target.value)} />
+            <input className={field} maxLength={128} value={referenceId} onChange={event => setReferenceId(event.target.value)} placeholder="Auto-generated or paste reference ID" />
           </label>
           <button className={action} disabled={!idsReady} type="button" onClick={loadAccounts}>Fetch linked accounts</button>
           {accounts.length > 0 && (
