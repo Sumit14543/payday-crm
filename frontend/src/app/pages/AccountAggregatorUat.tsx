@@ -38,18 +38,30 @@ function localDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+const STORAGE_KEY = "crif_aa_uat_cache";
+
+function getCachedUat() {
+  try {
+    const val = localStorage.getItem(STORAGE_KEY);
+    return val ? JSON.parse(val) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function AccountAggregatorUat() {
+  const cached = getCachedUat();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateCode, setTemplateCode] = useState("CT003");
-  const [phoneNumber, setPhoneNumber] = useState("7379282989");
-  const [vuaId, setVuaId] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(cached.phoneNumber || "9761811212");
+  const [vuaId, setVuaId] = useState(cached.vuaId || "");
   const [journey, setJourney] = useState<Journey | null>(null);
-  const [trackingId, setTrackingId] = useState("");
-  const [referenceId, setReferenceId] = useState("");
-  const [accountReferenceId, setAccountReferenceId] = useState("");
+  const [trackingId, setTrackingId] = useState(cached.trackingId || "");
+  const [referenceId, setReferenceId] = useState(cached.referenceId || "");
+  const [accountReferenceId, setAccountReferenceId] = useState(cached.accountReferenceId || "");
   const [fiReferenceId, setFiReferenceId] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(cached.accountId || "");
   const [fromDate, setFromDate] = useState(() => {
     const start = new Date();
     start.setDate(start.getDate() - 30);
@@ -57,12 +69,28 @@ export function AccountAggregatorUat() {
   });
   const [toDate, setToDate] = useState(() => localDate(new Date()));
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [sessionId, setSessionId] = useState("");
-  const [analysisId, setAnalysisId] = useState("");
+  const [sessionId, setSessionId] = useState(cached.sessionId || "");
+  const [analysisId, setAnalysisId] = useState(cached.analysisId || "");
   const [statement, setStatement] = useState<Statement | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+
+  // Auto-persist input values to localStorage so page refresh never loses anything!
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        phoneNumber,
+        vuaId,
+        trackingId,
+        referenceId,
+        accountReferenceId,
+        accountId,
+        sessionId,
+        analysisId,
+      }));
+    } catch {}
+  }, [phoneNumber, vuaId, trackingId, referenceId, accountReferenceId, accountId, sessionId, analysisId]);
 
   // Live API Inspector State for Google Meet demo
   const [activeApiCall, setActiveApiCall] = useState<{
@@ -271,6 +299,26 @@ export function AccountAggregatorUat() {
     });
   }
 
+  function resetAll() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    setTrackingId("");
+    setReferenceId("");
+    setAccountReferenceId("");
+    setFiReferenceId("");
+    setAccounts([]);
+    setAccountId("");
+    setSessions([]);
+    setSessionId("");
+    setAnalysisId("");
+    setStatement(null);
+    setReport(null);
+    setJourney(null);
+    setActiveApiCall(null);
+    setMessage({ text: "Form reset to new testing session." });
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 sm:px-6">
       <header className="space-y-2">
@@ -281,10 +329,19 @@ export function AccountAggregatorUat() {
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
             <FlaskConical className="h-6 w-6 text-indigo-700" aria-hidden="true" /> Account Aggregator Test
           </h1>
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            CRIF Orchestrator Endpoints Active
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={resetAll}
+              className="rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1 border border-slate-300 transition"
+            >
+              Reset / Start New
+            </button>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              CRIF Orchestrator Endpoints Active
+            </span>
+          </div>
         </div>
         <p className="text-sm text-slate-600">Directly executes and inspects official CRIF Account Aggregator endpoints (/fiu-ws/*).</p>
       </header>
