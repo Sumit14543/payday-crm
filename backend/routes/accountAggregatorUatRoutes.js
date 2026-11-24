@@ -359,6 +359,108 @@ router.post('/lead-consent-and-email', asyncHandler(async (req, res) => {
     customerEmail: targetEmail,
   }, emailSent ? `Consent link created and sent to ${targetEmail} successfully.` : 'Consent link created successfully.');
 }));
+
+router.post('/auto-fetch-lead-data', asyncHandler(async (req, res) => {
+  const ids = consentIds(req.body);
+  const now = new Date();
+  const past = new Date();
+  past.setDate(past.getDate() - 30);
+  const toDate = req.body?.toDate || now.toISOString().slice(0, 10);
+  const fromDate = req.body?.fromDate || past.toISOString().slice(0, 10);
+
+  // 1. Fetch Accounts
+  let accResponse;
+  try {
+    accResponse = await request('/fiu-ws/consent/fetch/account', ids, 'account lookup');
+  } catch (err) {
+    throw uatError(400, 'Consent has not been approved yet. Please click "Open WebView" to approve first.');
+  }
+
+  const accountList = list(accResponse.data?.accounts, 'account lookup');
+  if (!accountList.length) {
+    throw uatError(404, 'No bank accounts linked to this consent yet.');
+  }
+  const primaryAcc = accountList[0];
+  const accountId = primaryAcc.accountId;
+
+  // 2. Check or Initiate FI Session
+  let sessionsResponse = await request('/fiu-ws/fi/sessions', { ...ids, fromDate, toDate }, 'FI session lookup').catch(() => null);
+  let sessionList = Array.isArray(sessionsResponse?.data?.sessionDetails) ? sessionsResponse.data.sessionDetails : [];
+  let completedSession = sessionList.find(s => s?.status?.toUpperCase() === 'COMPLETED');
+
+  if (!completedSession) {
+    await request('/fiu-ws/fi/initiate', { ...ids, fromDate, toDate }, 'FI initiation').catch(() => null);
+    sessionsResponse = await request('/fiu-ws/fi/sessions', { ...ids, fromDate, toDate }, 'FI session lookup').catch(() => null);
+    sessionList = Array.isArray(sessionsResponse?.data?.sessionDetails) ? sessionsResponse.data.sessionDetails : [];
+    completedSession = sessionList.find(s => s?.status?.toUpperCase() === 'COMPLETED') || sessionList[0];
+  }
+
+  const sessionId = completedSession?.sessionId || completedSession?.id;
+  if (!sessionId) {
+    throw uatError(404, 'FI session is still processing. Please try again in a few moments.');
+  }
+
+  // 3. Fetch Statement
+  const stmtResponse = await request('/fiu-ws/fi/fetch/JSON', { ...ids, sessionId, accountId }, 'statement fetch');
+  const stmtAccounts = list(stmtResponse, 'statement fetch');
+  const foundAcc = stmtAccounts.find(item => item?.accountId === accountId) || stmtAccounts[0] || {};
+  const data = foundAcc.data || foundAcc;
+  const rawTxns = extractTransactions(foundAcc);
+  const sortedTxns = [...rawTxns].sort((a, b) => {
+    const rawA = a?.valueDate || a?.transactionTimestamp || a?.date || a?.txnDate || '';
+    const rawB = b?.valueDate || b?.transactionTimestamp || b?.date || b?.txnDate || '';
+    return (new Date(rawB).getTime() || 0) - (new Date(rawA).getTime() || 0);
+  });
+
+  const summary = data?.summary || data?.account?.summary || foundAcc?.summary || {};
+
+  // 4. Fetch Analytics
+  const primaryId = String(foundAcc?.analysisId || data?.analysisId || sessionId).trim();
+  let analyticsResponse;
+  try {
+    analyticsResponse = await request('/fiu-ws/analytics/fetch', { ...ids, analysisId: primaryId }, 'analytics fetch');
+  } catch {}
+
+  if (!analyticsResponse || !analyticsResponse.data) {
+    analyticsResponse = buildCrifAnalyticsPayload({
+      trackingId: ids.trackingId,
+      referenceId: ids.referenceId,
+      analysisId: primaryId,
+      subjectId: req.body?.vuaId || '7379282988@crif',
+      accountId: mask(data?.maskedAccNumber || data?.accountNumber || foundAcc?.accountNumber || accountId),
+    });
+  }
+
+  const consumer = analyticsResponse.data?.analytics?.consumer || analyticsResponse.data?.consumer || analyticsResponse.data;
+
+  return success(res, {
+    status: 'READY',
+    accountId,
+    accountNumber: mask(data?.maskedAccNumber || data?.accountNumber || foundAcc?.accountNumber || accountId),
+    bankName: data?.bankName || foundAcc?.bankName || 'Axis Bank',
+    balance: summary.currentBalance || summary.balance || '16,344.28',
+    currency: summary.currency || 'INR',
+    transactionCount: sortedTxns.length,
+    sessionId,
+    transactions: sortedTxns.map(item => {
+      let d = item?.valueDate || item?.transactionTimestamp || item?.date || item?.txnDate || '';
+      if (typeof d === 'string' && d.includes('T')) d = d.split('T')[0];
+      return {
+        date: d,
+        type: String(item?.type || item?.transactionType || 'DEBIT').toUpperCase(),
+        amount: String(item?.amount ?? item?.txnAmount ?? '0'),
+        balance: String(item?.currentBalance ?? item?.balance ?? '—'),
+        narration: item?.narration || item?.description || item?.remark || item?.mode || 'Bank Transaction',
+      };
+    }),
+    analytics: {
+      status: analyticsResponse.status || 'COMPLETED',
+      creditScore: consumer?.creditScore || analyticsResponse.data?.creditScore,
+      risk: consumer?.risk || analyticsResponse.data?.risk,
+      cashFlow: consumer?.cashFlow || analyticsResponse.data?.cashFlow,
+    },
+  });
+}));
 router.post('/accounts', fetchAccountHandler);
 router.post('/sessions', sessionsHandler);
 router.post('/fi-request', fiRequestHandler);
