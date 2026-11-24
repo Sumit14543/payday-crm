@@ -222,17 +222,34 @@ const statementHandler = asyncHandler(async (req, res) => {
 
 const analyticsHandler = asyncHandler(async (req, res) => {
   const ids = consentIds(req.body);
-  const analysisId = field(req.body?.analysisId || req.body?.sessionId, 'analysis ID');
-  const response = await request('/fiu-ws/analytics/fetch', { ...ids, analysisId }, 'analytics fetch');
-  const consumer = response.data?.analytics?.consumer;
+  const primaryId = String(req.body?.analysisId || req.body?.sessionId || ids.referenceId).trim();
+  const candidates = [primaryId, ids.referenceId, req.body?.sessionId].filter(Boolean);
+  const uniqueCandidates = [...new Set(candidates)];
+
+  let response;
+  let lastError;
+  for (const targetId of uniqueCandidates) {
+    try {
+      response = await request('/fiu-ws/analytics/fetch', { ...ids, analysisId: targetId }, 'analytics fetch');
+      if (response) break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!response) {
+    throw lastError || uatError(404, 'CRIF UAT found no matching record for analytics fetch. Please fetch the bank statement first.');
+  }
+
+  const consumer = response.data?.analytics?.consumer || response.data?.consumer || response.data;
   return success(res, {
     status: response.status || 'COMPLETED',
-    cashFlow: consumer?.cashFlow,
-    creditScore: consumer?.creditScore,
-    risk: consumer?.risk,
-    kpi: consumer?.base?.subject?.kpi,
-    categorizedAccountCount: response.data?.categorizedTransactions?.length,
-    raw: response.data,
+    cashFlow: consumer?.cashFlow || response.data?.cashFlow,
+    creditScore: consumer?.creditScore || response.data?.creditScore,
+    risk: consumer?.risk || response.data?.risk,
+    kpi: consumer?.base?.subject?.kpi || response.data?.kpi,
+    categorizedAccountCount: response.data?.categorizedTransactions?.length || (consumer?.cashFlow ? 1 : 0),
+    raw: response.data || response,
   });
 });
 
