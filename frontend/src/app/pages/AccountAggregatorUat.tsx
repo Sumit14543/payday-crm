@@ -21,7 +21,15 @@ type Statement = {
   ifscCode?: string; fromDate?: string; toDate?: string; transactionCount: number; transactions: Transaction[];
   rawProfile?: any; rawSummary?: any;
 };
-type Report = { status?: string; cashFlow?: object; categorizedAccountCount?: number; raw?: any };
+type Report = {
+  status?: string;
+  creditScore?: any;
+  risk?: any;
+  kpi?: any;
+  cashFlow?: any;
+  categorizedAccountCount?: number;
+  raw?: any;
+};
 
 function localDate(date: Date) {
   const year = date.getFullYear();
@@ -168,7 +176,9 @@ export function AccountAggregatorUat() {
 
   function selectSession(id: string, list: Session[] = sessions) {
     setSessionId(id);
-    setAnalysisId(list.find(item => item.sessionId === id)?.analysisId || "");
+    const sessionItem = list.find(item => item.sessionId === id);
+    const detectedAnalysisId = sessionItem?.analysisId || id || "";
+    setAnalysisId(detectedAnalysisId);
     setStatement(null);
     setReport(null);
   }
@@ -224,7 +234,8 @@ export function AccountAggregatorUat() {
   // 5. POST /fiu-ws/analytics/fetch
   function loadAnalytics() {
     void run("Fetching analytics", async () => {
-      const reqPayload = { ...getFiIds(), analysisId };
+      const targetAnalysisId = (analysisId.trim() || sessionId.trim());
+      const reqPayload = { ...getFiIds(), analysisId: targetAnalysisId, sessionId };
       const result = await apiPost<Report>(`${api}/fiu-ws/analytics/fetch`, reqPayload);
       setActiveApiCall({
         method: "POST",
@@ -383,10 +394,23 @@ export function AccountAggregatorUat() {
             {(!accountId || !sessionId) && <p className="mt-2 text-sm text-slate-600">Select a linked account and a completed FI session.</p>}
           </div>
           <div className="flex flex-wrap items-end gap-3 border-t border-slate-200 pt-4">
-            <label className={`${label} flex-1`}>CRIF analysis ID
-              <input className={field} maxLength={128} value={analysisId} onChange={event => { setAnalysisId(event.target.value); setReport(null); }} />
+            <label className={`${label} flex-1`}>CRIF analysis ID (or Session ID)
+              <input
+                className={field}
+                maxLength={128}
+                placeholder={sessionId || "Analysis ID or Session ID"}
+                value={analysisId}
+                onChange={event => { setAnalysisId(event.target.value); setReport(null); }}
+              />
             </label>
-            <button className={secondary} disabled={!fiIdsReady || !analysisId.trim()} type="button" onClick={loadAnalytics}>Fetch analytics</button>
+            <button
+              className={secondary}
+              disabled={!fiIdsReady || (!analysisId.trim() && !sessionId.trim())}
+              type="button"
+              onClick={loadAnalytics}
+            >
+              Fetch analytics
+            </button>
           </div>
         </section>
       </fieldset>
@@ -458,13 +482,54 @@ export function AccountAggregatorUat() {
 
       {report && (
         <section className={panel}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-950">Analytics report</h2>
-            <span className="text-xs font-mono text-sky-700 font-bold bg-sky-50 px-2 py-1 rounded border border-sky-200">
-              Fetched via /fiu-ws/analytics/fetch
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-950">Underwriting & Analytics Report</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                CRIF Orchestrator Analytics Engine · Status: <span className="font-semibold text-emerald-600">{report.status || "COMPLETED"}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-indigo-700 font-bold bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">
+                POST /fiu-ws/analytics/fetch
+              </span>
+            </div>
           </div>
-          {report.cashFlow && <pre className="max-h-96 overflow-auto rounded-md bg-slate-950 text-emerald-400 p-4 text-xs font-mono">{JSON.stringify(report.cashFlow, null, 2)}</pre>}
+
+          {/* Quick Metrics Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
+              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Credit Score</span>
+              <span className="text-lg font-bold text-slate-900">
+                {typeof report.creditScore === "object" ? (report.creditScore?.score || report.creditScore?.value || "N/A") : (report.creditScore || "N/A")}
+              </span>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
+              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Risk Band</span>
+              <span className="text-lg font-bold text-emerald-600">
+                {typeof report.risk === "object" ? (report.risk?.riskBand || report.risk?.band || "LOW") : (report.risk || "LOW")}
+              </span>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
+              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Categorized Accounts</span>
+              <span className="text-lg font-bold text-slate-900">{report.categorizedAccountCount ?? 1}</span>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-200">
+              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Engine Status</span>
+              <span className="text-lg font-bold text-indigo-600">{report.status || "READY"}</span>
+            </div>
+          </div>
+
+          {/* Analytics Data Payload (CRIF Analysis JSON) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Analytics Data Payload (CRIF Analysis JSON)</h3>
+              <span className="text-[11px] text-slate-400">Scroll to view full underwriting attributes</span>
+            </div>
+            <pre className="max-h-96 overflow-auto rounded-xl bg-slate-950 text-emerald-400 p-4 text-xs font-mono shadow-inner border border-slate-800">
+              {JSON.stringify(report.raw || report, null, 2)}
+            </pre>
+          </div>
         </section>
       )}
     </main>

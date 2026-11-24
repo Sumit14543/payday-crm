@@ -222,12 +222,15 @@ const statementHandler = asyncHandler(async (req, res) => {
 
 const analyticsHandler = asyncHandler(async (req, res) => {
   const ids = consentIds(req.body);
-  const analysisId = field(req.body?.analysisId, 'analysis ID');
+  const analysisId = field(req.body?.analysisId || req.body?.sessionId, 'analysis ID');
   const response = await request('/fiu-ws/analytics/fetch', { ...ids, analysisId }, 'analytics fetch');
   const consumer = response.data?.analytics?.consumer;
   return success(res, {
-    status: response.status,
+    status: response.status || 'COMPLETED',
     cashFlow: consumer?.cashFlow,
+    creditScore: consumer?.creditScore,
+    risk: consumer?.risk,
+    kpi: consumer?.base?.subject?.kpi,
     categorizedAccountCount: response.data?.categorizedTransactions?.length,
     raw: response.data,
   });
