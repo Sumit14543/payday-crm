@@ -55,11 +55,13 @@ router.post('/consents', asyncHandler(async (req, res) => {
   if (!/^[6-9]\d{9}$/.test(phoneNumber)) throw uatError(400, 'Enter a valid 10-digit sandbox mobile number.');
   const vuaId = req.body?.vuaId ? field(req.body.vuaId, 'sandbox VUA') : undefined;
   if (vuaId && !/^[^\s@]+@[a-zA-Z0-9.-]+$/.test(vuaId)) throw uatError(400, 'Enter a valid sandbox VUA.');
-  const trackingId = `AA_UAT_${randomUUID()}`;
+  const pan = req.body?.pan ? String(req.body.pan).trim().toUpperCase() : undefined;
+  const email = req.body?.email ? String(req.body.email).trim() : undefined;
+  const trackingId = req.body?.trackingId ? String(req.body.trackingId).trim() : `AA_UAT_${randomUUID()}`;
 
   let redirectionBackUrl;
   try {
-    const callback = process.env.CRIF_UAT_REDIRECT_URL || new URL('/credit-manager/aa-test', process.env.CRIF_REDIRECT_URL || 'https://testing.waqtmoney.com');
+    const callback = process.env.CRIF_UAT_REDIRECT_URL || new URL('/credit-manager/aa-test', process.env.CRIF_REDIRECT_URL || 'https://payday.waqtmoney.com');
     const url = new URL(callback);
     if (url.protocol !== 'https:' || url.username || url.password) throw new Error();
     redirectionBackUrl = url.href;
@@ -68,7 +70,7 @@ router.post('/consents', asyncHandler(async (req, res) => {
   }
 
   const response = await request('/fiu-ws/consent/initiate', {
-    templateCode, trackingId, phoneNumber, vuaId, redirectionBackUrl,
+    templateCode, trackingId, phoneNumber, vuaId, pan, email, redirectionBackUrl,
   }, 'consent initiation', { retryUnauthorized: false });
   const data = response.data;
   const consents = list(data?.consents, 'consent initiation')

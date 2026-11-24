@@ -1,4 +1,4 @@
-const baseUrl = 'https://flex-uat.crif.com/orchestrator';
+const baseUrl = (process.env.CRIF_UAT_BASE_URL || process.env.CRIF_BASE_URL || 'https://flex-uat.crif.com/orchestrator').replace(/\/$/, '');
 let cachedToken;
 let pendingToken;
 
@@ -26,8 +26,8 @@ async function post(path, body, token) {
 }
 
 async function authenticate() {
-  const userName = process.env.CRIF_UAT_API_USER?.trim();
-  const password = process.env.CRIF_UAT_API_PASSWORD;
+  const userName = (process.env.CRIF_UAT_API_USER || process.env.CRIF_API_USER)?.trim();
+  const password = process.env.CRIF_UAT_API_PASSWORD || process.env.CRIF_API_PASSWORD;
   if (!userName || !password) {
     throw uatError(503, 'Configure the CRIF UAT API user and password on the CRM server.');
   }
