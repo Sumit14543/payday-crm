@@ -199,7 +199,28 @@ export function AccountAggregatorUat() {
       setSessions(response.sessions);
       const ready = response.sessions.find(item => item.status?.toUpperCase() === "COMPLETED");
       selectSession(ready?.sessionId || "", response.sessions);
-      return ready ? "Completed FI session ready via /fiu-ws/fi/sessions." : "No completed FI session yet. Check again after CRIF finishes processing.";
+      return ready ? "Completed FI session ready via /fiu-ws/fi/sessions." : "No completed FI session yet. Click 'Start manual FI request' if not initiated, or check again after CRIF finishes processing.";
+    });
+  }
+
+  // 3.1 POST /fiu-ws/fi/initiate
+  function requestFi() {
+    void run("Initiating FI data request", async () => {
+      const reqPayload = getFiIds();
+      const res = await apiPost<{ sessionId?: string; status?: string; raw?: any }>(`${api}/fiu-ws/fi/initiate`, reqPayload);
+      setActiveApiCall({
+        method: "POST",
+        endpoint: "/fiu-ws/fi/initiate",
+        request: reqPayload,
+        response: res.raw || res,
+        status: 200,
+        timestamp: new Date().toLocaleTimeString(),
+      });
+      if (res.sessionId) {
+        setSessionId(res.sessionId);
+        setAnalysisId(res.sessionId);
+      }
+      return "FI request accepted via /fiu-ws/fi/initiate. Now click 'Check FI sessions' to select completed session.";
     });
   }
 
@@ -373,6 +394,7 @@ export function AccountAggregatorUat() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button className={action} disabled={!fiIdsReady || !fromDate || !toDate || fromDate > toDate} type="button" onClick={loadSessions}>Check FI sessions</button>
+            <button className={secondary} disabled={!fiIdsReady || !accounts.length} type="button" onClick={requestFi}>Start manual FI request</button>
           </div>
           {sessions.length > 0 && (
             <label className={label}>FI session
