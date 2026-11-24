@@ -140,7 +140,12 @@ export function AccountAggregatorUat() {
   function createConsent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void run("Creating consent link", async () => {
-      const reqPayload = { templateCode: "CT003", phoneNumber, vuaId: vuaId.trim() };
+      const reqPayload = {
+        templateCode: "CT003",
+        phoneNumber,
+        vuaId: vuaId.trim() || undefined,
+        trackingId: trackingId.trim() || undefined,
+      };
       const next = await apiPost<Journey>(`${api}/fiu-ws/consent/initiate`, reqPayload);
       setActiveApiCall({
         method: "POST",
@@ -384,10 +389,35 @@ export function AccountAggregatorUat() {
               </select>
             </label>
             <label className={label}>Sandbox mobile number
-              <input className={field} required maxLength={10} value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} placeholder="e.g. 9761811212" />
+              <input
+                className={field}
+                required
+                maxLength={10}
+                value={phoneNumber}
+                onChange={event => setPhoneNumber(event.target.value)}
+                onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }}
+                placeholder="e.g. 9761811212"
+              />
             </label>
             <label className={label}>Sandbox VUA (optional)
-              <input className={field} maxLength={128} value={vuaId} onChange={event => setVuaId(event.target.value)} placeholder="e.g. 7379282989@crif" />
+              <input
+                className={field}
+                maxLength={128}
+                value={vuaId}
+                onChange={event => setVuaId(event.target.value)}
+                onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }}
+                placeholder="e.g. 7379282989@crif"
+              />
+            </label>
+            <label className={label}>Custom Tracking ID (optional)
+              <input
+                className={field}
+                maxLength={128}
+                value={trackingId}
+                onChange={event => setTrackingId(event.target.value)}
+                onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }}
+                placeholder="e.g. consent 1 (leave blank for auto UUID)"
+              />
             </label>
             <div className="flex flex-wrap gap-2">
               <button className={action} type="submit">Create consent link</button>
