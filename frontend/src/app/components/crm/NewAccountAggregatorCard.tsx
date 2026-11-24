@@ -206,15 +206,8 @@ export function NewAccountAggregatorCard({
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline"
                 >
-                  Open WebView ↗
+                  Open Consent WebView ↗
                 </a>
-                <Link
-                  to={`/credit-manager/aa-test?trackingId=${encodeURIComponent(newAaResult.trackingId || "")}&referenceId=${encodeURIComponent(newAaResult.referenceId || "")}&mobile=${encodeURIComponent(newAaPhone || "")}`}
-                  target="_blank"
-                  className="inline-flex items-center gap-1 font-semibold text-emerald-800 hover:underline"
-                >
-                  Open in AA Test Suite ↗
-                </Link>
               </div>
 
               {/* Step 2: Fetch Statement & Analytics Button */}

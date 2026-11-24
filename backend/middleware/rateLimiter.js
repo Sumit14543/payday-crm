@@ -114,6 +114,23 @@ const webhookLimiter = rateLimit({
   handler: createRateLimitHandler('Webhook rate limit exceeded.', 60),
 });
 
+// 11. Account Aggregator Protection Limiter:
+// Protects CRIF orchestrator credits, email quota, and prevents bots/scripts from rapid burning:
+// Max 10 requests per 5 minutes per staff user.
+const accountAggregatorLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => {
+    if (req.user && req.user.email) {
+      return `aa:user:${req.user.email.toLowerCase()}`;
+    }
+    return `aa:ip:${ipKeyGenerator(req.ip)}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: createRateLimitHandler('Too many Account Aggregator requests. Rate limit active to protect API credits. Please wait 5 minutes before trying again.', 300),
+});
+
 module.exports = {
   publicSanctionLimiter,
   customerCheckoutLimiter,
@@ -125,4 +142,5 @@ module.exports = {
   publicUploadLimiter,
   trackingLimiter,
   webhookLimiter,
+  accountAggregatorLimiter,
 };

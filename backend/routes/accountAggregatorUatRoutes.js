@@ -1,14 +1,26 @@
 const express = require('express');
 const { randomUUID } = require('node:crypto');
 const { requireRole } = require('../middleware/auth');
+const { accountAggregatorLimiter } = require('../middleware/rateLimiter');
 const { request, uatError } = require('../services/crifAccountAggregatorUatService');
 const { buildCrifAnalyticsPayload } = require('../services/crifAnalyticsFallback');
 const emailService = require('../services/emailService');
 const asyncHandler = require('../utils/asyncHandler');
 const { success } = require('../utils/http');
 
+const phoneCooldowns = new Map();
+function checkPhoneCooldown(phoneNumber) {
+  const lastTime = phoneCooldowns.get(phoneNumber);
+  if (lastTime && Date.now() - lastTime < 60000) {
+    const remaining = Math.ceil((60000 - (Date.now() - lastTime)) / 1000);
+    throw uatError(429, `Anti-spam protection active. Please wait ${remaining}s before generating another link for this mobile number.`);
+  }
+  phoneCooldowns.set(phoneNumber, Date.now());
+  if (phoneCooldowns.size > 10000) phoneCooldowns.clear();
+}
+
 const router = express.Router();
-router.use(requireRole(['credit-manager', 'product-admin', 'superadmin']), (_req, res, next) => {
+router.use(requireRole(['credit-manager', 'product-admin', 'superadmin']), accountAggregatorLimiter, (_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
@@ -60,6 +72,7 @@ const initiateConsentHandler = asyncHandler(async (req, res) => {
   const templateCode = field(req.body?.templateCode, 'template code', 50);
   const phoneNumber = field(req.body?.phoneNumber, 'sandbox mobile number', 10);
   if (!/^[6-9]\d{9}$/.test(phoneNumber)) throw uatError(400, 'Enter a valid 10-digit sandbox mobile number.');
+  checkPhoneCooldown(phoneNumber);
   const vuaId = req.body?.vuaId ? field(req.body.vuaId, 'sandbox VUA') : undefined;
   if (vuaId && !/^[^\s@]+@[a-zA-Z0-9.-]+$/.test(vuaId)) throw uatError(400, 'Enter a valid sandbox VUA.');
   const pan = req.body?.pan ? String(req.body.pan).trim().toUpperCase() : undefined;
@@ -278,6 +291,7 @@ router.post('/lead-consent-and-email', asyncHandler(async (req, res) => {
   if (!/^[6-9]\d{9}$/.test(phoneNumber)) {
     throw uatError(400, 'Enter a valid 10-digit customer mobile number.');
   }
+  checkPhoneCooldown(phoneNumber);
 
   const targetEmail = req.body?.email ? String(req.body.email).trim() : '';
   const customerName = req.body?.customerName || 'Customer';
