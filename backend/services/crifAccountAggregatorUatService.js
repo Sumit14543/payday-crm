@@ -50,11 +50,13 @@ function accessToken() {
 
 async function request(path, body, action, { retryUnauthorized = true } = {}) {
   const token = await accessToken();
+  console.log(`[CRIF UAT Request] ${path}:`, JSON.stringify(body));
   let response = await post(path, body, token);
   if (response.status === 401) {
     if (cachedToken?.value === token) cachedToken = undefined;
     if (retryUnauthorized) response = await post(path, body, await accessToken());
   }
+  console.log(`[CRIF UAT Response] ${path} (${response.status}):`, JSON.stringify(response.payload));
 
   if (!response.ok || response.payload?.success === false || response.payload === null) {
     const code = response.payload?.errorCode;

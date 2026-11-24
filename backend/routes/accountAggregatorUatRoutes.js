@@ -194,9 +194,12 @@ const statementHandler = asyncHandler(async (req, res) => {
     return timeB - timeA; // Descending: latest date (e.g. November / Month 11) on top!
   });
 
+  const foundAnalysisId = account?.analysisId || data?.analysisId || response?.analysisId || response?.data?.analysisId || '';
+
   return success(res, {
     accountId: account.accountId || accountId,
     status: account.status || 'READY',
+    analysisId: foundAnalysisId,
     accountNumber: mask(data?.maskedAccNumber || data?.accountNumber || account.accountNumber),
     balance: summary.currentBalance || summary.balance || '0.00',
     currency: summary.currency || 'INR',

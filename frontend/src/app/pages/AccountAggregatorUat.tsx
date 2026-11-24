@@ -17,7 +17,7 @@ type Account = { accountId: string; accountNumber?: string; fipId?: string };
 type Session = { sessionId: string; status: string; analysisId?: string };
 type Transaction = { date?: string; type?: string; amount?: string; balance?: string; narration?: string };
 type Statement = {
-  accountId: string; status?: string; accountNumber?: string; balance?: string; currency?: string;
+  accountId: string; status?: string; analysisId?: string; accountNumber?: string; balance?: string; currency?: string;
   ifscCode?: string; fromDate?: string; toDate?: string; transactionCount: number; transactions: Transaction[];
   rawProfile?: any; rawSummary?: any;
 };
@@ -276,6 +276,9 @@ export function AccountAggregatorUat() {
         timestamp: new Date().toLocaleTimeString(),
       });
       setStatement(result);
+      if (result.analysisId) {
+        setAnalysisId(result.analysisId);
+      }
       return result.status === "READY" ? "Bank statement received via /fiu-ws/fi/fetch/JSON." : `Statement status is ${result.status || "unavailable"}.`;
     });
   }
