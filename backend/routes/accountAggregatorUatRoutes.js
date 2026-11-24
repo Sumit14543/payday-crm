@@ -107,9 +107,14 @@ const sessionsHandler = asyncHandler(async (req, res) => {
   if (fromDate > toDate) throw uatError(400, 'The start date must be on or before the end date.');
 
   const response = await request('/fiu-ws/fi/sessions', { ...ids, fromDate, toDate }, 'FI session lookup');
-  const sessions = list(response.data?.sessionDetails, 'FI session lookup')
-    .filter(item => typeof item?.sessionId === 'string' && item.sessionId)
-    .map(({ sessionId, status, analysisId }) => ({ sessionId, status, analysisId }));
+  const rawList = list(response.data?.sessionDetails || response.data?.sessions || response.data, 'FI session lookup');
+  const sessions = rawList
+    .filter(item => typeof (item?.sessionId || item?.id) === 'string')
+    .map(item => ({
+      sessionId: item?.sessionId || item?.id,
+      status: item?.status,
+      analysisId: item?.analysisId || item?.analysis_id || item?.analyticsId || item?.analyticsSessionId || item?.consentAnalyticsDetails?.analysisId || item?.reportId || item?.referenceId || '',
+    }));
   return success(res, { sessions, raw: response.data });
 });
 
