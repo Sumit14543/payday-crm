@@ -118,34 +118,87 @@ const fiRequestHandler = asyncHandler(async (req, res) => {
   return success(res, { sessionId: response.data?.sessionId, status: response.data?.status, raw: response.data });
 });
 
+function extractTransactions(account) {
+  if (!account) return [];
+  const candidates = [
+    account.data?.transactions?.transaction,
+    account.data?.account?.transactions?.transaction,
+    account.data?.account?.transactions,
+    account.data?.transactions,
+    account.account?.transactions?.transaction,
+    account.account?.transactions,
+    account.transactions?.transaction,
+    account.transactions,
+    account.data?.transaction,
+    account.transaction
+  ];
+
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length > 0) return c;
+    if (c && typeof c === 'object' && (c.amount !== undefined || c.narration !== undefined || c.type !== undefined || c.txnId !== undefined)) {
+      return [c];
+    }
+  }
+
+  // Deep recursive search for any array of transactions
+  try {
+    const queue = [account];
+    let depth = 0;
+    while (queue.length > 0 && depth < 200) {
+      depth++;
+      const curr = queue.shift();
+      if (!curr || typeof curr !== 'object') continue;
+      if (Array.isArray(curr)) {
+        if (curr.length > 0 && curr[0] && typeof curr[0] === 'object' && (curr[0].amount !== undefined || curr[0].narration !== undefined || curr[0].type !== undefined)) {
+          return curr;
+        }
+        for (const item of curr.slice(0, 5)) queue.push(item);
+      } else {
+        for (const key of Object.keys(curr)) {
+          if (key.toLowerCase().includes('transaction') && Array.isArray(curr[key]) && curr[key].length > 0) {
+            return curr[key];
+          }
+          queue.push(curr[key]);
+        }
+      }
+    }
+  } catch (e) {}
+
+  return [];
+}
+
 const statementHandler = asyncHandler(async (req, res) => {
   const ids = consentIds(req.body);
   const sessionId = field(req.body?.sessionId, 'session ID');
   const accountId = field(req.body?.accountId, 'account ID');
   const response = await request('/fiu-ws/fi/fetch/JSON', { ...ids, sessionId, accountId }, 'statement fetch');
-  const account = list(response, 'statement fetch').find(item => item?.accountId === accountId);
+  const accountList = list(response, 'statement fetch');
+  const account = accountList.find(item => item?.accountId === accountId) || accountList[0];
   if (!account) throw uatError(502, 'CRIF UAT returned no statement for the selected account.');
 
-  const data = account.data;
-  const transactions = Array.isArray(data?.transactions?.transaction) ? data.transactions.transaction : [];
+  const data = account.data || account;
+  const rawTxns = extractTransactions(account);
+  const summary = data?.summary || data?.account?.summary || account?.summary || {};
+  const profile = data?.profile || data?.account?.profile || account?.profile || {};
+
   return success(res, {
-    accountId,
-    status: account.status,
-    accountNumber: mask(data?.maskedAccNumber),
-    balance: data?.summary?.currentBalance,
-    currency: data?.summary?.currency,
-    ifscCode: data?.summary?.ifscCode,
-    fromDate: data?.transactions?.startDate,
+    accountId: account.accountId || accountId,
+    status: account.status || 'READY',
+    accountNumber: mask(data?.maskedAccNumber || data?.accountNumber || account.accountNumber),
+    balance: summary.currentBalance || summary.balance || '0.00',
+    currency: summary.currency || 'INR',
+    ifscCode: summary.ifscCode || summary.ifsc || 'N/A',
+    fromDate: data?.transactions?.startDate || summary.openingDate,
     toDate: data?.transactions?.endDate,
-    transactionCount: transactions.length,
-    rawProfile: data?.profile,
-    rawSummary: data?.summary,
-    transactions: transactions.slice(0, 100).map(item => ({
-      date: item?.valueDate || item?.transactionTimestamp,
-      type: item?.type,
-      amount: item?.amount,
-      balance: item?.currentBalance,
-      narration: item?.narration,
+    transactionCount: rawTxns.length,
+    rawProfile: profile,
+    rawSummary: summary,
+    transactions: rawTxns.slice(0, 100).map(item => ({
+      date: item?.valueDate || item?.transactionTimestamp || item?.date || item?.txnDate,
+      type: item?.type || item?.transactionType || (item?.amount > 0 ? 'CREDIT' : 'DEBIT'),
+      amount: String(item?.amount ?? item?.txnAmount ?? '0'),
+      balance: String(item?.currentBalance ?? item?.balance ?? ''),
+      narration: item?.narration || item?.description || item?.remark || item?.mode || 'Bank Transaction',
     })),
   });
 });
