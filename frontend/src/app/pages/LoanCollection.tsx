@@ -2835,8 +2835,8 @@ if (isLogPaymentPage) {
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">PAYMENT AMOUNT (INR) *</label>
                 <input
                   type="number"
-                  min="1"
-                  required
+                  min={actionForm.closeFully ? "0" : "1"}
+                  required={!actionForm.closeFully}
                   value={actionForm.paymentAmount}
                   onChange={(e) => setActionForm((f) => ({ ...f, paymentAmount: e.target.value }))}
                   placeholder="e.g. 15000"
