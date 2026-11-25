@@ -2911,79 +2911,65 @@ if (isLogPaymentPage) {
             </div>
 
             {/* TWO CLOSURE OPTIONS: MARK AS PAID OFF vs MARK AS SETTLEMENT */}
-            <div className="space-y-2.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                LOAN CLOSURE OPTIONS (SELECT ONE IF SETTLING / CLOSING)
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                LOAN CLOSURE OPTIONS
               </label>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {/* Checkbox 1: Mark as Paid Off (Discount / Waiver / Full Paid) */}
-                <div className={`rounded-xl border p-3.5 transition cursor-pointer ${
+              <div className="grid gap-5 sm:grid-cols-2">
+                {/* Option 1: Mark as Paid Off */}
+                <label className={`h-11 flex items-center gap-2.5 rounded-lg border px-3 transition cursor-pointer select-none ${
                   actionForm.closeFully && actionForm.settlementMode === "paid_off"
-                    ? "border-emerald-500 bg-emerald-50/90 dark:border-emerald-600 dark:bg-emerald-950/60 shadow-xs ring-2 ring-emerald-400/40"
-                    : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900"
+                    ? "border-emerald-500 bg-emerald-50/80 text-emerald-950 dark:border-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-200 font-bold ring-1 ring-emerald-400"
+                    : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 }`}>
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(actionForm.closeFully && actionForm.settlementMode === "paid_off")}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setActionForm((f) => ({
-                          ...f,
-                          closeFully: checked,
-                          settlementMode: checked ? "paid_off" : "none",
-                          notes: checked && (!f.notes || f.notes.includes("OTS"))
-                            ? "Loan closed with full repayment / discount waiver. Marked as Paid Off."
-                            : f.notes,
-                        }));
-                      }}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <div>
-                      <span className="text-xs font-extrabold text-emerald-950 dark:text-emerald-200 block">
-                        ☑ Mark as Paid Off (Full Closure / Discount)
-                      </span>
-                      <span className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 block leading-normal font-medium">
-                        Customer ko thoda discount/penalty waive dekar regular full closure karna ho. Balance ₹0 hoga aur Full Paid NOC issue hogi.
-                      </span>
-                    </div>
-                  </label>
-                </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(actionForm.closeFully && actionForm.settlementMode === "paid_off")}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setActionForm((f) => ({
+                        ...f,
+                        closeFully: checked,
+                        settlementMode: checked ? "paid_off" : "none",
+                        notes: checked && (!f.notes || f.notes.includes("OTS"))
+                          ? "Loan closed with full repayment / discount waiver. Marked as Paid Off."
+                          : f.notes,
+                      }));
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-xs sm:text-sm font-bold">
+                    Mark as Paid Off
+                  </span>
+                </label>
 
-                {/* Checkbox 2: Mark as Settlement (One-Time Settlement / OTS) */}
-                <div className={`rounded-xl border p-3.5 transition cursor-pointer ${
+                {/* Option 2: Mark as Settlement */}
+                <label className={`h-11 flex items-center gap-2.5 rounded-lg border px-3 transition cursor-pointer select-none ${
                   actionForm.closeFully && actionForm.settlementMode === "settlement"
-                    ? "border-amber-500 bg-amber-50/90 dark:border-amber-600 dark:bg-amber-950/60 shadow-xs ring-2 ring-amber-400/40"
-                    : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900"
+                    ? "border-amber-500 bg-amber-50/80 text-amber-950 dark:border-amber-600 dark:bg-amber-950/50 dark:text-amber-200 font-bold ring-1 ring-amber-400"
+                    : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 }`}>
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(actionForm.closeFully && actionForm.settlementMode === "settlement")}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setActionForm((f) => ({
-                          ...f,
-                          closeFully: checked,
-                          settlementMode: checked ? "settlement" : "none",
-                          notes: checked && (!f.notes || f.notes.includes("discount waiver"))
-                            ? "Loan settled under One-Time Settlement (OTS). Balance waived off."
-                            : f.notes,
-                        }));
-                      }}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                    />
-                    <div>
-                      <span className="text-xs font-extrabold text-amber-950 dark:text-amber-200 block">
-                        ☑ Mark as Settlement (OTS Settlement)
-                      </span>
-                      <span className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 block leading-normal font-medium">
-                        One-Time Settlement (OTS) ke tahet case settle karna ho. Status 'Settled' hoga aur Settlement NOC issue hogi.
-                      </span>
-                    </div>
-                  </label>
-                </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(actionForm.closeFully && actionForm.settlementMode === "settlement")}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setActionForm((f) => ({
+                        ...f,
+                        closeFully: checked,
+                        settlementMode: checked ? "settlement" : "none",
+                        notes: checked && (!f.notes || f.notes.includes("discount waiver"))
+                          ? "Loan settled under One-Time Settlement (OTS). Balance waived off."
+                          : f.notes,
+                      }));
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <span className="text-xs sm:text-sm font-bold">
+                    Mark as Settlement
+                  </span>
+                </label>
               </div>
             </div>
 
